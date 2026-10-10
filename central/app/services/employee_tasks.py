@@ -708,6 +708,10 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
     from . import employee_teamwork as teamwork
     teamwork.child_finished(db, task)  # repassada por outra tarefa: a de origem retoma com o resultado
     teamwork.reply_by_email(db, task)  # veio por e-mail de alguém da empresa: a resposta volta por e-mail
+    from . import chat_tasks
+    chat_tasks.task_finished(db, task)  # veio do Slack ou do Teams: o resultado volta para lá
+    from . import employee_quality
+    employee_quality.task_finished(db, task)  # a amostra vai para o juiz de qualidade
     if task.probation:
         from .employees import probation_progress
         probation_progress(db, db.get(Employee, task.employee_id))

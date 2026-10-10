@@ -133,6 +133,16 @@ networkPolicy:
 scheduler:
   enabled: true
 
+# Plugins com código (runtime: server)
+plugins:
+  egress: proxy                     # proxy: saem só pelo proxy da central, para os hosts de server.egress | open: saída direta
+  rateLimitPerMin: 120              # chamadas por minuto por instalação (o manifesto e a instalação podem mudar); 0 = sem limite
+  cosign:                           # assinatura das imagens: chave pública (PEM) OU keyless (identidade + emissor)
+    key: ""
+    identity: ""                    # regex da identidade do certificado, ex.: ^https://github.com/minha-empresa/
+    issuer: https://token.actions.githubusercontent.com
+    required: false                 # true: não aprova nem sobe imagem sem assinatura válida
+
 # Segredos num cofre da empresa via External Secrets Operator (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault,
 # HashiCorp Vault…). O operador cria o Secret <release>-secrets com as chaves ADMIN_TOKEN, HANGAR_SECRET_KEY,
 # INTERNAL_SECRET, DATABASE_URL (+ POSTGRES_PASSWORD com o Postgres do chart, MEMORY_TOKEN/NEO4J_PASSWORD com memória,

@@ -108,10 +108,13 @@ def _hint(v: str) -> str:
 
 
 def slack_manifest() -> str:
-    return (f"display_information:\n  name: Agent Hangar\n  description: Decide what your Digital employees ask, "
-            f"right in Slack\nfeatures:\n  bot_user:\n    display_name: Agent Hangar\n    always_online: true\n"
-            f"oauth_config:\n  scopes:\n    bot:\n      - chat:write\n      - im:write\n      - users:read\n"
-            f"      - users:read.email\nsettings:\n  interactivity:\n    is_enabled: true\n"
+    return (f"display_information:\n  name: Agent Hangar\n  description: Ask your Digital employees for work and decide "
+            f"what they ask, right in Slack\nfeatures:\n  app_home:\n    messages_tab_enabled: true\n"
+            f"    messages_tab_read_only_enabled: false\n  bot_user:\n    display_name: Agent Hangar\n"
+            f"    always_online: true\noauth_config:\n  scopes:\n    bot:\n      - app_mentions:read\n      - chat:write\n"
+            f"      - im:history\n      - im:write\n      - users:read\n      - users:read.email\nsettings:\n"
+            f"  event_subscriptions:\n    request_url: {config.PUBLIC_BASE_URL}/hooks/slack/events\n    bot_events:\n"
+            f"      - app_mention\n      - message.im\n  interactivity:\n    is_enabled: true\n"
             f"    request_url: {config.PUBLIC_BASE_URL}/hooks/slack/interactions\n")
 
 
@@ -122,9 +125,11 @@ def admin_view(db, acc: Access) -> dict:
     return {"slack": {"configured": slack_ready(cfg), "bot_token": _hint(_secret(cfg, "slack_bot_token")),
                       "signing_secret": bool(cfg.get("slack_signing_secret")), "team": cfg.get("slack_team", ""),
                       "interactions_url": f"{config.PUBLIC_BASE_URL}/hooks/slack/interactions",
+                      "events_url": f"{config.PUBLIC_BASE_URL}/hooks/slack/events",
                       "manifest": slack_manifest()},
             "email": {"configured": email_ready(), "host": config.SMTP_HOST, "from": config.SMTP_FROM},
-            "teams": {"how": "personal"},
+            "teams": {"how": "personal", "outgoing": bool(cfg.get("teams_outgoing_secret")),
+                      "outgoing_url": f"{config.PUBLIC_BASE_URL}/hooks/teams/messages"},
             **{k: cfg[k] for k in DEFAULTS}}
 
 
@@ -148,6 +153,15 @@ def set_admin(db, acc: Access, changes: dict) -> dict:
             if k == "slack_bot_token" and v and not v.startswith("xoxb-"):
                 raise PlatformError("o token do bot do Slack começa com xoxb-")
             cfg[k] = crypto.encrypt(v) if v else ""
+    if changes.get("teams_outgoing_secret") is not None:  # o token de segurança do webhook de saída do Teams
+        v = str(changes["teams_outgoing_secret"]).strip()
+        if v:
+            try:
+                base64.b64decode(v, validate=True)
+            except ValueError:
+                raise PlatformError("o token de segurança do Teams é o texto em base64 que o Teams mostra ao criar o "
+                                    "webhook de saída") from None
+        cfg["teams_outgoing_secret"] = crypto.encrypt(v) if v else ""
     if changes.get("slack_bot_token"):
         try:
             who = _slack(cfg, "auth.test", {}, form=True)

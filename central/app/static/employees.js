@@ -64,7 +64,8 @@ async function employeesPage() {
   const list = await api('/employees');
   main.innerHTML = `<div class="row between"><div><h1>Digital employees (${list.length})</h1>
     <div class="sub">Agentes com cargo, gestor humano e alçada: recebem tarefas, trabalham em segundo plano e pedem a sua decisão no que for sensível.</div></div>
-    <a href="#/employees/new"><button>+ Contratar</button></a></div>
+    <span class="row" style="gap:6px">${list.length ? '<a href="#/manager"><button class="ghost">Painel do gestor</button></a>' : ''}
+      <a href="#/employees/new"><button>+ Contratar</button></a></span></div>
   ${list.length ? `<div class="grid g3">${list.map(empCard).join('')}</div>`
     : `<div class="card empty"><h2>Nenhum Digital employee ainda</h2><div class="mute">Contrate o primeiro pela sua ferramenta de IA (modo self, pelo MCP) ou
       pelo formulário guiado — os dois fazem as mesmas perguntas e só contratam com o cargo completo.</div>
@@ -219,7 +220,12 @@ function empOverview(t, e) {
       (fora ler e delegar) é simulada e fica para você revisar na aba <a href="#/employees/${esc(e.slug)}/shadow">Sombra</a>.</div>` : ''}
   <div class="board ${e.shadow ? 'mt' : ''}">${kpi(fmt(m.done), 'Concluídas (30 dias)')}${kpi(fmt(m.waiting), 'Aguardando decisão')}${kpi(fmt(m.failed), 'Com falha')}
     ${kpi(usd(m.cost_usd), 'Custo (30 dias)')}${kpi(m.approvals ? Math.round(100 * m.approved_unedited / m.approvals) + '%' : '—', 'Aprovado sem edição')}
-    ${kpi(m.avg_decision_min == null ? '—' : m.avg_decision_min + ' min', 'Tempo de decisão')}</div>
+    ${kpi(m.avg_decision_min == null ? '—' : m.avg_decision_min + ' min', 'Tempo de decisão')}
+    ${kpi(e.quality && e.quality.avg != null ? `${e.quality.avg.toFixed(1)}/5` : '—', 'Nota dos resultados')}</div>
+  ${e.quality && (e.quality.low || []).length ? `<div class="card warn-card mt"><h2>Resultados com nota baixa</h2>
+    ${e.quality.low.map(x => `<div class="li small"><a href="#/tasks/${x.id}"><b data-noi18n>#${x.id} ${esc(x.title)}</b></a> <span class="pill bad">${x.score}/5</span>
+      ${x.note ? `<div class="mute" data-noi18n>${esc(x.note)}</div>` : ''}</div>`).join('')}
+    <div class="mute small mt">Nota do juiz (por amostra) ou sua, nos últimos 30 dias. Uma lição na aba Configurações ensina o que fazer diferente.</div></div>` : ''}
   ${(e.kpi_status || []).length ? `<div class="card mt"><h2>Metas</h2><table><tr><th>Meta</th><th>Medida</th><th>Agora</th><th>Alvo</th><th></th></tr>
     ${e.kpi_status.map(k => `<tr><td data-noi18n>${esc(k.name)}</td><td class="small mute">${esc(KPI_METRIC[k.metric] || '—')}</td><td><b>${kpiVal(k)}</b></td>
       <td class="small">${k.target == null ? '—' : `${k.higher_is_better ? '≥' : '≤'} ${fmt(k.target)}`}</td><td>${kpiPill(k)}</td></tr>`).join('')}</table>
@@ -467,7 +473,8 @@ async function empSettings(t, e) {
     <div class="mt">${others.length ? others.map(o => `<label class="row small" style="gap:6px"><input type="checkbox" class="tw-col" value="${esc(o.slug)}" ${mine.has(o.slug) ? 'checked' : ''}>
       <b>${esc(o.name)}</b> <span class="mute" data-noi18n>${esc(o.title)}</span> ${empPill(o.status)}</label>`).join('') : '<div class="mute">Nenhum outro Digital employee visível para você.</div>'}</div>
     <div class="grid g2 mt"><label>Plano nas tarefas<select id="tw-plan">${Object.entries(PLAN_POLICY).map(([k, v]) => `<option value="${k}" ${k === (e.plan_policy || 'auto') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="tw-recall" ${e.recall ? 'checked' : ''}> <span>Lembrar trabalhos anteriores parecidos ao começar uma tarefa</span></label></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="tw-recall" ${e.recall ? 'checked' : ''}> <span>Lembrar trabalhos anteriores parecidos ao começar uma tarefa</span></label>
+      <label>Amostra para o juiz de qualidade (% das tarefas concluídas; 0 desliga)<input id="tw-quality" type="number" min="0" max="100" value="${e.quality ? e.quality.sample : 20}"></label></div>
     <div class="row mt"><button id="tw-save">Salvar</button></div></div>
   <div class="card mt"><div class="row between"><h2>Caixa de e-mail</h2>${ib.enabled ? '<span class="pill ok">lendo</span>' : '<span class="pill">desligada</span>'}</div>
     <div class="mute small">Cada e-mail novo de um remetente permitido vira uma tarefa (o mesmo e-mail não vira duas). Sem lista, só pessoas da empresa. O conteúdo do e-mail é tratado
@@ -513,7 +520,8 @@ async function empSettings(t, e) {
     act(ev.target, () => api('/employees/' + e.slug, { method: 'PATCH', body }).then(route), 'Salvo');
   };
   $('#tw-save').onclick = ev => act(ev.target, () => api('/employees/' + e.slug, { method: 'PATCH', body: {
-    colleagues: [...t.querySelectorAll('.tw-col:checked')].map(c => c.value), plan_policy: $('#tw-plan').value, recall: $('#tw-recall').checked } }).then(route), 'Salvo');
+    colleagues: [...t.querySelectorAll('.tw-col:checked')].map(c => c.value), plan_policy: $('#tw-plan').value, recall: $('#tw-recall').checked,
+    quality_sample: Number($('#tw-quality').value) } }).then(route), 'Salvo');
   $('#ib-save').onclick = ev => {
     const body = { host: $('#ib-host').value.trim(), port: Number($('#ib-port').value) || 993, user: $('#ib-user').value.trim(),
       folder: $('#ib-folder').value.trim() || 'INBOX', allowed: lines($('#ib-allowed').value), enabled: $('#ib-on').checked };
@@ -536,19 +544,83 @@ async function taskPage(id) {
   const x = await api('/tasks/' + id);
   const open = (x.requests || []).filter(r => r.status === 'open');
   main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
-  <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)} pedida por ${esc(x.requester)} · ${when(x.created_at)}
+  <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)} pedida por ${esc(x.requester)}${x.via ? ` <span>pelo</span> ${esc(VIA_LABEL[x.via] || x.via)}` : ''} · ${when(x.created_at)}
     · ${x.runs} rodada(s) · ${usd(x.cost_usd)}</div>${duePill(x)}</div>
     ${['done', 'failed', 'cancelled', 'expired'].includes(x.status) ? '' : '<button class="ghost danger" id="t-cancel">Cancelar tarefa</button>'}</div>
   ${x.body ? `<div class="card"><h2>Pedido</h2><div data-noi18n style="white-space:pre-wrap">${esc(x.body)}</div>${x.expected ? `<div class="mute small mt">Esperado: <span data-noi18n>${esc(x.expected)}</span></div>` : ''}</div>` : ''}
   ${x.result || x.error ? `<div class="card mt ${x.error ? 'bad-card' : ''}"><h2>${x.error ? 'Erro' : 'Resultado'}</h2><div class="md" data-noi18n>${x.result ? mdLite(x.result) : esc(x.error)}</div></div>` : ''}
+  ${x.status === 'done' ? qualityView(x) : ''}
   ${open.length ? `<div class="mt">${open.map(decisionCard).join('')}</div>` : ''}
   ${planView(x)}${linkView(x)}
   <div class="card mt"><h2>Linha do tempo</h2>${(x.events || []).map(ev => `<div class="li small"><div class="row between"><b>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</b><span class="mute">${ago(ev.at)}</span></div>
     <div class="mute one-line" data-noi18n title="${esc(JSON.stringify(ev.payload))}">${esc(JSON.stringify(ev.payload))}</div></div>`).join('') || '<div class="mute">—</div>'}</div>`;
+  main.querySelectorAll('.q-star').forEach(b => b.onclick = ev => act(ev.target, () => api(`/tasks/${id}/quality`, { method: 'POST',
+    body: { score: Number(b.dataset.s), note: $('#q-note').value.trim() } }).then(route), 'Nota salva'));
   const c = $('#t-cancel');
   if (c) c.onclick = ev => confirm('Cancelar esta tarefa? As decisões abertas dela também são canceladas.') &&
     act(ev.target, () => api(`/tasks/${id}/cancel`, { method: 'POST' }).then(route), 'Tarefa cancelada');
   bindDecisions(main, () => route());
+}
+
+const VIA_LABEL = { slack: 'Slack', teams: 'Teams' };
+
+function qualityView(x) {
+  const has = x.quality != null;
+  return `<div class="card mt"><div class="row between"><h2>Qualidade do resultado</h2>
+      ${has ? `<span><span class="pill ${x.quality >= 4 ? 'ok' : x.quality <= 2 ? 'bad' : 'warn'}">${x.quality}/5</span>
+        <span class="mute small">${x.quality_by === 'judge' ? esc(window.t('pelo juiz (amostra)')) : `<span>por</span> ${esc(x.quality_by)}`}</span></span>` : '<span class="mute small">sem nota</span>'}</div>
+    ${x.quality_note ? `<div class="small" data-noi18n>${esc(x.quality_note)}</div>` : ''}
+    <div class="row mt" style="gap:6px;flex-wrap:wrap"><span class="small mute">Sua nota (gestor):</span>
+      ${[1, 2, 3, 4, 5].map(n => `<button class="ghost small q-star" data-s="${n}">${n}</button>`).join('')}
+      <input id="q-note" placeholder="o que estava bom ou faltou (opcional)" style="flex:1;min-width:200px"></div>
+    <div class="mute small mt">A sua nota substitui a do juiz e entra no plano de carreira (média dos últimos 30 dias).</div></div>`;
+}
+
+/* ---------- painel do gestor ---------- */
+async function managerPage() {
+  const qs = new URLSearchParams(location.hash.split('?')[1] || '');
+  const days = Number(qs.get('days')) || 30, team = qs.get('team') || '';
+  const d = await api(`/workforce/dashboard?days=${days}${team ? `&team=${encodeURIComponent(team)}` : ''}`);
+  const b = d.bottlenecks, pct = v => v == null ? '—' : `${fmt(v)}%`, num = v => v == null ? '—' : fmt(v);
+  const teams = [...new Set(d.employees.map(r => r.team).filter(Boolean))];
+  main.innerHTML = `<a href="#/employees" class="mute small">← Digital employees</a>
+  <div class="row between"><div><h1>Painel do gestor</h1><div class="sub">Os Digital employees que você gerencia: custo, decisões, prazos, qualidade e onde o trabalho está parado.</div></div>
+    <span class="row" style="gap:6px"><select id="mg-days">${[7, 30, 90].map(n => `<option value="${n}" ${n === days ? 'selected' : ''}>${n} ${window.t('dias')}</option>`).join('')}</select>
+      <select id="mg-team"><option value="">${window.t('Todos os times')}</option>${teams.map(t => `<option ${t === team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></span></div>
+  <div class="board">${kpi(fmt(d.total.employees), 'Digital employees')}${kpi(fmt(d.total.done), 'Concluídas')}${kpi(fmt(d.total.failed), 'Com falha')}
+    ${kpi(usd(d.total.cost_usd), 'Custo')}${kpi(fmt(d.total.pending_decisions), 'Decisões abertas')}${kpi(fmt(d.total.overdue), 'Tarefas atrasadas')}</div>
+  ${!d.employees.length ? '<div class="card mute mt">Nenhum Digital employee sob a sua gestão.</div>' : `
+  <div class="grid g2 mt"><div class="card"><h2>Gargalos</h2>
+      ${b.decisions.length ? `<h3>Decisões paradas</h3>${b.decisions.slice(0, 8).map(x => `<div class="li small row between"><span><b>${esc(x.employee_name)}</b>
+        ${x.task_id ? `<a href="#/tasks/${x.task_id}">#${x.task_id}</a>` : ''} <span class="mute">${esc(ACTION_LABEL[x.action] || x.action)}</span></span>
+        <span><span class="mute">${esc(x.holder)}</span> · <span class="pill ${x.age_min > 240 ? 'bad' : x.age_min > 60 ? 'warn' : ''}">${dur(x.age_min)}</span></span></div>`).join('')}` : ''}
+      ${b.holders.length ? `<h3 class="mt">Com quem está</h3>${b.holders.map(h => `<div class="li small row between"><b>${esc(h.who)}</b>
+        <span>${h.pending} <span class="mute">${window.t('pendente(s), a mais antiga há')}</span> ${dur(h.oldest_min)}</span></div>`).join('')}` : ''}
+      ${b.overdue.length ? `<h3 class="mt">Tarefas atrasadas</h3>${b.overdue.map(x => `<div class="li small"><a href="#/tasks/${x.id}"><b data-noi18n>#${x.id} ${esc(x.title)}</b></a>
+        <span class="mute">${esc(x.employee_name)}</span></div>`).join('')}` : ''}
+      ${b.stuck.length ? `<h3 class="mt">Esperando há mais de 24 h</h3>${b.stuck.map(x => `<div class="li small"><a href="#/tasks/${x.id}"><b data-noi18n>#${x.id} ${esc(x.title)}</b></a>
+        <span class="mute">${esc(x.employee_name)} · ${x.hours} h</span></div>`).join('')}` : ''}
+      ${b.failing.length ? `<h3 class="mt">Falhando muito</h3>${b.failing.map(x => `<div class="li small"><a href="#/employees/${esc(x.slug)}"><b>${esc(x.name)}</b></a>
+        <span class="pill bad">${pct(x.fail_rate)}</span></div>`).join('')}` : ''}
+      ${!b.decisions.length && !b.overdue.length && !b.stuck.length && !b.failing.length ? '<div class="mute">Nada parado agora.</div>' : ''}</div>
+    <div class="card"><h2>Por time</h2><table class="small"><tr><th>Time</th><th>Concluídas</th><th>Custo</th><th>No prazo</th><th>Nota</th><th>Decisão (média)</th></tr>
+      ${d.teams.map(g => `<tr><td data-noi18n>${esc(g.team)}</td><td>${fmt(g.done)}</td><td>${usd(g.cost_usd)}</td><td>${pct(g.on_time)}</td>
+        <td>${g.quality == null ? '—' : g.quality.toFixed(1)}</td><td>${g.avg_decision_min == null ? '—' : dur(g.avg_decision_min)}</td></tr>`).join('')}</table></div></div>
+  <div class="card mt"><h2>Por Digital employee</h2><table class="small"><tr><th>Digital employee</th><th>Concluídas</th><th>Falha</th><th>Custo</th><th>Por tarefa</th>
+      <th>No prazo</th><th>Nota</th><th>Decisão (média)</th><th>Abertas</th><th>Decisões</th></tr>
+    ${d.employees.map(r => `<tr><td><a href="#/employees/${esc(r.slug)}"><b>${esc(r.name)}</b></a><div class="mute" data-noi18n>${esc(r.title)}</div></td>
+      <td>${fmt(r.done)}</td><td>${pct(r.fail_rate)}</td><td>${usd(r.cost_usd)}</td><td>${usd(r.cost_per_task)}</td><td>${pct(r.on_time)}</td>
+      <td>${r.quality == null ? '—' : `${r.quality.toFixed(1)} <span class="mute">(${r.rated})</span>`}</td>
+      <td>${r.avg_decision_min == null ? '—' : dur(r.avg_decision_min)}</td><td>${num(r.open)}${r.overdue ? ` <span class="pill bad">${r.overdue}</span>` : ''}</td>
+      <td>${r.pending_decisions ? `<span class="pill warn">${r.pending_decisions}</span>` : '0'}</td></tr>`).join('')}</table></div>`}`;
+  const go = () => { location.hash = `#/manager?days=${$('#mg-days').value}${$('#mg-team').value ? `&team=${encodeURIComponent($('#mg-team').value)}` : ''}`; };
+  $('#mg-days').onchange = go;
+  $('#mg-team').onchange = go;
+}
+
+function dur(min) {
+  min = Math.round(min || 0);
+  return min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 6) / 10} h` : `${Math.round(min / 144) / 10} d`;
 }
 
 /* ---------- decisões (humano no circuito) ---------- */
@@ -761,7 +833,9 @@ async function wfNotify(t) {
       pelo Slack e a decisão é tomada como a pessoa dona daquele e-mail no hangar, com as mesmas regras do portal (quem pode decidir, duas aprovações, separação de funções).</div>
     <ol class="small mt"><li>Crie o app “From a manifest” em <a href="https://api.slack.com/apps?new_app=1" target="_blank" rel="noopener">api.slack.com/apps</a> com o manifesto abaixo e instale no workspace.</li>
       <li>Cole o <b>Bot User OAuth Token</b> (xoxb-…) e o <b>Signing Secret</b> aqui.</li>
-      <li>A URL de interatividade precisa ser pública: <code class="inline" data-noi18n>${esc(s.interactions_url)}</code></li></ol>
+      <li>A URL de interatividade precisa ser pública: <code class="inline" data-noi18n>${esc(s.interactions_url)}</code></li>
+      <li><span>Tarefa pelo chat (menção ao app ou mensagem direta): o manifesto já assina os eventos nesta URL</span> <code class="inline" data-noi18n>${esc(s.events_url || '')}</code>
+        <div class="mute">“@Agent Hangar Analista, renova o contrato da ACME” vira tarefa e o resultado volta na thread.</div></li></ol>
     <details class="mt"><summary class="small">Manifesto do app</summary><pre class="code small" data-noi18n>${esc(s.manifest)}</pre></details>
     <div class="grid g2 mt"><label>Bot token<input id="ns-token" type="password" autocomplete="off" placeholder="${s.bot_token ? `cadastrado (${esc(s.bot_token)}) — cole outro para trocar` : 'xoxb-…'}"></label>
       <label>Signing secret<input id="ns-secret" type="password" autocomplete="off" placeholder="${s.signing_secret ? 'cadastrado — cole outro para trocar' : ''}"></label></div>
@@ -771,7 +845,13 @@ async function wfNotify(t) {
         : '<span>Defina no ambiente da central:</span> <code class="inline" data-noi18n>SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_SECURITY</code>'}</div>
       <div class="mute small mt">Os botões do e-mail abrem um link assinado, de uma pessoa e um pedido, que vence em algumas horas e só decide quando ela confirma.</div></div>
     <div class="card"><h2>Microsoft Teams</h2><div class="mute small">Cada pessoa cadastra o próprio webhook (Workflows) na caixa de Decisões: o cartão chega no chat dela, com botões que
-      abrem o link assinado. Um webhook de canal do time continua no relatório de cada Digital employee, só com o link do portal (num canal, qualquer um veria o botão).</div></div></div>
+      abrem o link assinado. Um webhook de canal do time continua no relatório de cada Digital employee, só com o link do portal (num canal, qualquer um veria o botão).</div>
+      <h3 class="mt">Tarefa pelo chat ${n.teams.outgoing ? '<span class="pill ok">ligado</span>' : '<span class="pill">desligado</span>'}</h3>
+      <div class="mute small">No canal do Teams: Gerenciar equipe → Aplicativos → Criar um webhook de saída, com a URL abaixo. Cole aqui o token de segurança que o Teams mostra.
+        Quem menciona o webhook precisa ter entrado no portal uma vez com a conta Microsoft.</div>
+      <div class="small mt">${copyable(n.teams.outgoing_url || '')}</div>
+      <div class="row mt" style="gap:6px"><input id="ns-teams" type="password" autocomplete="off" placeholder="${n.teams.outgoing ? 'cadastrado — cole outro para trocar' : 'token de segurança (base64)'}" style="flex:1">
+        <button class="ghost" id="ns-teams-save">Salvar</button>${n.teams.outgoing ? '<button class="ghost danger" id="ns-teams-off">Desligar</button>' : ''}</div></div></div>
   <div class="card mt"><h2>Prazos e resumo</h2><div class="grid g2">
     <label>Resumo diário das pendências (hora, fuso da empresa; -1 desliga)<input id="ns-hour" type="number" min="-1" max="23" value="${n.digest_hour}"></label>
     <label>Avisar antes de uma decisão expirar (min; 0 desliga)<input id="ns-warn" type="number" min="0" max="1440" value="${n.expiry_warn_min}"></label>
@@ -789,6 +869,10 @@ async function wfNotify(t) {
   const off = $('#ns-off');
   if (off) off.onclick = ev => confirm('Desligar o Slack? As pessoas passam a receber pelo próximo canal disponível.') &&
     act(ev.target, () => put({ slack_bot_token: '', slack_signing_secret: '' }), 'Slack desligado');
+  $('#ns-teams-save').onclick = ev => $('#ns-teams').value.trim() ? act(ev.target, () => put({ teams_outgoing_secret: $('#ns-teams').value.trim() }), 'Teams salvo')
+    : toast('Cole o token de segurança do Teams', true);
+  const toff = $('#ns-teams-off');
+  if (toff) toff.onclick = ev => act(ev.target, () => put({ teams_outgoing_secret: '' }), 'Teams desligado');
   $('#ns-times').onclick = ev => act(ev.target, () => put({ digest_hour: Number($('#ns-hour').value), expiry_warn_min: Number($('#ns-warn').value),
     due_soon_min: Number($('#ns-soon').value), overdue_escalate_min: Number($('#ns-esc').value) }), 'Prazos salvos');
 }

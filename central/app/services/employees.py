@@ -26,6 +26,7 @@ from ..models import (
     now,
 )
 from . import employee_gate as gatemod
+from . import employee_quality as qualitymod
 from . import employee_tasks as tasksmod
 from . import employee_teamwork as teamwork
 from . import employee_work as workmod
@@ -282,6 +283,8 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
          "due_at": iso(tasksmod._aware(t.due_at)) if t.due_at else None, "due_state": t.due_state or "",
          "plan": t.plan or None, "plan_state": t.plan_state or "", "plan_approval": bool(t.plan_approval),
          "progress": teamwork.progress(t), "parent_task_id": t.parent_task_id, "waiting_on": t.waiting_on,
+         "quality": t.quality, "quality_note": t.quality_note or "", "quality_by": t.quality_by or "",
+         "via": next(iter(t.origin or {}), ""),
          "created_at": iso(tasksmod._aware(t.created_at)),
          "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None}
     if detail:
@@ -322,6 +325,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  report_hour=e.report_hour, report_weekday=e.report_weekday, lessons=e.lessons or [],
                  kpi_status=workmod.kpi_status(db, e), routines=workmod.routines_of(db, e),
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
+                 quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
@@ -511,6 +515,14 @@ def update(db: Session, acc: Access, slug: str, changes: dict) -> dict:
         e.plan_policy = changes["plan_policy"]
     if changes.get("recall") is not None:
         e.recall = bool(changes["recall"])
+    if changes.get("quality_sample") is not None:
+        try:
+            v = int(changes["quality_sample"])
+        except (TypeError, ValueError):
+            raise PlatformError("quality_sample: de 0 a 100 (%)") from None
+        if not 0 <= v <= 100:
+            raise PlatformError("quality_sample: de 0 a 100 (%)")
+        e.quality_sample = v
     if "report_webhook" in changes:
         from .schedules import check_webhook
         e.report_webhook = check_webhook(changes["report_webhook"]) if changes["report_webhook"] else ""

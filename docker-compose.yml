@@ -121,6 +121,11 @@ services:
       # decisões por e-mail e resumo diário (opcional; Slack e Teams se configuram no portal) — ver docs/digital-employee.md
       PLUGIN_ALLOW_PRIVATE: ${PLUGIN_ALLOW_PRIVATE:-0}
       PLUGIN_ALLOW_UNPINNED: ${PLUGIN_ALLOW_UNPINNED:-0}
+      PLUGIN_EGRESS: ${PLUGIN_EGRESS:-proxy}
+      PLUGIN_RATE_LIMIT: ${PLUGIN_RATE_LIMIT:-120}
+      PLUGIN_COSIGN_KEY: ${PLUGIN_COSIGN_KEY:-}
+      PLUGIN_COSIGN_IDENTITY: ${PLUGIN_COSIGN_IDENTITY:-}
+      PLUGIN_REQUIRE_SIGNED: ${PLUGIN_REQUIRE_SIGNED:-0}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -469,7 +474,8 @@ networks:
   jobs_net:
     name: hangar_jobs
   plugins_net:
-    name: hangar_plugins       # plugins com código: saída para a internet, sem agentes, banco, memória nem a API do Docker
+    name: hangar_plugins       # plugins com código: sem agentes, banco, memória nem a API do Docker, e sem saída direta:
+    internal: true             # a internet só pelo proxy da central (central:3128), que libera os hosts de server.egress
   docker_api:
     internal: true
   db_net:

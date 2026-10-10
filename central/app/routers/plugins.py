@@ -46,6 +46,7 @@ class InstallBody(BaseModel):
     oauth_client_secret: str | None = None
     triggers: dict | None = None
     stage: bool = False  # instalação de teste do rascunho (quem constrói o plugin)
+    rate_limit: int | None = None  # chamadas por minuto (0 = o padrão)
 
 
 class TeamBody(BaseModel):
@@ -60,6 +61,11 @@ class RequestBody(BaseModel):
 
 class FeatureBody(BaseModel):
     on: bool = True
+
+
+class TriggerTestBody(BaseModel):
+    event: dict | str | None = None  # vazio = o exemplo do manifesto
+    team: str | None = None
 
 
 @router.get("/api/plugins")
@@ -119,7 +125,7 @@ def enable(name: str, request: Request, db=Depends(db_dep)):
 def install(name: str, body: InstallBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.plugins.install(db, acc(request, db), name, body.team, body.settings, body.secrets,
                                              body.credential, body.enabled, body.oauth_client_id,
-                                             body.oauth_client_secret, body.triggers, body.stage))
+                                             body.oauth_client_secret, body.triggers, body.stage, body.rate_limit))
 
 
 @router.delete("/api/plugins/{name}/install")
@@ -170,7 +176,20 @@ def export(name: str, request: Request, draft: bool = False, db=Depends(db_dep))
 @router.post("/api/plugins/{name}/install/hook-token")
 def hook_token(name: str, body: TeamBody, request: Request, db=Depends(db_dep)):
     """Gera (ou troca) o token dos webhooks dos gatilhos: aparece uma vez só."""
-    return guard(lambda: svc.plugins.new_hook_token(db, acc(request, db), name, body.team))
+    return guard(lambda: svc.plugins.new_hook_token(db, acc(request, db), name, body.team, body.stage))
+
+
+@router.get("/api/plugins/{name}/calls")
+def calls(name: str, request: Request, team: str | None = None, stage: bool = False, tool: str = "", status: str = "",
+          limit: int = 100, before: int | None = None, db=Depends(db_dep)):
+    """Auditoria por chamada da instalação: agente, ferramenta, quando, duração e resultado (segredos mascarados)."""
+    return guard(lambda: svc.plugins.list_calls(db, acc(request, db), name, team, stage, tool, status, limit, before))
+
+
+@router.post("/api/plugins/{name}/triggers/{trigger}/test")
+def trigger_test(name: str, trigger: str, body: TriggerTestBody, request: Request, db=Depends(db_dep)):
+    """Prévia do gatilho no rascunho: o título e o corpo da tarefa que o evento geraria (nada vira tarefa)."""
+    return guard(lambda: svc.plugins.test_trigger(db, acc(request, db), name, trigger, body.event, body.team))
 
 
 # ------------------------------------------------------------------ OAuth2: conectar a conta do time no sistema
@@ -208,7 +227,8 @@ def _mcp(request: Request, name: str, msg: dict):
     with SessionLocal() as db:
         a = caller_agent(request, db)
         try:
-            return svc.plugins.mcp_handle(db, a, caller_specs(a), name, msg)
+            task = request.headers.get("x-hangar-task", "")
+            return svc.plugins.mcp_handle(db, a, caller_specs(a), name, msg, int(task) if task.isdigit() else None)
         except svc.access.Forbidden as e:
             raise HTTPException(403, str(e)) from None
         except svc.PlatformError as e:

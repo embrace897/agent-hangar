@@ -237,9 +237,19 @@ def sweep_abandoned() -> int:
         return len(stale)
 
 
+_last_prune = 0.0
+
+
 def housekeeping():
+    global _last_prune
     if n := sweep_abandoned():
         log.warning("%d job(s) abandonado(s) por réplicas que sumiram encerrados", n)
+    import time
+    if time.monotonic() - _last_prune > 3600:  # auditoria por chamada dos plugins: guarda PLUGIN_CALLS_DAYS dias
+        _last_prune = time.monotonic()
+        from . import plugins
+        with SessionLocal() as db:
+            plugins.prune_calls(db)
 
 
 def job_events(job_id: int, poll=1.0):

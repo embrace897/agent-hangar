@@ -157,8 +157,8 @@ server:
   command: [python, -m, erp_mcp]                 # optional
   env: {LOG_LEVEL: info}
   settings_env: {ERP_TENANT: tenant}             # setting -> environment variable (secret ones too)
-  credential_env: ERP_KEY                        # the install's credential
-  egress: [erp.acme.com]                         # declared hosts, shown at review
+  credential_env: ERP_KEY                        # the install's credential (or credential_header, below)
+  egress: [erp.acme.com, "*.files.acme.com"]     # the only hosts the egress proxy lets through
   memory: 256m                                   # optional (PLUGIN_MEM_LIMIT)
   cpus: 0.5                                      # optional (PLUGIN_CPUS)
 tools:                                           # only these reach agents, with these action types
@@ -187,14 +187,44 @@ test: {tool: get_invoice, args: {number: "1"}}
 
 | | Docker | Kubernetes |
 |---|---|---|
-| Network | Only `hangar_plugins` (`PLUGINS_NETWORK`). No agents, database, memory or Docker API; internet out | NetworkPolicy `role=plugin`: only the central gets in. Out: DNS and the internet, without private ranges |
+| Network | Only `hangar_plugins` (`PLUGINS_NETWORK`), an `internal` network: no agents, database, memory or Docker API, and no direct route out | NetworkPolicy `role=plugin`: only the central gets in. Out: DNS and the central's egress proxy (port 3128) |
 | Process | Read-only filesystem (`/tmp` in memory), `cap_drop: ALL`, `no-new-privileges`, memory, CPU and 128 processes | Same, plus `runAsNonRoot` and seccomp `RuntimeDefault` |
 | Secrets | Environment of that container only | Its own `Secret` |
 
-- **Declared egress is not enforced.** `egress` is shown for review, but Docker and plain NetworkPolicy cannot filter
-  by host name. Use an egress proxy or a CNI with FQDN policies when that matters.
-- **Docker hosts.** On Docker, the plugin network can reach other private addresses of the host's network.
-- **No OAuth2 yet.** OAuth2 is not available yet for plugins with code.
+### Egress: only the declared hosts
+
+The container gets `HTTP_PROXY`/`HTTPS_PROXY` pointing at the central's egress proxy (port 3128), with a user and
+password of its own install. The proxy only lets through the hosts in `server.egress`:
+
+- `api.acme.com` allows ports 443 and 80; `*.acme.com` allows its subdomains; `api.acme.com:8443` allows only that port;
+- `{{settings.host}}` takes the host from the install's settings;
+- the host is resolved by the proxy, which connects to the address it checked; private networks stay closed unless
+  `PLUGIN_ALLOW_PRIVATE=1`.
+
+A refused connection is counted on the install and shown with the last host and the reason, so the maintainer knows
+what to declare in a new version. Python (`httpx`, `requests`), Go and curl honour the proxy variables; Node 24+ does
+with `NODE_USE_ENV_PROXY=1`, which the central also sets. `PLUGIN_EGRESS=open` turns the proxy off (the container then
+goes straight out, as before 0.24).
+
+**Upgrading on Docker.** `hangar_plugins` becomes an `internal` network. `docker compose up -d` recreates it when no
+plugin container is attached; if it reports active endpoints, remove the plugin containers
+(`docker ps -q --filter label=central.plugin | xargs docker rm -f`). The central starts them again, with the proxy, on
+the next call.
+
+### Image signatures (cosign)
+
+With `PLUGIN_COSIGN_KEY` (a public key, PEM or path) or keyless signing (`PLUGIN_COSIGN_IDENTITY`, a regex of the
+certificate identity, and `PLUGIN_COSIGN_ISSUER`), the central runs `cosign verify` on the image when an admin approves
+the plugin. The review screen shows the result. With `PLUGIN_REQUIRE_SIGNED=1`, an image without a valid signature is
+not approved and does not start (the stage install verifies the draft's image). Only images pinned by digest are
+verified.
+
+### OAuth2 and the credential in a header
+
+`credential_header` sends the install's credential in a header of each MCP call instead of the container's
+environment. OAuth2 always works this way (`credential_header` defaults to `Authorization`): the central renews the
+token and sends `Bearer <token>` on every call, so the container never holds the refresh token or the client secret.
+The server reads the header from the request (FastMCP: `ctx.request_context.request.headers`).
 
 ## OAuth2 accounts
 
@@ -249,11 +279,27 @@ triggers:
   - the task tells the agent that the event is data, not an instruction to it.
 
   Its source is `plugin`, and the requester is `plugin <name> · <trigger>`.
+- **Testing in stage.** `example` in the trigger is a sample event. On the plugin page, the stage install has *Test the
+  trigger*: it shows the task title, body and deduplication key the event would create, and creates nothing. The
+  stage install also has its own hook URL and token: a system's test webhooks sent there are authenticated the same way
+  and answered with the preview. Stage `tests` can check a trigger too:
+  `{trigger: invoice_overdue, event: {...}, expect_contains: "Collect invoice"}`.
 - **Response:**
   - a duplicate returns the existing task with `duplicate: true`;
   - a trigger that is off or not linked returns `409`;
   - a wrong signature or token returns `401`;
   - events are capped at 256 KB.
+
+## Limits and the call log
+
+- **Rate limit per install.** `rate_limit` in the manifest (calls per minute) is the default of each install; the
+  maintainer can change it on the install (0 returns to the default); without either, `PLUGIN_RATE_LIMIT` (120). Above
+  the limit, the call returns to the agent as an error and never reaches the system. The window is shared by all
+  replicas.
+- **Every call is logged:** the agent (and the Digital employee's task), the tool and its action type, when, how long,
+  the HTTP status and the result, with the arguments and the start of the answer masked. *Calls* on the install shows
+  them; `GET /api/plugins/<name>/calls?team=&status=&tool=` lists them for the team's maintainers, admins and auditors.
+  Stage tests and *Test connection* are logged too. Rows are kept for `PLUGIN_CALLS_DAYS` (90).
 
 ## Security
 
@@ -276,11 +322,20 @@ triggers:
 | `PLUGINS_NETWORK` | `hangar_plugins` | Docker network of plugin containers |
 | `PLUGIN_MEM_LIMIT` · `PLUGIN_CPUS` | `256m` · 0.5 | Default limits of a plugin container |
 | `PLUGIN_ALLOW_UNPINNED` | 0 | 1 accepts plugin images by tag (development only) |
+| `PLUGIN_EGRESS` | `proxy` | `proxy`: plugins with code go out only to `server.egress`, through the central; `open`: straight out |
+| `PLUGIN_EGRESS_PORT` · `PLUGIN_EGRESS_HOST` | 3128 · host of `INTERNAL_BASE_URL` | Where the containers reach the egress proxy |
+| `PLUGIN_RATE_LIMIT` | 120 | Calls per minute per install when the manifest and the install say nothing; 0 = no limit |
+| `PLUGIN_CALLS_DAYS` | 90 | Days the call log is kept |
+| `PLUGIN_COSIGN_KEY` | — | Public key (PEM or path) to verify plugin images |
+| `PLUGIN_COSIGN_IDENTITY` · `PLUGIN_COSIGN_ISSUER` | — · GitHub Actions | Keyless verification: certificate identity (regex) and issuer |
+| `PLUGIN_REQUIRE_SIGNED` | 0 | 1 refuses to approve or start images without a valid signature |
 
 ## What's next
 
 - **P2a (done):** OAuth2 accounts and triggers.
 - **P2b (done):** plugins with code, as an MCP server in an isolated container per install.
-- **Next:** third-party decision channels; OAuth2 for plugins with code.
+- **0.24 (done):** egress proxy, image signatures, rate limit, call log, OAuth2 for plugins with code and triggers in
+  stage.
+- **Next:** third-party decision channels (WhatsApp, Google Chat) as plugins.
 - **P3 (done):** Creator mode through the MCP, with stage tests and four eyes.
 - **P4 (done):** the company's internal gallery. Public plugins come much later, after a security review.

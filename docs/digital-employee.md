@@ -176,12 +176,27 @@ them, like any other suggestion (*Authority* tab, or `employee_suggestions` / `a
 | Goals off target | 0 | 0 | 0 |
 | Agreement in shadow mode (when ≥ 10 reviewed) | ≥ 90 % | ≥ 90 % | ≥ 90 % |
 | On time (when ≥ 5 tasks have a deadline) | ≥ 80 % | ≥ 90 % | ≥ 95 % |
+| Average result score, 1 to 5 (when ≥ 5 results were scored) | ≥ 3.5 | ≥ 4.0 | ≥ 4.3 |
 
 **Step back.** Any of these signs suggests going down one level, or using shadow mode:
 - 25 % or more of tasks failed (with at least 8 finished);
 - 3 or more rejected actions in 14 days;
 - the manager disagreed with 30 % or more of the shadow actions (with at least 10 reviewed);
-- less than 60 % of the tasks with a deadline were on time (with at least 8 of them).
+- less than 60 % of the tasks with a deadline were on time (with at least 8 of them);
+- the average result score is below 3 (with at least 8 scored).
+
+### Result quality
+
+The career used to measure volume and approvals only. Now a sample of the finished tasks
+(*Settings → Teamwork → Sample for the quality judge*, 20 % by default; 0 turns it off) goes to an **LLM judge**,
+like the agents' tests: it reads the job, the request, the expected result (if any) and the result, and gives a score
+from 1 to 5 with the reason. The judge uses the employee's own connection (`spec.judge.connection`, or its LLM
+connection); in mock mode there is no judge. The sample is deterministic (by task id) and probation tasks are left
+out.
+
+The manager can also score any finished task on its page (1 to 5, with a note). The manager's score replaces the
+judge's. The *Overview* tab shows the average of the last 30 days and the low scores, and the average counts in the
+career criteria above.
 
 **Leave shadow mode.** Suggested after at least 20 reviewed simulated actions with 90 % agreement or more.
 
@@ -278,12 +293,38 @@ each company turns on the one it uses (or none, keeping the portal and MCP).
 ### Setting up Slack
 
 1. In [api.slack.com/apps](https://api.slack.com/apps?new_app=1), create the app *From a manifest*. The portal shows
-   the manifest, with the scopes `chat:write`, `im:write`, `users:read` and `users:read.email`, and the interactivity
-   URL.
+   the manifest, with the scopes `app_mentions:read`, `chat:write`, `im:history`, `im:write`, `users:read` and
+   `users:read.email`, the interactivity URL and the event subscriptions (`app_mention`, `message.im`).
 2. Install it in the workspace.
 3. Paste the bot token (`xoxb-…`) and the signing secret in *Digital employees → Decision channels*. Both are stored
    encrypted.
 4. The interactivity URL is `PUBLIC_BASE_URL/hooks/slack/interactions`. It must be reachable from Slack.
+
+## Tasks from chat
+
+A message in Slack or Teams becomes a task, with the same permissions as the portal (who may assign tasks to that
+employee). The text starts with the employee's name (or slug); the rest is the request:
+*"@Agent Hangar Ana, renew the ACME contract"*. Without a name the bot recognises, the answer lists who the person can
+ask.
+
+- **Slack.** Mention the app in a channel or send it a direct message. The person is found by their Slack e-mail. The
+  reply goes in the thread, and so does the result when the task ends. Slack's retries never create a second task.
+  Events arrive at `PUBLIC_BASE_URL/hooks/slack/events` (already in the app manifest).
+- **Microsoft Teams.** In the team's channel: *Manage team → Apps → Create an outgoing webhook*, with the URL
+  `PUBLIC_BASE_URL/hooks/teams/messages`. Paste the security token Teams shows in *Decision channels → Microsoft
+  Teams*; each request is checked with it (HMAC). The person is found by their Microsoft account, so they must have
+  signed in to the portal once with Microsoft. Teams only accepts the immediate answer; the result goes later through
+  the person's notification channel (Slack, Teams or e-mail).
+- The task's source is `slack` or `teams`, its page shows where it came from, and the audit log records it.
+
+## Manager dashboard
+
+*Digital employees → Manager dashboard* (`GET /api/workforce/dashboard?days=30&team=`) puts in one place, for the
+employees the person manages (manager, owner, backup or team maintainer; admins and auditors see everyone):
+- per employee and per team: tasks done and failed, cost and cost per task, average decision time, % on time, average
+  result score, open and overdue tasks, open decisions;
+- the bottlenecks: decisions waiting the longest and who has them, overdue tasks, tasks waiting more than 24 hours and
+  employees failing too often.
 
 ## Deadlines
 
@@ -514,4 +555,7 @@ Only the manager (or an admin) changes the autonomy level and decides the admiss
   career).
 - **F4 (done):** handoff between employees with tracking, a visible plan (approved before the work when asked),
   memory of past work and the e-mail inbox as a channel.
-- **Next:** tasks assigned from a chat message.
+- **0.24 (done):** tasks from Slack and Teams messages, the quality judge with the manager's score in the career, and
+  the manager dashboard.
+- **Next:** tested end to end against a real Slack workspace, a Teams tenant and an IMAP mailbox (see
+  [release-notes/channels-live-test.md](../release-notes/channels-live-test.md)).

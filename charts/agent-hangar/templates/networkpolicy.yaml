@@ -2,8 +2,9 @@
 {{- $full := include "hangar.fullname" . -}}
 {{- $sel := include "hangar.selector" . -}}
 # Agentes, jobs de harness, avaliações de código e plugins com código (pods criados pela central, rótulo
-# hangar.dev/role): falam só com a central, o DNS e a internet (LLMs, MCPs remotos, o sistema do plugin) — não com
-# outros agentes, o banco ou a memória. Plugins recebem conexões só da central.
+# hangar.dev/role): falam só com a central, o DNS e a internet (LLMs, MCPs remotos) — não com outros agentes, o banco
+# ou a memória. Plugins recebem conexões só da central e, com plugins.egress=proxy, saem só pelo proxy da central (que
+# libera os hosts de server.egress), sem rota direta para a internet.
 {{- range $role := list "agent" "job" "eval" "plugin" }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -38,6 +39,13 @@ spec:
       ports: [{port: 8080, protocol: TCP}]
     {{- end }}
     - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    {{- if and (eq $role "plugin") (eq $.Values.plugins.egress "proxy") }}
+    - to:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+              app.kubernetes.io/component: central
+      ports: [{port: 3128, protocol: TCP}]
+    {{- else }}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -46,6 +54,7 @@ spec:
             {{- end }}
     {{- with $.Values.networkPolicy.extraAgentEgress }}
     {{- toYaml . | nindent 4 }}
+    {{- end }}
     {{- end }}
 {{- end }}
 {{- if .Values.postgresql.enabled }}

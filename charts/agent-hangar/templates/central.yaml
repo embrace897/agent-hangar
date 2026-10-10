@@ -26,6 +26,18 @@ data:
   SCHEDULER_ENABLED: {{ ternary "1" "0" .Values.scheduler.enabled | quote }}
   OAUTH_ENABLED: {{ ternary "1" "0" .Values.mcpOAuth.enabled | quote }}
   LOG_FORMAT: {{ .Values.observability.logFormat | quote }}
+  PLUGIN_EGRESS: {{ .Values.plugins.egress | quote }}
+  PLUGIN_RATE_LIMIT: {{ .Values.plugins.rateLimitPerMin | quote }}
+  PLUGIN_REQUIRE_SIGNED: {{ ternary "1" "0" .Values.plugins.cosign.required | quote }}
+  {{- with .Values.plugins.cosign }}
+  {{- if .key }}
+  PLUGIN_COSIGN_KEY: {{ .key | quote }}
+  {{- end }}
+  {{- if .identity }}
+  PLUGIN_COSIGN_IDENTITY: {{ .identity | quote }}
+  PLUGIN_COSIGN_ISSUER: {{ .issuer | quote }}
+  {{- end }}
+  {{- end }}
   {{- if .Values.observability.metrics.enabled }}
   METRICS_PORT: {{ .Values.observability.metrics.port | quote }}
   {{- end }}
@@ -106,6 +118,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - {containerPort: 8080, name: http}
+            {{- if eq .Values.plugins.egress "proxy" }}
+            - {containerPort: 3128, name: egress}
+            {{- end }}
             {{- if .Values.observability.metrics.enabled }}
             - {containerPort: {{ .Values.observability.metrics.port }}, name: metrics}
             {{- end }}
@@ -166,6 +181,9 @@ spec:
     app.kubernetes.io/component: central
   ports:
     - {name: http, port: 8080, targetPort: 8080}
+    {{- if eq .Values.plugins.egress "proxy" }}
+    - {name: egress, port: 3128, targetPort: 3128}    # proxy de saída dos plugins com código
+    {{- end }}
     {{- if .Values.observability.metrics.enabled }}
     - {name: metrics, port: {{ .Values.observability.metrics.port }}, targetPort: metrics}
     {{- end }}

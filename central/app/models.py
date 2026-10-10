@@ -1,7 +1,7 @@
 """Modelo de dados. Mudança de schema = nova migração em central/migrations/versions (Alembic)."""
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -524,6 +524,7 @@ class Employee(Base):
     recall: Mapped[bool] = mapped_column(Boolean, default=True)  # lembra trabalhos anteriores parecidos ao começar
     # caixa de e-mail (IMAP) como canal de entrada: {host, port, user, password (cripto), folder, allowed, last_check…}
     inbox: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    quality_sample: Mapped[int] = mapped_column(Integer, default=20)  # % das tarefas concluídas que o juiz avalia (0 = nenhuma)
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -599,6 +600,10 @@ class EmployeeTask(Base):
     plan: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{title, status: todo|doing|done|skipped, note}]
     plan_state: Mapped[str] = mapped_column(String(12), default="")  # "" | proposed | approved | rejected
     plan_approval: Mapped[bool] = mapped_column(Boolean, default=False)  # esta tarefa exige o plano aprovado
+    origin: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # pedida pelo chat: {slack: {channel, ts}} | {teams: …}
+    quality: Mapped[int | None] = mapped_column(Integer, nullable=True)  # nota 1-5 do resultado (juiz ou gestor)
+    quality_note: Mapped[str] = mapped_column(Text, default="")
+    quality_by: Mapped[str] = mapped_column(String(254), default="")  # "judge" ou o e-mail de quem avaliou
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -717,6 +722,7 @@ class Plugin(Base):
     featured: Mapped[bool] = mapped_column(Boolean, default=False)  # destaque escolhido por um admin
     history: Mapped[list | None] = mapped_column(JSON, nullable=True)  # versões aprovadas: [{version, by, at, note}]
     requests: Mapped[list | None] = mapped_column(JSON, nullable=True)  # pedidos de instalação: [{team, by, at, note}]
+    signature: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # cosign da imagem aprovada: {ok, image, at, detail}
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -740,3 +746,26 @@ class PluginInstall(Base):
     hook_token_hint: Mapped[str] = mapped_column(String(12), default="")
     installed_by: Mapped[str] = mapped_column(String(254), default="")
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    rate_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)  # chamadas por minuto (vazio = o do manifesto)
+
+
+class PluginCall(Base):
+    """Uma chamada de ferramenta de plugin: quem (agente), qual ferramenta, quando, quanto tempo e com que resultado. Os
+    argumentos e o trecho da resposta ficam com os segredos mascarados."""
+    __tablename__ = "plugin_calls"
+    __table_args__ = (Index("ix_plugin_calls_plugin_at", "plugin_id", "at"), Index("ix_plugin_calls_at", "at"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plugin_id: Mapped[int] = mapped_column(ForeignKey("plugins.id", ondelete="CASCADE"))
+    install_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage: Mapped[bool] = mapped_column(Boolean, default=False)
+    caller: Mapped[str] = mapped_column(String(120), default="")  # slug do agente, ou "stage-tests:<pessoa>"
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # tarefa do Digital employee, quando houver
+    tool: Mapped[str] = mapped_column(String(80), default="")
+    action: Mapped[str] = mapped_column(String(30), default="")
+    status: Mapped[str] = mapped_column(String(12), default="ok")  # ok | error | limited
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    args: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[str] = mapped_column(Text, default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

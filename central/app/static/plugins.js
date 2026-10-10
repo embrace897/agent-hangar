@@ -144,7 +144,50 @@ function plServer(inst) {
   return `<div class="mt"><b>Servidor</b> ${pill} <code class="inline" data-noi18n>${esc(s.name)}</code>
     ${s.started ? `<span class="mute small"><span>desde</span> <span>${ago(s.started)}</span></span>` : ''}
     ${s.error ? `<div class="small bad-ic" data-noi18n>${esc(s.error)}</div>` : ''}
+    ${plEgress(inst.egress)}
     <div class="row mt"><button class="ghost pl-logs">Ver logs</button></div><pre class="code small pl-logs-out" data-noi18n hidden style="max-height:320px;overflow:auto"></pre></div>`;
+}
+
+function plEgress(e) {
+  if (!e) return '';
+  if (e.mode !== 'proxy') return '<div class="small mt"><span class="pill warn">saída livre</span> <span class="mute">O servidor sai direto para a internet (PLUGIN_EGRESS=open).</span></div>';
+  const ld = e.last_denied;
+  return `<div class="small mt"><b>Saída</b> <span class="mute">só pelo proxy da central, para:</span> ${e.hosts.length ? e.hosts.map(h => `<code class="inline" data-noi18n>${esc(h)}</code>`).join(' ') : '<span class="pill">nenhum host</span>'}
+    ${e.denied ? `<div class="bad-ic"><span>Recusadas:</span> ${e.denied}${ld ? ` · <span>última:</span> <code class="inline" data-noi18n>${esc(ld.host)}</code> <span>${ago(ld.at)}</span>` : ''}
+      <span class="mute">— se o plugin precisa desse host, declare em <code class="inline">server.egress</code> e mande uma versão nova.</span></div>` : ''}</div>`;
+}
+
+function plSignature(p) {
+  const s = p.signature, sg = p.signing || {};
+  if (!s && !sg.configured) return '<span class="mute">não verificada (cosign não configurado)</span>';
+  if (!s) return '<span class="mute">verificada na aprovação</span>';
+  const pill = s.ok === true ? '<span class="pill ok">assinada</span>' : s.ok === false ? '<span class="pill bad">sem assinatura válida</span>' : '<span class="pill">não verificada</span>';
+  return `${pill} <span class="mute small" data-noi18n>${esc(s.detail || '')}</span>${sg.required ? ' <span class="pill info">obrigatória</span>' : ''}`;
+}
+
+const CALL_STATUS = { ok: ['ok', 'ok'], error: ['erro', 'bad'], limited: ['limite', 'warn'] };
+
+function plCalls(r) {
+  if (!r.items.length) return '<div class="mute small mt">Nenhuma chamada registrada.</div>';
+  return `<table class="small mt"><tr><th>Quando</th><th>Quem</th><th>Ferramenta</th><th>Resultado</th><th>Tempo</th></tr>
+    ${r.items.map(c => { const st = CALL_STATUS[c.status] || [c.status, '']; return `<tr><td>${ago(c.at)}</td>
+      <td><code class="inline" data-noi18n>${esc(c.caller)}</code>${c.task_id ? ` <a href="#/tasks/${c.task_id}">#${c.task_id}</a>` : ''}</td>
+      <td><code class="inline" data-noi18n title="${esc(c.args)}">${esc(c.tool)}</code></td>
+      <td><span class="pill ${st[1]}">${esc(window.t(st[0]))}</span>${c.http_status ? ` <span class="mute">HTTP ${c.http_status}</span>` : ''}
+        ${c.status !== 'ok' ? `<div class="mute one-line" data-noi18n title="${esc(c.result)}">${esc(c.result.slice(0, 120))}</div>` : ''}</td>
+      <td class="mute">${c.duration_ms} ms</td></tr>`; }).join('')}</table>
+    <div class="mute small mt"><span>Guardadas por</span> ${r.retention_days} <span>dias. Argumentos ao passar o mouse na ferramenta, com os segredos mascarados.</span></div>`;
+}
+
+function plStageTriggers(m, inst) {
+  if (!(m.triggers || []).length) return '';
+  return `<div class="mt"><b>Gatilhos (teste)</b><div class="mute small">Veja a tarefa que um evento geraria, sem criar nada. Os webhooks de teste do sistema também podem ir para a URL de stage: a autenticação é conferida e a resposta traz só a prévia.</div>
+    ${m.triggers.map(t => { const c = ((inst && inst.triggers) || []).find(x => x.name === t.name) || {}; return `<div class="li pl-strig" data-t="${esc(t.name)}">
+      <div class="row between"><b data-noi18n>${esc(t.title || t.name)}</b>${c.received ? `<span class="mute small"><span>recebidos:</span> ${c.received}</span>` : ''}</div>
+      ${c.url ? `<div class="small">${copyable(c.url)}</div>` : ''}
+      <textarea class="code small pl-ev" rows="4" data-noi18n placeholder='{"id": "…"}'>${esc(JSON.stringify(t.example || {}, null, 1))}</textarea>
+      <div class="row mt"><button class="ghost pl-ev-go">Testar o gatilho</button></div><div class="pl-ev-out"></div></div>`; }).join('')}
+    ${inst && m.triggers.some(t => !t.signature) ? `<div class="row small mt" style="gap:8px"><button class="ghost pl-htok">${inst.hook_token ? 'Trocar o token de stage' : 'Gerar o token de stage'}</button></div><div class="pl-htok-out"></div>` : ''}</div>`;
 }
 
 function plInstallForm(p, m, inst, team, emps, stage = false) {
@@ -159,12 +202,16 @@ function plInstallForm(p, m, inst, team, emps, stage = false) {
           value="${s.secret ? '' : esc((inst && inst.settings[s.key]) ?? s.default ?? '')}" placeholder="${s.secret && inst && inst.secrets[s.key] ? window.t('cadastrado — digite outro para trocar') : ''}"></label>`).join('')}
       ${!['none', 'oauth2'].includes(m.auth.type) ? `<label>${esc(m.auth.label || AUTH_LABEL[m.auth.type])}${m.auth.type === 'basic' ? ' <span class="mute small">(usuário:senha)</span>' : ''}
         <input class="pl-cred" type="password" autocomplete="off" placeholder="${inst && inst.credential ? window.t('cadastrada — digite outra para trocar') : ''}"></label>` : ''}</div>
-    ${plOauth(m, inst)}${stage ? '' : plTriggers(m, inst, emps)}${plServer(inst)}
+    ${!stage ? `<div class="grid g2 mt"><label>Limite (chamadas por minuto)<input class="pl-rate" type="number" min="0" max="6000"
+        value="${inst && inst.rate_limit ? inst.rate_limit : ''}" placeholder="${inst ? inst.rate_limit_effective || window.t('sem limite') : ''}"></label>
+        <div class="mute small" style="align-self:end">${window.t('Vazio ou 0: o padrão do manifesto ou da empresa. Acima disso, a chamada volta como erro para o agente.')}</div></div>` : ''}
+    ${plOauth(m, inst)}${stage ? plStageTriggers(m, inst) : plTriggers(m, inst, emps)}${plServer(inst)}
     ${inst && !stage ? `<div class="mute small mt"><span>Chamadas:</span> ${inst.stats.calls || 0} · <span>erros:</span> ${inst.stats.errors || 0}${inst.stats.last_call ? ` · <span>última</span> <span>${ago(inst.stats.last_call)}</span>` : ''}
       ${inst.last_test ? ` · <span>teste:</span> ${inst.last_test.ok ? '<span class="pill ok">ok</span>' : `<span class="pill bad">falhou</span> <span data-noi18n>${esc(inst.last_test.sample || '')}</span>`}` : ''}</div>` : ''}
     <div class="row mt"><button class="pl-save" data-id="${esc(id)}">${inst ? 'Salvar' : (stage ? 'Salvar a credencial de teste' : 'Instalar')}</button>
       ${inst ? `${stage ? '' : '<button class="ghost pl-test">Testar conexão</button>'}<button class="ghost pl-toggle">${inst.enabled ? 'Pausar' : 'Retomar'}</button>
-        <button class="ghost danger pl-del">${stage ? 'Remover' : 'Desinstalar'}</button>` : ''}</div></div>`;
+        ${p.can_audit ? '<button class="ghost pl-calls">Chamadas</button>' : ''}
+        <button class="ghost danger pl-del">${stage ? 'Remover' : 'Desinstalar'}</button>` : ''}</div><div class="pl-calls-out"></div></div>`;
 }
 
 function plReport(p) {
@@ -175,7 +222,7 @@ function plReport(p) {
       <span class="mute small"><span>v</span>${esc(r.version)} · ${esc(r.by)} · <span>${ago(r.at)}</span></span></b>
       ${!current || (r.passed && !p.tests_ok) ? '<span class="pill warn">desatualizado: o rascunho mudou</span>' : ''}</div>
     <table class="small mt">${r.results.map(x => `<tr><td>${x.ok ? icon('check', 'ok-ic') : icon('x', 'bad-ic')}</td><td data-noi18n>${esc(x.name)}</td>
-      <td><code class="inline" data-noi18n>${esc(x.tool)}</code></td><td class="mute" data-noi18n>${esc(x.why || (x.status ? `HTTP ${x.status}` : 'ok'))}</td></tr>`).join('')}</table></div>`;
+      <td><code class="inline" data-noi18n>${esc(x.tool || x.trigger)}</code></td><td class="mute" data-noi18n>${esc(x.why || (x.status ? `HTTP ${x.status}` : 'ok'))}</td></tr>`).join('')}</table></div>`;
 }
 
 /* ---------- detalhe ---------- */
@@ -216,6 +263,7 @@ async function pluginDetail(name) {
   <div class="grid g2 mt"><div class="card"><h2>Permissões</h2><dl class="kv">
       ${perm.runtime === 'server' ? `<dt>Código</dt><dd><span class="pill info">servidor em container</span>
         <div class="small mt"><code class="inline" data-noi18n>${esc(perm.image)}</code> ${perm.pinned ? '<span class="pill ok">fixada por digest</span>' : '<span class="pill warn">sem digest (desenvolvimento)</span>'}</div></dd>
+      <dt>Assinatura</dt><dd>${plSignature(p)}</dd>
       <dt>Saída declarada</dt><dd>${perm.egress.length ? perm.egress.map(h => `<code class="inline" data-noi18n>${esc(h)}</code>`).join(' ') : '—'}</dd>`
       : `<dt>Fala com</dt><dd><code class="inline" data-noi18n>${esc(perm.host)}</code>${perm.templated_host ? ' <span class="mute small">(definido na instalação)</span>' : ''}</dd>`}
       <dt>Autenticação</dt><dd>${esc(AUTH_LABEL[perm.auth] || perm.auth)}</dd>
@@ -273,6 +321,9 @@ async function pluginDetail(name) {
       if (osec && osec.value) body.oauth_client_secret = osec.value;
       const trig = [...card.querySelectorAll('.pl-trig')];
       if (trig.length) body.triggers = Object.fromEntries(trig.map(r => [r.dataset.t, { employee: $('.pl-temp', r).value, enabled: $('.pl-ton', r).checked }]));
+      const rate = $('.pl-rate', card);
+      if (rate && rate.value !== '') body.rate_limit = parseInt(rate.value, 10) || 0;
+      else if (rate && cur && cur.rate_limit) body.rate_limit = 0;
       act(ev.target, () => api(`/plugins/${name}/install`, { method: 'PUT', body }).then(route), stage ? 'Credencial de teste salva' : 'Instalado');
     };
     const con = $('.pl-connect', card);
@@ -280,10 +331,24 @@ async function pluginDetail(name) {
       .then(r => { location.href = r.authorize_url; }));
     const htok = $('.pl-htok', card);
     if (htok) htok.onclick = ev => (!cur.hook_token || confirm(window.t('Trocar o token? O antigo para de valer na hora.'))) &&
-      act(ev.target, () => api(`/plugins/${name}/install/hook-token`, { method: 'POST', body: { team } }).then(r => {
+      act(ev.target, () => api(`/plugins/${name}/install/hook-token`, { method: 'POST', body: { team, stage } }).then(r => {
         $('.pl-htok-out', card).innerHTML = `<div class="card warn-card mt"><b>${esc(window.t('Copie agora: o token não aparece de novo.'))}</b><div class="mt">${copyable(r.token)}</div>
           <div class="mute small mt">${esc(window.t('Mande no header Authorization: Bearer <token> (ou X-Hangar-Token, ou ?token= na URL).'))}</div></div>`;
       }));
+    card.querySelectorAll('.pl-strig').forEach(row => {
+      $('.pl-ev-go', row).onclick = ev => {
+        let event;
+        try { event = JSON.parse($('.pl-ev', row).value || '{}'); } catch { return toast(window.t('O evento precisa ser JSON'), true); }
+        act(ev.target, () => api(`/plugins/${name}/triggers/${row.dataset.t}/test`, { method: 'POST', body: { event, team } }).then(r => {
+          $('.pl-ev-out', row).innerHTML = `<div class="card mt small"><div><span class="mute">${esc(window.t('Título'))}:</span> <b data-noi18n>${esc(r.title)}</b></div>
+            ${r.dedupe_key ? `<div class="mute"><span>${esc(window.t('Deduplicação'))}:</span> <code class="inline" data-noi18n>${esc(r.dedupe_key)}</code></div>` : ''}
+            ${r.signature_note ? `<div class="mute">${esc(window.t(r.signature_note))}</div>` : ''}
+            <pre class="code small mt" data-noi18n style="max-height:220px;overflow:auto">${esc(r.body)}</pre></div>`;
+        }));
+      };
+    });
+    const calls = $('.pl-calls', card);
+    if (calls) calls.onclick = ev => act(ev.target, () => api(`/plugins/${name}/calls${q}`).then(r => { $('.pl-calls-out', card).innerHTML = plCalls(r); }));
     const lg = $('.pl-logs', card);
     if (lg) lg.onclick = ev => act(ev.target, () => api(`/plugins/${name}/install/logs${q}`)
       .then(r => { const out = $('.pl-logs-out', card); out.hidden = false; out.textContent = r.logs || '(vazio)'; }));

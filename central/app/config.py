@@ -1,5 +1,6 @@
 """Configuração do Agent Hangar — tudo vem de variáveis de ambiente (ver .env.example)."""
 import os
+import urllib.parse
 
 
 def _env(name: str, default: str = "") -> str:
@@ -94,6 +95,20 @@ PLUGINS_NETWORK = _env("PLUGINS_NETWORK", "hangar_plugins")
 PLUGIN_MEM_LIMIT = _env("PLUGIN_MEM_LIMIT", "256m")
 PLUGIN_CPUS = float(_env("PLUGIN_CPUS", "0.5"))
 PLUGIN_ALLOW_UNPINNED = _env("PLUGIN_ALLOW_UNPINNED", "0") == "1"
+# saída dos plugins com código: "proxy" (padrão) só libera os hosts de server.egress, pelo proxy da central (a rede dos
+# plugins não tem saída direta); "open" deixa o container sair direto, sem lista (como antes da 0.24)
+PLUGIN_EGRESS = _env("PLUGIN_EGRESS", "proxy")
+PLUGIN_EGRESS_PORT = int(_env("PLUGIN_EGRESS_PORT", "3128"))
+PLUGIN_EGRESS_HOST = _env("PLUGIN_EGRESS_HOST") or urllib.parse.urlparse(INTERNAL_BASE_URL).hostname or "central"
+# limite de chamadas por instalação (por minuto), quando o manifesto e a instalação não dizem outro; 0 = sem limite
+PLUGIN_RATE_LIMIT = int(_env("PLUGIN_RATE_LIMIT", "120"))
+PLUGIN_CALLS_DAYS = int(_env("PLUGIN_CALLS_DAYS", "90"))  # quanto tempo a auditoria por chamada fica guardada
+# assinatura das imagens dos plugins com código (cosign): com chave pública (PEM ou caminho) ou sem chave (keyless:
+# identidade e emissor do certificado). PLUGIN_REQUIRE_SIGNED=1 recusa aprovar e subir imagem sem assinatura válida.
+PLUGIN_COSIGN_KEY = _env("PLUGIN_COSIGN_KEY")
+PLUGIN_COSIGN_IDENTITY = _env("PLUGIN_COSIGN_IDENTITY")  # regex, ex.: ^https://github.com/minha-empresa/
+PLUGIN_COSIGN_ISSUER = _env("PLUGIN_COSIGN_ISSUER", "https://token.actions.githubusercontent.com")
+PLUGIN_REQUIRE_SIGNED = _env("PLUGIN_REQUIRE_SIGNED", "0") == "1"
 INBOX_POLL_S = int(_env("INBOX_POLL_S", "60"))  # de quanto em quanto tempo a caixa de e-mail de um funcionário é lida
 DECISION_LINK_TTL_H = int(_env("DECISION_LINK_TTL_H", "48"))  # validade do link assinado de decisão (Teams/e-mail)
 # e-mail das decisões e do resumo diário (opcional): sem SMTP_HOST, o canal e-mail fica desligado

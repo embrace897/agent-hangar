@@ -303,6 +303,24 @@ def task(task_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.task_detail(db, acc(request, db), task_id))
 
 
+class QualityBody(BaseModel):
+    score: int
+    note: str = ""
+
+
+@router.post("/tasks/{task_id}/quality")
+def quality(task_id: int, body: QualityBody, request: Request, db=Depends(db_dep)):
+    """A nota do gestor para o resultado (1 a 5): substitui a do juiz e entra na carreira."""
+    return guard(lambda: svc.employee_quality.rate(db, acc(request, db), task_id, body.score, body.note))
+
+
+@router.get("/workforce/dashboard")
+def dashboard(request: Request, days: int = 30, team: str | None = None, db=Depends(db_dep)):
+    """Painel do gestor: custo, tempo de decisão, % no prazo, qualidade e gargalos dos Digital employees que a pessoa
+    gerencia (admins e auditores: todos)."""
+    return guard(lambda: svc.employee_dashboard.dashboard(db, acc(request, db), days, team))
+
+
 @router.post("/tasks/{task_id}/cancel")
 def cancel(task_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.cancel_task(db, acc(request, db), task_id))

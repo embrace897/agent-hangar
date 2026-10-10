@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, config, crypto, db, observability, shared
+from . import auth, config, crypto, db, egress, observability, shared
 from . import services as svc
 from .mcp_tools import mcp
 from .routers import (
@@ -57,6 +57,7 @@ async def lifespan(app):
     await run_in_threadpool(_write_gateway_files)  # o gateway Docker MCP precisa dos arquivos mesmo sem servidor ativo
     svc.schedules.start()
     svc.employee_tasks.start()
+    await egress.start()  # plugins com código saem para a internet só por aqui (hosts de server.egress)
     shared.start_heartbeat(housekeeping=svc.jobs.housekeeping)
     observability.start_metrics_server()
     try:
@@ -65,6 +66,7 @@ async def lifespan(app):
     finally:
         svc.schedules.stop()
         svc.employee_tasks.stop()
+        await egress.stop()
         shared.stop_heartbeat()
 
 

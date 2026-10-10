@@ -234,6 +234,8 @@ def _mcp_headers(url: str = "") -> dict:
     h = {"X-Agent-Slug": SLUG}
     if url.startswith(INTERNAL_BASE_URL):  # proxy da central para MCP remoto com OAuth: prova quem é o agente
         h.update(INTERNAL_HEADERS)
+        if TASK.get():  # plugins: a auditoria por chamada liga a chamada à tarefa do Digital employee
+            h["X-Hangar-Task"] = TASK.get()
     if SESSION.get():
         h["X-Session-Id"] = SESSION.get()
     return h

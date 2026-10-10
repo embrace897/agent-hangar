@@ -5,6 +5,34 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Plugins:**
+  - egress proxy: plugins with code reach only the hosts in `server.egress`, through the central (the plugin network
+    has no direct route out on Docker; NetworkPolicy on Kubernetes). Refused hosts are shown on the install;
+  - image signatures with cosign (public key or keyless), checked on approval and, with `PLUGIN_REQUIRE_SIGNED=1`,
+    required to approve and start;
+  - rate limit per install (`rate_limit` in the manifest or on the install; `PLUGIN_RATE_LIMIT` by default);
+  - call log: agent, task, tool, action, duration, status and result of every call, with secrets masked
+    (`GET /api/plugins/<name>/calls`, *Calls* on the install, `PLUGIN_CALLS_DAYS`);
+  - OAuth2 for plugins with code: the token goes in a header of each call (`server.credential_header`), renewed by the
+    central;
+  - triggers testable in stage: `example` events, *Test the trigger*, stage webhooks that answer with the preview, and
+    trigger cases in `tests`.
+- **Digital employees:**
+  - tasks from chat: an app mention or DM in Slack, or a Teams outgoing webhook, becomes a task; the result comes back
+    in the Slack thread or through the person's channel;
+  - result quality: an LLM judge scores a sample of finished tasks (1 to 5); the manager's score replaces it; the
+    average counts in the career plan;
+  - manager dashboard: cost, decision time, % on time, quality and bottlenecks per employee and team.
+- `release-notes/channels-live-test.md`: checklist for a run against real Slack, Teams and IMAP accounts.
+
+### Upgrading
+- On Docker, `hangar_plugins` becomes an `internal` network. If `docker compose up -d` reports active endpoints, remove
+  the plugin containers (`docker ps -q --filter label=central.plugin | xargs docker rm -f`); the central starts them
+  again with the proxy. Plugins with code that call hosts outside `server.egress` need a new version declaring them,
+  or `PLUGIN_EGRESS=open`.
+- The Slack app needs the new scopes and events: update it with the manifest shown in *Decision channels*.
+
 ### Changed
 - Base images (Python, Node, Postgres, docker-socket-proxy, Trivy, BuildKit) are mirrored weekly to
   `ghcr.io/<owner>/hangar-mirror`. CI and the release build use the mirror and fall back to Docker Hub when a tag is

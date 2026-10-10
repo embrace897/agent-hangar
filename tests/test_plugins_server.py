@@ -56,8 +56,9 @@ class FakeRuntime:
         self.stopped.append(name)
         self.states.pop(name, None)
 
-    def server(self, url, op, tool="", args=None):
+    def server(self, url, op, tool="", args=None, headers=None):
         self.calls.append((url, op, tool, args))
+        self.headers = headers
         if op == "list":
             return [{"name": "get_invoice", "description": "x", "inputSchema": {"type": "object", "properties": {"number": {"type": "string"}}}},
                     {"name": "pay_invoice", "inputSchema": {"type": "object"}},
@@ -109,7 +110,12 @@ def test_install_runs_an_isolated_container_and_agents_see_only_declared_tools(c
     assert r.status_code == 200, r.text
     run = fake.runs[-1]
     assert run["image"] == DIGEST and run["port"] == 9000 and run["mem"] == config.PLUGIN_MEM_LIMIT
-    assert run["env"] == {"LOG_LEVEL": "info", "ERP_TENANT": "acme", "ERP_REGION": "br", "ERP_KEY": "k-123-secret"}
+    proxy = {k: v for k, v in run["env"].items() if "PROXY" in k.upper()}
+    assert {k: v for k, v in run["env"].items() if k not in proxy} == {
+        "LOG_LEVEL": "info", "ERP_TENANT": "acme", "ERP_REGION": "br", "ERP_KEY": "k-123-secret"}
+    # a saída para a internet vai pelo proxy da central, com a senha própria da instalação
+    assert proxy["HTTPS_PROXY"].endswith(f"@{config.PLUGIN_EGRESS_HOST}:{config.PLUGIN_EGRESS_PORT}")
+    assert proxy["HTTPS_PROXY"].startswith("http://i") and proxy["NO_PROXY"] == ""
     srv = r.json()["server"]
     assert srv["state"] == "running" and srv["image"] == DIGEST and "k-123-secret" not in r.text
     # testar: o servidor oferece as declaradas; a extra fica escondida

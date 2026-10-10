@@ -152,6 +152,8 @@ an admin.
 | POST / DELETE | `/api/employees/{slug}/lessons[/{id}]` | Add `{text}` or remove a lesson (manage) |
 | GET | `/api/tasks/{id}` | Task with its events (timeline) and decision requests |
 | POST | `/api/tasks/{id}/cancel` | The requester or someone who manages the employee |
+| POST | `/api/tasks/{id}/quality` | `{score: 1-5, note}`: the manager's score for a finished task (replaces the judge's) |
+| GET | `/api/workforce/dashboard` | `?days=30&team=`: manager dashboard (per employee and team, bottlenecks) |
 | GET | `/api/decisions` | Open decisions you can take (yours first) |
 | POST | `/api/decisions/{id}` | `{decision, edit?, reason?}`: `approve`, `approve_edited`, `reject`, `instruct`, `answer`, `ack`; for a missing capability, `attach` (`edit={"specialist": slug}`) or `build` (returns `build_prompt`) |
 | POST | `/api/decisions/batch` | `{ids, decision, reason?}`; errors are returned per item |
@@ -164,6 +166,8 @@ an admin.
 | GET / PUT | `/api/me/notifications` | Where the caller gets decisions: `{channel: auto\|slack\|teams\|email\|off, teams_webhook, digest}`; returns `available` and the effective `route` |
 | POST | `/api/me/notifications/test` | Sends a test message through the effective channel |
 | POST | `/hooks/slack/interactions` | Slack buttons and forms. No session: authenticated by the Slack signature |
+| POST | `/hooks/slack/events` | Slack Events API (app mention, direct message): becomes a task. Slack signature |
+| POST | `/hooks/teams/messages` | Teams outgoing webhook: becomes a task. HMAC with the security token |
 | GET / POST | `/hooks/decide/{token}` | Signed decision link (Teams, e-mail). GET shows the action; only POST (`decision`, `reason`, `edit`) decides |
 
 Tasks have `due_state` (`""`, `soon`, `overdue`, `escalated`), `plan`, `plan_state`, `progress`, `parent_task_id` and
@@ -198,12 +202,14 @@ See [plugins.md](plugins.md).
 | POST | `/api/plugins/{name}/feature` | Admin: `{on}` features the plugin in the gallery |
 | POST / DELETE | `/api/plugins/{name}/requests` | A team member asks for the plugin `{team, note}` (maintainers are notified). DELETE `?team=` dismisses (maintainer) |
 | GET | `/api/plugins/{name}/export` | The approved manifest as YAML, without secrets (`?draft=true` for builders) |
-| POST | `/api/plugins/{name}/install/hook-token` | `{team}`: new token for unsigned triggers (shown once) |
-| POST | `/hooks/plugins/{install}/{trigger}` | A system event: HMAC signature (manifest) or the install token. Creates the linked employee's task, deduplicated |
+| POST | `/api/plugins/{name}/install/hook-token` | `{team, stage}`: new token for unsigned triggers (shown once) |
+| POST | `/hooks/plugins/{install}/{trigger}` | A system event: HMAC signature (manifest) or the install token. Creates the linked employee's task, deduplicated. On the stage install it only returns the preview |
+| POST | `/api/plugins/{name}/triggers/{trigger}/test` | Builders: `{event}` (empty = the manifest's `example`): the task the event would create, nothing is created |
+| GET | `/api/plugins/{name}/calls` | `?team=&stage=&tool=&status=&limit=&before=`: call log of an install (maintainers, admins, auditors) |
 
 The install routes take `stage: true` for the stage install, a test credential for the draft. Only builders use it,
 and it never serves agents. `PUT /api/plugins/{name}/install` also takes `oauth_client_id`, `oauth_client_secret` and
-`triggers: {name: {employee, enabled, priority}}`.
+`triggers: {name: {employee, enabled, priority}}` and `rate_limit` (calls per minute; 0 = the default).
 
 ## User portal
 

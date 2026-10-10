@@ -29,7 +29,7 @@ ALLOW = re.compile(r"^(e2e|E2E|https?://|[\w.-]+@[\w.-]+$)")
 DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/api/templates", "/api/employees",
                   "/api/plugins", "/api/teams", "/api/remote-mcps", "/api/connect", "/api/deployments", "/api/tests",
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
-PAGES_APP = ["", "agents", "agents/catalog", "agents/new", "approvals", "employees", "employees/new", "decisions",
+PAGES_APP = ["", "agents", "agents/catalog", "agents/new", "approvals", "employees", "employees/new", "manager", "decisions",
              "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit", "users"]
 PAGES_UI = ["", "agents", "approvals", "workforce/overview", "workforce/catalog", "workforce/floor", "workforce/notify",
             "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
@@ -81,7 +81,8 @@ def setup() -> tuple[str, str, dict]:
     made["employee"] = ok(me.post("/api/employees", json=job))["employee"]["slug"]
     ok(me.post("/api/plugins", json={"team": team, "manifest": {
         "name": made["plugin"], "title": "E2E i18n", "version": "1.0.0", "base_url": "https://example.com",
-        "tools": [{"name": "get_one", "method": "GET", "path": "/one"}]}}))
+        "tools": [{"name": "get_one", "method": "GET", "path": "/one"}],
+        "triggers": [{"name": "paid", "title": "Paid", "task_title": "Invoice {{event.id}}", "example": {"id": "1"}}]}}))
     return f"e2e-{RUN}-i18n", pw, made
 
 
