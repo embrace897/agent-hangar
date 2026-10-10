@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-10-10
+
 ### Added
 - **Plugins:**
   - egress proxy: plugins with code reach only the hosts in `server.egress`, through the central (the plugin network
