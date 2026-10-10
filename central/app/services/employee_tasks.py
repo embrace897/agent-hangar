@@ -202,6 +202,19 @@ def gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, ar
     return _gate(db, agent, task_id, tool, ref, args, rationale, kind)
 
 
+def _plugin_policy(db: Session, agent: Agent, ref: str) -> str:
+    """Política da ação na instalação do plugin (mcp:plugin-<nome>:<ferramenta>): off | ask | allow."""
+    parts = (ref or "").split(":")
+    if len(parts) != 3 or parts[0] != "mcp" or not parts[1].startswith("plugin-"):
+        return "allow"
+    from . import plugins
+    try:
+        _, i = plugins.install_for(db, agent, parts[1][len("plugin-"):])
+    except PlatformError:
+        return "allow"
+    return plugins.policy_of(i, parts[2])
+
+
 def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, args: dict, rationale: str,
           kind: str) -> dict:
     e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
@@ -254,6 +267,11 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
     cat = gatemod.classify(db, ref)
     ev = gatemod.evaluate(db, e, cat.action_type, args)
     mode = ev["mode"]
+    pol = _plugin_policy(db, agent, ref)  # o mantenedor desligou a ação ou exige aprovação a cada uso
+    if pol == "off":
+        mode, ev = "never", {**ev, "source": "plugin: ação desligada"}
+    elif pol == "ask" and mode in ("auto", "notify"):
+        mode, ev = "approve", {**ev, "source": "plugin: pede aprovação a cada uso"}
     info = {"action_type": cat.action_type, "mode": mode, "source": ev["source"]}
     if task is not None:
         event(db, task, "gate", {"tool": tool, "ref": ref, **info})

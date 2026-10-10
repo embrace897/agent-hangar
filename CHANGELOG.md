@@ -23,10 +23,21 @@ All notable changes to this project are documented here. The format follows
 - **Recovery:** *Why it stopped* explains the state, the cause and who acts next; *Continue the task* resumes a failed
   task from its checkpoint and asks to confirm when the last round may have had side effects.
 - **Job history:** every change to a Digital employee's job, authority or settings is a version that can be restored.
+- **Org chart:** a Digital employee can report to another one; handoffs flow down to reports and up to the chief, and
+  the prompt says who is who.
+- **Skill Studio:** edit skills with versions, saved test cases, runs against an LLM connection (mock without one),
+  restore a version, deprecate.
+- **Team packages:** export a team (scrubbed of secrets), preview and install it elsewhere (employees arrive as drafts),
+  and a catalog of ready-made teams (the *Renewals team*).
+- **Plugins:** per-action policy on each install (off / ask on every use / authority decides), the requester's
+  personal OAuth2 account (`identity_mode`), and *Test an action* on the production install.
+- **Secrets vault:** company and team secrets referenced as `secret://name` (plugin credentials and secret settings),
+  rotation, usage counts and proposals approved by someone else.
 
 ### Changed
 - Reading a Digital employee's task (request, result, conversation) now needs the requester, the people who answer for
   the employee, the employee's team, an auditor or an admin. Seeing the agent in the catalog is no longer enough.
+- Installing a team package needs the team's maintainer (it creates goals, projects and employees at once).
 
 ## [0.24.0] — 2026-10-10
 

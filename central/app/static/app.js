@@ -1000,6 +1000,11 @@ async function route() {
     else if (r === 'goals') await goalsPage();
     else if (r === 'budgets') await budgetsPage();
     else if (r === 'files') await filesPage();
+    else if (r === 'org') await orgChartPage();
+    else if (r === 'skills' && a) await skillDetail(decodeURIComponent(a));
+    else if (r === 'skills') await skillsPage();
+    else if (r === 'packages') await packagesPage();
+    else if (r === 'secrets') await secretsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
     else if (r === 'workforce') await workforcePage(a);

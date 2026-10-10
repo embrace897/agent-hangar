@@ -118,6 +118,59 @@ Every change to a Digital employee's job, authority or settings becomes a versio
 *Restore* applies an old version as a new one, so nothing is lost. The autonomy level and shadow mode keep their own
 history in the career plan.
 
+## Org chart
+
+A Digital employee can report to another one from the same team (*Settings → Teamwork → Reports to*). The chart is
+at `#/org`. The manager of each employee is still a person; the chief is the line of work between agents:
+- **Handoffs.** The chief can hand work down to whoever reports to it, and they can hand up to the chief what is not
+  theirs, besides the colleagues the manager allowed. Handoffs still go through the authority (`delegate`).
+- **Prompt.** The task prompt says who the employee reports to and who reports to it.
+- **Rules.** Cycles and chiefs from another team are refused.
+
+## Skill Studio
+
+`#/skills` lists the company's skills with their version, test cases, last run and status.
+- **Editing.** An admin or a developer of the skill's team edits it. Each save becomes a version, with a note.
+- **Test cases.** Cases are spec test cases: `input` plus `expect_contains`, `expect_regex` or `judge`.
+- **Runs.** A run sends each case to an LLM connection (protocol openai), with the skill as the system prompt. Without
+  a connection, the run is a mock and the content is not evaluated. Runs are kept per version, so versions can be
+  compared.
+- **Restore and deprecate.** *Restore* applies an old version as a new one. *Deprecate* marks a skill not to be used
+  in new agents.
+
+## Team packages
+
+`#/packages` moves a team's setup to another team or installation, or starts from a ready-made team. A package
+(`kind: hangar-package`) has:
+- the skills the employees use;
+- the team's goals;
+- the Digital employees: full job, authority, probation tasks, routines, chief and colleagues;
+- the projects.
+
+**Exporting** (a developer of the team) scrubs secrets. Credentials and webhooks are left out, and keys that look like
+secrets (token, password, key, authorization) are emptied. Plugin installs and budgets are not included.
+
+**Importing** (the team's maintainer) always starts with a preview: what will be created, what already exists and
+will be reused or renamed, and what is missing (a manager that does not exist, a plugin that is not approved). The
+Digital employees are created as drafts and still go through probation and the manager's admission.
+
+Ready-made teams live in `templates/packages/`. The *Renewals team* comes with:
+- a coordinator and an analyst who reports to it;
+- a goal and a project;
+- a weekly routine.
+
+## Secrets vault
+
+`#/secrets` keeps credentials in one place, for the company or a team.
+- **Referencing.** Use `secret://name` in place of the value. For now this works in the credential and the secret
+  settings of a plugin install. The value is looked up when used: the install's team first, then the company.
+- **Changing a value** applies at once wherever it is used, and the version goes up.
+- **Never shown.** The value is encrypted and never returned. Each use is counted: how many times, the last time and
+  by whom.
+- **Who manages:** admins for everything, a team's maintainer for the team's secrets. Anyone else proposes a value;
+  someone who manages approves it (not the person who proposed it), and the proposed value is not kept after the
+  decision.
+
 ## API
 
 | Method | Path | Description |
@@ -134,6 +187,17 @@ history in the career plan.
 | GET | `/api/inbox` | `?view=all|unread|decisions|blocked|mine|archived` |
 | POST | `/api/inbox/mark` | `{keys, read, archived}` |
 | GET | `/api/search` | `?q=&kinds=agent,employee,task,project,goal,plugin,skill` |
+| GET | `/api/org-chart` | `?team=`: the Digital employees and who each reports to |
+| GET / PUT | `/api/skills`, `/api/skills/{name}` | Skill Studio list / detail; save a new version |
+| PUT | `/api/skills/{name}/cases` | Saved test cases |
+| POST | `/api/skills/{name}/test` | `{connection}`: run the cases (mock without a connection) |
+| POST | `/api/skills/{name}/restore/{v}` · `/status` | Restore a version · `{status: active|deprecated}` |
+| GET | `/api/packages/catalog` | Ready-made teams |
+| POST | `/api/packages/export` | `{team}`: the team's package (no secrets) |
+| POST | `/api/packages/preview` · `/install` | `{package or catalog, team, manager}` |
+| GET / PUT | `/api/secrets` | List (no values) / create or change a value (`name, team, value, description`) |
+| DELETE | `/api/secrets/{id}` | Delete |
+| POST | `/api/secrets/proposals` · `/proposals/{id}/decide` | Propose a value · `{approve}` |
 | POST / DELETE | `/api/tasks/{id}/dependencies` | `{on}` / `/{on_id}`: add or remove a dependency |
 | POST | `/api/tasks/{id}/hold` | `{on}`: pause or resume the task and the tasks it handed off |
 | POST | `/api/tasks/{id}/continue` | `{confirm, note}`: continue a failed task (confirm when it may have side effects) |

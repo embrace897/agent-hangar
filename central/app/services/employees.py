@@ -278,6 +278,12 @@ def _names(db: Session, ids) -> dict[int, str]:
     return {u.id: (u.name or u.email) for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
 
 
+def _chief_slug(db: Session, e: Employee) -> str | None:
+    c = db.get(Employee, e.reports_to_id) if e.reports_to_id else None
+    a = db.get(Agent, c.agent_id) if c else None
+    return a.slug if a else None
+
+
 def can_read_task(acc: Access, t: EmployeeTask, e: Employee) -> bool:
     """Ler uma tarefa (pedido, resultado, conversa): quem pediu, quem responde pelo funcionário, quem é do time dele,
     auditores e admins. Ver o agente no catálogo (visibilidade da empresa) não dá acesso ao trabalho dele."""
@@ -359,6 +365,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
                  quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
+                 reports_to=_chief_slug(db, e),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
                          "expires_in_min": r.expires_in_min, "note": r.note}
@@ -541,6 +548,9 @@ def update(db: Session, acc: Access, slug: str, changes: dict) -> dict:
             setattr(e, k, cast(changes[k]))
     if "colleagues" in changes:
         teamwork.set_colleagues(db, e, changes["colleagues"] or [])
+    if "reports_to" in changes:  # organograma: o Digital employee chefe (vazio = ninguém)
+        from .org_chart import set_chief
+        set_chief(db, e, changes["reports_to"] or None, acc.p.name)
     if changes.get("plan_policy") is not None:
         if changes["plan_policy"] not in teamwork.PLAN_POLICIES:
             raise PlatformError(f"plan_policy: {' | '.join(teamwork.PLAN_POLICIES)}")

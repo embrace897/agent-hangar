@@ -80,6 +80,37 @@ def phase_b(dev, mgr, slug):
     check("histórico do cargo", revs and revs[-1]["version"] == 1, revs[:1])
 
 
+def phase_c(dev, mgr, mgr_email, team, slug):
+    chief = wf.hire(dev, mgr_email, team, "Coordinator")
+    r = ok(dev.patch(f"/api/employees/{slug}", json={"reports_to": chief}))
+    check("organograma: o chefe", r["reports_to"] == chief, r.get("reports_to"))
+    nodes = {n["slug"]: n for n in ok(dev.get("/api/org-chart", params={"team": team}))["nodes"]}
+    check("organograma: a árvore", nodes[slug]["reports_to"] == chief, nodes.get(slug))
+    skill = f"e2e-tone-{RUN}"
+    ok(dev.put(f"/api/skills/{skill}", json={"description": "tone", "content": "Be brief."}))
+    ok(dev.put(f"/api/skills/{skill}/cases", json={"cases": [{"name": "hi", "input": "say hi", "expect_contains": "hi"}]}))
+    run = ok(dev.post(f"/api/skills/{skill}/test", json={}))
+    check("Skill Studio: rodada (mock)", run["passed"] and run["mock"], run)
+    ok(dev.put(f"/api/skills/{skill}", json={"description": "tone", "content": "Be brief and kind."}))
+    back = ok(dev.post(f"/api/skills/{skill}/restore/1"))
+    check("Skill Studio: restaurar a v1", back["version"] == 3 and back["content"] == "Be brief.", back["version"])
+    cat = ok(mgr.get("/api/packages/catalog"))
+    check("pacotes: catálogo", any(c["id"] == "renewals-team" for c in cat), [c["id"] for c in cat])
+    out = ok(mgr.post("/api/packages/install", json={"catalog": "renewals-team", "team": team, "manager": mgr_email}))
+    wf.created["agents"].extend(out["created"]["employees"])
+    check("pacotes: time pronto instalado em rascunho", len(out["created"]["employees"]) == 2 and out["created"]["projects"], out["created"])
+    pkg = ok(dev.post("/api/packages/export", json={"team": team}))
+    check("pacotes: exportar o time", pkg["kind"] == "hangar-package" and len(pkg["employees"]) >= 3, len(pkg["employees"]))
+    key = f"e2e-key-{RUN}"
+    ok(mgr.put("/api/secrets", json={"name": key, "value": f"v-{RUN}", "team": team}))
+    prop = ok(dev.post("/api/secrets/proposals", json={"name": key, "value": f"v2-{RUN}", "team": team}))
+    d = ok(mgr.post(f"/api/secrets/proposals/{prop['id']}/decide", json={"approve": True}))
+    lst = ok(mgr.get("/api/secrets"))
+    check("cofre: proposta aprovada (quatro olhos), sem valores na API",
+          d["secret"]["version"] == 2 and f"v2-{RUN}" not in str(lst), d["secret"]["version"])
+    ok(mgr.delete(f"/api/secrets/{d['secret']['id']}"))
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -89,6 +120,7 @@ def main():
     dev, _, _ = wf.person("dev", "developer", team)
     slug, _, _ = phase_a(dev, mgr, mgr_email, team)
     phase_b(dev, mgr, slug)
+    phase_c(dev, mgr, mgr_email, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

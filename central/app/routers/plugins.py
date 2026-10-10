@@ -47,6 +47,8 @@ class InstallBody(BaseModel):
     triggers: dict | None = None
     stage: bool = False  # instalação de teste do rascunho (quem constrói o plugin)
     rate_limit: int | None = None  # chamadas por minuto (0 = o padrão)
+    tool_policy: dict | None = None  # {ferramenta: off | ask | allow}
+    identity_mode: str | None = None  # team | requester | prefer_requester (OAuth2)
 
 
 class TeamBody(BaseModel):
@@ -61,6 +63,16 @@ class RequestBody(BaseModel):
 
 class FeatureBody(BaseModel):
     on: bool = True
+
+
+class TryBody(BaseModel):
+    team: str | None = None
+    tool: str
+    args: dict = {}
+
+
+class PersonalBody(BaseModel):
+    team: str | None = None
 
 
 class TriggerTestBody(BaseModel):
@@ -125,7 +137,8 @@ def enable(name: str, request: Request, db=Depends(db_dep)):
 def install(name: str, body: InstallBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.plugins.install(db, acc(request, db), name, body.team, body.settings, body.secrets,
                                              body.credential, body.enabled, body.oauth_client_id,
-                                             body.oauth_client_secret, body.triggers, body.stage, body.rate_limit))
+                                             body.oauth_client_secret, body.triggers, body.stage, body.rate_limit,
+                                             body.tool_policy, body.identity_mode))
 
 
 @router.delete("/api/plugins/{name}/install")
@@ -177,6 +190,29 @@ def export(name: str, request: Request, draft: bool = False, db=Depends(db_dep))
 def hook_token(name: str, body: TeamBody, request: Request, db=Depends(db_dep)):
     """Gera (ou troca) o token dos webhooks dos gatilhos: aparece uma vez só."""
     return guard(lambda: svc.plugins.new_hook_token(db, acc(request, db), name, body.team, body.stage))
+
+
+@router.post("/api/plugins/{name}/install/try")
+def try_action(name: str, body: TryBody, request: Request, db=Depends(db_dep)):
+    """O mantenedor testa uma ação na instalação de produção (com a credencial do time; fica na auditoria)."""
+    return guard(lambda: svc.plugins.try_action(db, acc(request, db), name, body.team, body.tool, body.args))
+
+
+@router.post("/api/plugins/{name}/my-account/connect")
+def personal_connect(name: str, body: PersonalBody, request: Request, db=Depends(db_dep)):
+    """Conecta a conta pessoal (OAuth2) de quem está logado: com identity_mode=requester, as tarefas que a pessoa
+    pede usam esta conta."""
+    r = guard(lambda: svc.plugins.oauth_start(db, acc(request, db), name, body.team, personal=True))
+    resp = JSONResponse({"authorize_url": r["authorize_url"]})
+    resp.set_cookie(svc.plugins.OAUTH_COOKIE, r["cookie"], max_age=600, httponly=True, samesite="lax",
+                    secure=config.COOKIE_SECURE, path="/api/plugins")
+    return resp
+
+
+@router.delete("/api/plugins/{name}/my-account")
+def personal_disconnect(name: str, request: Request, db=Depends(db_dep)):
+    guard(lambda: svc.plugins.disconnect_personal(db, acc(request, db), name))
+    return {"disconnected": name}
 
 
 @router.get("/api/plugins/{name}/calls")

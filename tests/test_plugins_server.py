@@ -135,7 +135,7 @@ def test_install_runs_an_isolated_container_and_agents_see_only_declared_tools(c
     assert tools[0]["inputSchema"]["properties"] == {"number": {"type": "string"}}
     hidden = client.post(ep, headers=hdr, json={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                                                 "params": {"name": "drop_database", "arguments": {}}}).json()
-    assert hidden["error"]["message"] == "ferramenta desconhecida"
+    assert hidden["error"]["message"].startswith("ferramenta desconhecida")
     out = client.post(ep, headers=hdr, json={"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                                              "params": {"name": "get_invoice", "arguments": {"number": "77"}}}).json()["result"]
     assert out["isError"] is False and "fatura 77 (tenant acme" in out["content"][0]["text"]

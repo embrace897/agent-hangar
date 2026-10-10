@@ -1,0 +1,108 @@
+"""Organograma dos Digital employees: cada um pode ter um chefe (outro Digital employee do mesmo time). O gestor continua
+sendo uma pessoa — o chefe é a linha de trabalho entre agentes.
+
+- O chefe pode repassar trabalho para quem reporta a ele (delegação para baixo) e quem reporta pode repassar para o
+  chefe (subir o que não é dele), além dos colegas liberados pelo gestor. Os repasses continuam passando pela alçada
+  (`delegate`).
+- O prompt de cada tarefa diz quem é o chefe e quem reporta a ele.
+"""
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..models import Agent, Employee, Team, User
+from .access import Access
+from .common import PlatformError, audit
+
+MAX_DEPTH = 8
+
+
+def _slug(db: Session, e: Employee | None) -> str | None:
+    a = db.get(Agent, e.agent_id) if e else None
+    return a.slug if a else None
+
+
+def chain_up(db: Session, e: Employee) -> list[Employee]:
+    out, seen, cur = [], {e.id}, e
+    while cur.reports_to_id and len(out) < MAX_DEPTH:
+        nxt = db.get(Employee, cur.reports_to_id)
+        if nxt is None or nxt.id in seen:
+            break
+        out.append(nxt)
+        seen.add(nxt.id)
+        cur = nxt
+    return out
+
+
+def direct_reports(db: Session, e: Employee) -> list[Employee]:
+    return list(db.scalars(select(Employee).where(Employee.reports_to_id == e.id, Employee.status != "offboarded")))
+
+
+def handoff_targets(db: Session, e: Employee) -> list[str]:
+    """Para quem ele pode repassar: os colegas liberados, o chefe e quem reporta a ele."""
+    out = list(e.colleagues or [])
+    chief = db.get(Employee, e.reports_to_id) if e.reports_to_id else None
+    for x in ([chief] if chief else []) + direct_reports(db, e):
+        s = _slug(db, x)
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def set_chief(db: Session, e: Employee, chief_slug: str | None, who: str):
+    if not chief_slug:
+        e.reports_to_id = None
+        return
+    a = db.scalar(select(Agent).where(Agent.slug == chief_slug))
+    chief = db.scalar(select(Employee).where(Employee.agent_id == a.id)) if a else None
+    if chief is None:
+        raise PlatformError(f"'{chief_slug}' não é um Digital employee")
+    if chief.id == e.id:
+        raise PlatformError("ele não reporta a si mesmo")
+    if chief.team_id and e.team_id and chief.team_id != e.team_id:
+        raise PlatformError("o chefe precisa ser do mesmo time")
+    if any(x.id == e.id for x in chain_up(db, chief)):
+        raise PlatformError("isso criaria um ciclo no organograma")
+    e.reports_to_id = chief.id
+    audit(db, who, "employee.reports_to", _slug(db, e) or "", chief_slug)
+
+
+def prompt_lines(db: Session, e: Employee, en: bool = False) -> str:
+    chief = db.get(Employee, e.reports_to_id) if e.reports_to_id else None
+    reps = direct_reports(db, e)
+    if not chief and not reps:
+        return ""
+    lines = []
+    if chief:
+        lines.append(f"You report to {_slug(db, chief)} ({chief.title}): hand work up to them with handoff_task when it "
+                      "is not yours." if en else
+                      f"Você reporta a {_slug(db, chief)} ({chief.title}): repasse para ele com handoff_task o que não é seu.")
+    if reps:
+        names = ", ".join(f"{_slug(db, r)} ({r.title})" for r in reps)
+        lines.append(f"Reporting to you: {names}. Delegate to them with handoff_task." if en else
+                     f"Reportam a você: {names}. Delegue para eles com handoff_task.")
+    return "\n".join(lines)
+
+
+def chart(db: Session, acc: Access, team: str | None = None) -> dict:
+    """Os Digital employees que a pessoa vê, com o chefe (agente) e o gestor (pessoa) de cada um."""
+    from .employees import find
+    q = select(Employee).where(Employee.status != "offboarded")
+    if team:
+        t = db.scalar(select(Team).where(Team.slug == team))
+        q = q.where(Employee.team_id == (t.id if t else -1))
+    people = {u.id: (u.name or u.email) for u in db.scalars(select(User))}
+    teams = {t.id: t.slug for t in db.scalars(select(Team))}
+    nodes = []
+    for e in db.scalars(q):
+        a = db.get(Agent, e.agent_id)
+        if a is None:
+            continue
+        try:
+            find(db, acc, a.slug)
+        except Exception:  # noqa: BLE001
+            continue
+        chief = db.get(Employee, e.reports_to_id) if e.reports_to_id else None
+        nodes.append({"slug": a.slug, "name": a.name, "title": e.title, "status": e.status, "level": e.autonomy_level,
+                      "team": teams.get(e.team_id), "manager": people.get(e.manager_user_id, ""),
+                      "reports_to": _slug(db, chief)})
+    return {"nodes": nodes}

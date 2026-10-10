@@ -301,6 +301,27 @@ triggers:
   them; `GET /api/plugins/<name>/calls?team=&status=&tool=` lists them for the team's maintainers, admins and auditors.
   Stage tests and *Test connection* are logged too. Rows are kept for `PLUGIN_CALLS_DAYS` (90).
 
+## Actions, identity and testing on the install
+
+- **Per action** (*Actions and identity* on the install):
+  - *the authority decides* is the default;
+  - *asks for approval on every use* forces a person's decision even when the employee's authority would act alone,
+    and only Digital employees can use the action;
+  - *off* hides the action from agents.
+
+  Set with `tool_policy: {tool: off|ask|allow}` on `PUT /install`.
+- **Whose account** (OAuth2 plugins):
+  - `identity_mode: team` (the default) uses the team's account;
+  - `requester` uses the personal account of whoever asked for the task, and fails if they have not connected one;
+  - `prefer_requester` falls back to the team's account.
+
+  People connect their own account on the plugin page (*My account*); the central renews each personal token on its
+  own.
+- **Test an action:** the maintainer runs one action on the production install with the team's credential
+  (`POST /install/try`). It is recorded in the call log and the audit log.
+- **Credentials from the vault:** `secret://name` in the credential or a secret setting reads the value from the
+  [secrets vault](work.md#secrets-vault) when the plugin is called.
+
 ## Security
 
 - **The secret stays in the central:**

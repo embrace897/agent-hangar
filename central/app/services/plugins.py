@@ -28,10 +28,10 @@ from typing import Literal
 import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .. import config, crypto
-from ..models import ActionCatalog, Agent, Plugin, PluginCall, PluginInstall, Team, now
+from ..models import ActionCatalog, Agent, Plugin, PluginCall, PluginInstall, PluginUserAccount, Team, now
 from . import employee_gate as gatemod
 from .access import RANK, Access, Forbidden, find_team
 from .common import PlatformError, audit, iso
@@ -514,6 +514,9 @@ def install_dict(db, i: PluginInstall, p: Plugin) -> dict:
                        "denied": int((i.stats or {}).get("egress_denied", 0)),
                        "last_denied": (i.stats or {}).get("egress_last_denied")} if m.get("runtime") == "server" else None,
             "rate_limit": i.rate_limit, "rate_limit_effective": rate_limit_of(m, i),
+            "tool_policy": i.tool_policy or {}, "identity_mode": i.identity_mode or "team",
+            "personal_accounts": db.scalar(select(func.count()).select_from(PluginUserAccount).where(
+                PluginUserAccount.plugin_id == p.id)) or 0,
             "stats": i.stats or {}, "last_test": i.last_test, "installed_by": i.installed_by,
             "installed_at": iso(i.installed_at) if i.installed_at else None}
 
@@ -543,6 +546,8 @@ def plugin_dict(db, acc: Access, p: Plugin, detail: bool = False) -> dict:
                  test_report=p.test_report, history=list(reversed(p.history or []))[:20], readme=m.get("readme", ""),
                  signature=p.signature, signing={"configured": cosign_configured(), "required": config.PLUGIN_REQUIRE_SIGNED},
                  can_audit=acc.p.is_auditor or bool(mine) or _can_edit(acc, p),
+                 my_account=bool(acc.p.user_id and db.scalar(select(PluginUserAccount.id).where(
+                     PluginUserAccount.plugin_id == p.id, PluginUserAccount.user_id == acc.p.user_id))),
                  my_teams=[{"slug": _team_name(db, t), "role": r} for t, r in acc.teams.items()],
                  install_teams=[{"slug": _team_name(db, t), "role": r} for t, r in acc.teams.items() if r == "maintainer"],
                  yaml=to_yaml(p.manifest))
@@ -709,7 +714,7 @@ def _install_row(db, p: Plugin, team_id: int | None, stage: bool = False) -> Plu
 def install(db, acc: Access, name: str, team: str | None, settings: dict | None = None, secrets: dict | None = None,
             credential: str | None = None, enabled: bool | None = None, oauth_client_id: str | None = None,
             oauth_client_secret: str | None = None, triggers: dict | None = None, stage: bool = False,
-            rate_limit: int | None = None) -> dict:
+            rate_limit: int | None = None, tool_policy: dict | None = None, identity_mode: str | None = None) -> dict:
     p = _get(db, name)
     team_id = find_team(db, team).id if team else None
     if stage:  # instalação de teste do rascunho: quem constrói o plugin, com uma credencial de teste
@@ -750,6 +755,22 @@ def install(db, acc: Access, name: str, team: str | None, settings: dict | None 
         i.triggers = _check_triggers(db, m, team_id, triggers, i.triggers or {})
     if enabled is not None:
         i.enabled = bool(enabled)
+    if tool_policy is not None:  # cada ação: off (escondida) | ask (sempre pede aprovação) | allow (a alçada decide)
+        names = {t["name"] for t in m["tools"]}
+        bad = [k for k, v in tool_policy.items() if k not in names or v not in POLICIES]
+        if bad:
+            raise PlatformError(f"tool_policy: ferramentas do plugin com off | ask | allow ({', '.join(bad)})")
+        i.tool_policy = {k: v for k, v in tool_policy.items() if v != "allow"}
+    if identity_mode is not None:
+        if identity_mode not in IDENTITY_MODES:
+            raise PlatformError(f"identity_mode: {' | '.join(IDENTITY_MODES)}")
+        if identity_mode != "team" and m["auth"]["type"] != "oauth2":
+            raise PlatformError("a conta de quem pede só vale para plugins com OAuth2")
+        i.identity_mode = identity_mode
+    for ref in [credential, *(secrets or {}).values()]:  # secret://nome: o valor vem do cofre, na hora do uso
+        if isinstance(ref, str) and ref.startswith("secret://"):
+            from . import secrets_vault
+            secrets_vault.check_ref(db, ref, team_id)
     if rate_limit is not None:  # 0 volta ao padrão (o do manifesto ou o da empresa)
         if not 0 <= int(rate_limit) <= 6000:
             raise PlatformError("rate_limit: de 1 a 6000 chamadas por minuto (0 = o padrão)")
@@ -837,14 +858,25 @@ def _fill(text: str, values: dict) -> str:
 
 
 def setting_values(m: dict, i: PluginInstall) -> dict:
-    """As configurações da instalação (padrão do manifesto < as normais < as secretas)."""
+    """As configurações da instalação (padrão do manifesto < as normais < as secretas). secret://nome vem do cofre."""
     values = {s["key"]: s.get("default") for s in m.get("settings") or []}
     values.update(i.settings or {})
-    values.update(_secrets(i).get("settings") or {})
+    values.update({k: _vault(v, i) for k, v in (_secrets(i).get("settings") or {}).items()})
     return values
 
 
-def _execute(db, m: dict, i: PluginInstall, tool: dict, args: dict) -> tuple[str, bool, int]:
+def _vault(value, i: PluginInstall):
+    if isinstance(value, str) and value.startswith("secret://"):
+        from . import secrets_vault
+        return secrets_vault.resolve(value, i.team_id, f"plugin:{i.plugin_id}")
+    return value
+
+
+def _credential(i: PluginInstall) -> str:
+    return _vault(_secrets(i).get("credential", ""), i) or ""
+
+
+def _execute(db, m: dict, i: PluginInstall, tool: dict, args: dict, holder=None) -> tuple[str, bool, int]:
     sec = _secrets(i)
     values = setting_values(m, i)
     args = dict(args or {})
@@ -859,9 +891,9 @@ def _execute(db, m: dict, i: PluginInstall, tool: dict, args: dict) -> tuple[str
     headers = {"User-Agent": f"AgentHangar-Plugin/{m['name']}", "Accept": "application/json, text/plain, */*"}
     headers.update({k: _fill(v, values) for k, v in (tool.get("headers") or {}).items()})
     params = {}
-    a, cred = m["auth"], sec.get("credential", "")
+    a, cred = m["auth"], _credential(i)
     if a["type"] == "oauth2":
-        cred = oauth_access_token(db, i, m)
+        cred = oauth_access_token(db, holder or i, m)
         headers["Authorization"] = f"Bearer {cred}"
     elif a["type"] == "bearer":
         headers["Authorization"] = f"Bearer {cred}"
@@ -878,7 +910,7 @@ def _execute(db, m: dict, i: PluginInstall, tool: dict, args: dict) -> tuple[str
         with HTTP() as http:
             r = http.request(tool["method"], url, **kw)
             if r.status_code == 401 and a["type"] == "oauth2":  # token revogado ou expirado antes da hora: renova e repete
-                cred = oauth_access_token(db, i, m, force=True)
+                cred = oauth_access_token(db, holder or i, m, force=True)
                 headers["Authorization"] = f"Bearer {cred}"
                 r = http.request(tool["method"], url, **kw)
     except httpx.HTTPError as e:
@@ -888,9 +920,10 @@ def _execute(db, m: dict, i: PluginInstall, tool: dict, args: dict) -> tuple[str
         text = json.dumps(r.json(), ensure_ascii=False, indent=1)
     except ValueError:
         pass
-    for s in sorted({cred, *(sec.get("settings") or {}).values()}, key=len, reverse=True):
-        if s and len(str(s)) >= 4:  # um sistema que ecoa headers não devolve o segredo ao agente nem à tela
-            text = text.replace(str(s), "[segredo]")
+    secret_values = {cred, *(_vault(v, i) for v in (sec.get("settings") or {}).values())}
+    for s in sorted((str(v) for v in secret_values if v), key=len, reverse=True):
+        if len(s) >= 4:  # um sistema que ecoa headers não devolve o segredo ao agente nem à tela
+            text = text.replace(s, "[segredo]")
     if len(text) > MAX_OUTPUT:
         text = text[:MAX_OUTPUT] + f"\n… [truncado: {len(text)} caracteres]"
     if r.is_redirect:
@@ -972,14 +1005,39 @@ def _log_call(db, p: Plugin, i: PluginInstall | None, caller: str, task_id: int 
                       result=(result or "")[:500], at=now()))
 
 
-def _run_tool(db, p: Plugin, i: PluginInstall, m: dict, tool: dict, args: dict) -> tuple[str, bool, int | None]:
+def _run_tool(db, p: Plugin, i: PluginInstall, m: dict, tool: dict, args: dict, holder=None) -> tuple[str, bool, int | None]:
     try:
         if m.get("runtime") == "server":
-            text, err = server_call(db, p, i, tool["name"], args)
-            return text, err, None
-        return _execute(db, m, i, tool, args)
+            text, err = server_call(db, p, i, tool["name"], args, holder)
+        else:
+            text, err, code = _execute(db, m, i, tool, args, holder)
+            return (_mask(holder, text) if holder is not None else text), err, code
+        return (_mask(holder, text) if holder is not None else text), err, None
     except PlatformError as e:
         return str(e), True, None
+
+
+POLICIES = ("off", "ask", "allow")
+IDENTITY_MODES = ("team", "requester", "prefer_requester")
+
+
+def policy_of(i: PluginInstall, tool: str) -> str:
+    return (i.tool_policy or {}).get(tool, "allow")
+
+
+def _holder(db, p: Plugin, i: PluginInstall, m: dict, task_id):
+    """Conta pessoal de quem pediu a tarefa (identity_mode requester/prefer_requester); None = a conta do time."""
+    if (i.identity_mode or "team") == "team" or m["auth"]["type"] != "oauth2":
+        return None
+    from ..models import EmployeeTask
+    t = db.get(EmployeeTask, task_id) if task_id else None
+    uid = t.requester_user_id if t else None
+    acct = db.scalar(select(PluginUserAccount).where(PluginUserAccount.plugin_id == p.id,
+                                                     PluginUserAccount.user_id == uid)) if uid else None
+    if acct is None and i.identity_mode == "requester":
+        raise PlatformError("este plugin usa a conta de quem pediu a tarefa: essa pessoa precisa conectar a conta "
+                            f"pessoal na página do plugin ({config.PUBLIC_BASE_URL}/app/#/plugins/{p.name})")
+    return acct
 
 
 def mcp_handle(db, a: Agent, specs: list[dict], name: str, msg: dict, task_id=None) -> dict | None:
@@ -997,17 +1055,26 @@ def mcp_handle(db, a: Agent, specs: list[dict], name: str, msg: dict, task_id=No
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": server_tools(db, p, i) if m.get("runtime") == "server" else mcp_tools(m)}
+        tools = server_tools(db, p, i) if m.get("runtime") == "server" else mcp_tools(m)
+        result = {"tools": [t for t in tools if policy_of(i, t["name"]) != "off"]}  # desligadas pelo mantenedor somem
     elif method == "tools/call":
         tool = next((t for t in m["tools"] if t["name"] == params.get("name")), None)
-        if tool is None:  # só as ferramentas declaradas (e classificadas) no manifesto, mesmo que o servidor tenha outras
-            return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "ferramenta desconhecida"}}
+        if tool is None or policy_of(i, tool["name"]) == "off":  # só as declaradas e não desligadas
+            return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "ferramenta desconhecida ou desligada"}}
         args, t0 = params.get("arguments") or {}, time.monotonic()
-        if _limited(m, i):
+        from ..models import Employee
+        if policy_of(i, tool["name"]) == "ask" and db.scalar(select(Employee.id).where(Employee.agent_id == a.id)) is None:
+            text, err, code, st = ("esta ação exige aprovação a cada uso: só um Digital employee (que pede a decisão) "
+                                   "pode usá-la"), True, None, "error"
+        elif _limited(m, i):
             text, err, code, st = (f"limite de {rate_limit_of(m, i)} chamadas por minuto desta instalação atingido: "
                                    "espere um minuto e tente de novo"), True, None, "limited"
         else:
-            text, err, code = _run_tool(db, p, i, m, tool, args)
+            try:
+                holder = _holder(db, p, i, m, _task_of(db, a, task_id))
+                text, err, code = _run_tool(db, p, i, m, tool, args, holder)
+            except PlatformError as e:
+                text, err, code = str(e), True, None
             st = "error" if err else "ok"
         _log_call(db, p, i, a.slug, _task_of(db, a, task_id), tool, st, code, t0, args, text)
         _record(db, i, err, text)
@@ -1030,7 +1097,7 @@ def _save_secrets(i: PluginInstall, sec: dict):
     i.secret = crypto.encrypt(json.dumps(sec))
 
 
-def oauth_start(db, acc: Access, name: str, team: str | None, stage: bool = False) -> dict:
+def oauth_start(db, acc: Access, name: str, team: str | None, stage: bool = False, personal: bool = False) -> dict:
     """URL de autorização do provedor para o navegador de quem instala, e o state assinado (cookie)."""
     import secrets as _secrets_mod
     import time
@@ -1038,7 +1105,10 @@ def oauth_start(db, acc: Access, name: str, team: str | None, stage: bool = Fals
     from .. import sso
     p = _get(db, name)
     team_id = find_team(db, team).id if team else None
-    if not (_can_edit(acc, p) if stage else _can_install(acc, team_id)):
+    if personal:  # a conta pessoal: qualquer pessoa do time da instalação
+        if not acc.p.user_id or (team_id is not None and team_id not in acc.teams and not acc.p.is_admin):
+            raise Forbidden("conecte a sua conta pessoal num plugin instalado para um time seu")
+    elif not (_can_edit(acc, p) if stage else _can_install(acc, team_id)):
         raise Forbidden("conecta a conta quem instala (mantenedor do time ou admin)")
     i = _install_row(db, p, team_id, stage)
     m = mof(p, i)
@@ -1051,7 +1121,7 @@ def oauth_start(db, acc: Access, name: str, team: str | None, stage: bool = Fals
     state = _secrets_mod.token_urlsafe(24)
     params = {"response_type": "code", "client_id": o["client_id"], "redirect_uri": oauth_redirect_uri(), "state": state,
               **({"scope": " ".join(a["scopes"])} if a.get("scopes") else {}), **(a.get("params") or {})}
-    data = {"s": state, "p": p.name, "i": i.id, "t": int(time.time())}
+    data = {"s": state, "p": p.name, "i": i.id, "t": int(time.time()), **({"u": acc.p.user_id} if personal else {})}
     if a.get("pkce", True):
         verifier = _secrets_mod.token_urlsafe(48)
         params["code_challenge"] = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -1102,6 +1172,24 @@ def oauth_finish(db, acc: Access, code: str, state: str, cookie: str) -> str:
     p = db.get(Plugin, i.plugin_id) if i else None
     if i is None or p is None or p.name != data.get("p"):
         raise PlatformError("instalação não encontrada")
+    if data.get("u"):  # conta pessoal: os tokens ficam com a pessoa, e o client do app é o da instalação
+        if acc.p.user_id != data["u"]:
+            raise Forbidden("o login mudou no meio da conexão — conecte de novo")
+        base = dict(_secrets(i).get("oauth") or {})
+        o = {"client_id": base.get("client_id"), **({"client_secret": base["client_secret"]} if base.get("client_secret") else {})}
+        form = {"grant_type": "authorization_code", "code": code, "redirect_uri": oauth_redirect_uri()}
+        if data.get("v"):
+            form["code_verifier"] = data["v"]
+        _store_tokens(o, _token_request(mof(p, i), o, form))
+        acct = db.scalar(select(PluginUserAccount).where(PluginUserAccount.plugin_id == p.id,
+                                                         PluginUserAccount.user_id == acc.p.user_id))
+        if acct is None:
+            acct = PluginUserAccount(plugin_id=p.id, user_id=acc.p.user_id)
+            db.add(acct)
+        acct.secret, acct.connected_at = crypto.encrypt(json.dumps({"oauth": o})), now()
+        db.commit()
+        audit(db, acc.p.name, "plugin.oauth.personal", p.name)
+        return p.name
     if not (_can_edit(acc, p) if i.stage else _can_install(acc, i.team_id)):
         raise Forbidden("conecta a conta quem instala (mantenedor do time ou admin)")
     sec = _secrets(i)
@@ -1123,7 +1211,7 @@ def oauth_access_token(db, i: PluginInstall, m: dict, force: bool = False) -> st
     from datetime import datetime
 
     from .. import shared
-    with shared.cluster_lock(f"plugin-oauth:{i.id}"):
+    with shared.cluster_lock(f"plugin-oauth:{type(i).__name__}:{i.id}"):
         if db is not None and i.id:
             db.refresh(i)
         sec = _secrets(i)
@@ -1371,7 +1459,7 @@ def _server_env(m: dict, i: PluginInstall) -> dict:
     env = dict(srv.get("env") or {})
     env.update({var: "" if values.get(key) is None else str(values[key]) for var, key in (srv.get("settings_env") or {}).items()})
     if srv.get("credential_env") and sec.get("credential"):
-        env[srv["credential_env"]] = sec["credential"]
+        env[srv["credential_env"]] = _credential(i)
     env.update(egress.env(i.id))  # a saída para a internet passa pelo proxy, que só libera server.egress
     return env
 
@@ -1479,11 +1567,16 @@ def server_logs(db, acc: Access, name: str, team: str | None, stage: bool = Fals
     return {"logs": _mask(i, deploy.plugin_logs(_server_name(p, i), 200))}
 
 
-def _mask(i: PluginInstall, text: str) -> str:
+def _mask(i, text: str) -> str:
+    """Tira da resposta os segredos da instalação (ou da conta pessoal): credencial, settings secretas (também as do
+    cofre), tokens e client secret."""
     sec = _secrets(i)
     o = sec.get("oauth") or {}
-    for s in sorted({sec.get("credential", ""), *(sec.get("settings") or {}).values(), o.get("access_token", ""),
-                     o.get("refresh_token", ""), o.get("client_secret", "")}, key=len, reverse=True):
+    vals = [sec.get("credential", ""), *(sec.get("settings") or {}).values()]
+    if isinstance(i, PluginInstall):
+        vals += [_vault(v, i) for v in vals]
+    for s in sorted({str(v) for v in [*vals, o.get("access_token", ""), o.get("refresh_token", ""),
+                                      o.get("client_secret", "")] if v}, key=len, reverse=True):
         if s and len(str(s)) >= 4:
             text = text.replace(str(s), "[segredo]")
     return text
@@ -1523,7 +1616,7 @@ def _live_server(db, p: Plugin, i: PluginInstall) -> str:
     return _server_url(p, i)
 
 
-def _server_headers(db, m: dict, i: PluginInstall) -> dict:
+def _server_headers(db, m: dict, i: PluginInstall, holder=None) -> dict:
     """A credencial no cabeçalho de cada chamada (server.credential_header). OAuth2 vai sempre por aqui: o token é
     renovado pela central e o container nunca guarda o refresh token."""
     h, a = (m.get("server") or {}).get("credential_header"), m["auth"]
@@ -1531,9 +1624,9 @@ def _server_headers(db, m: dict, i: PluginInstall) -> dict:
         return {}
     auth_header = h.lower() == "authorization"
     if a["type"] == "oauth2":
-        tok = oauth_access_token(db, i, m)
+        tok = oauth_access_token(db, holder or i, m)
         return {h: f"Bearer {tok}" if auth_header else tok}
-    cred = _secrets(i).get("credential", "")
+    cred = _credential(i)
     if not cred:
         return {}
     if auth_header and a["type"] == "bearer":
@@ -1543,8 +1636,8 @@ def _server_headers(db, m: dict, i: PluginInstall) -> dict:
     return {h: cred}
 
 
-def _srv(db, p: Plugin, i: PluginInstall, op: str, tool: str = "", args: dict | None = None):
-    hd = _server_headers(db, mof(p, i), i)
+def _srv(db, p: Plugin, i: PluginInstall, op: str, tool: str = "", args: dict | None = None, holder=None):
+    hd = _server_headers(db, mof(p, i), i, holder)
     return SERVER(_live_server(db, p, i), op, tool, args, **({"headers": hd} if hd else {}))
 
 
@@ -1565,8 +1658,8 @@ def server_tools(db, p: Plugin, i: PluginInstall) -> list[dict]:
     return out
 
 
-def server_call(db, p: Plugin, i: PluginInstall, tool: str, args: dict) -> tuple[str, bool]:
-    text, err = _srv(db, p, i, "call", tool, args)
+def server_call(db, p: Plugin, i: PluginInstall, tool: str, args: dict, holder=None) -> tuple[str, bool]:
+    text, err = _srv(db, p, i, "call", tool, args, holder)
     text = _mask(i, text or "")
     if len(text) > MAX_OUTPUT:
         text = text[:MAX_OUTPUT] + f"\n… [truncado: {len(text)} caracteres]"
@@ -1815,3 +1908,36 @@ def prune_calls(db) -> int:
     r = db.execute(_delete(PluginCall).where(PluginCall.at < now() - timedelta(days=config.PLUGIN_CALLS_DAYS)))
     db.commit()
     return r.rowcount or 0
+
+
+# ------------------------------------------------------------------ conta pessoal e testar uma ação
+def disconnect_personal(db, acc: Access, name: str):
+    p = _get(db, name)
+    acct = db.scalar(select(PluginUserAccount).where(PluginUserAccount.plugin_id == p.id,
+                                                     PluginUserAccount.user_id == acc.p.user_id))
+    if acct is None:
+        raise PlatformError("você não tem conta pessoal conectada neste plugin")
+    db.delete(acct)
+    db.commit()
+    audit(db, acc.p.name, "plugin.oauth.personal.disconnect", p.name)
+
+
+def try_action(db, acc: Access, name: str, team: str | None, tool: str, args: dict) -> dict:
+    """O mantenedor testa uma ação na instalação de produção, com a credencial do time (fica na auditoria)."""
+    p = _get(db, name)
+    team_id = find_team(db, team).id if team else None
+    if not _can_install(acc, team_id):
+        raise Forbidden("testa ações quem instala (mantenedor do time ou admin)")
+    i = _install_row(db, p, team_id)
+    if i is None:
+        raise PlatformError("instale antes de testar")
+    m = mof(p, i)
+    t = next((x for x in m["tools"] if x["name"] == tool), None)
+    if t is None:
+        raise PlatformError(f"'{tool}' não é uma ferramenta do plugin")
+    t0 = time.monotonic()
+    text, err, code = _run_tool(db, p, i, m, t, args or {})
+    _log_call(db, p, i, f"teste:{acc.p.name}", None, t, "error" if err else "ok", code, t0, args or {}, text)
+    _record(db, i, err, text)
+    audit(db, acc.p.name, "plugin.try", p.name, f"{tool} {'erro' if err else 'ok'}")
+    return {"ok": not err, "status": code, "result": text[:4000], "action": t["action"]}

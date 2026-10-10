@@ -488,6 +488,7 @@ async function empSettings(t, e) {
     <div class="grid g2 mt"><label>Plano nas tarefas<select id="tw-plan">${Object.entries(PLAN_POLICY).map(([k, v]) => `<option value="${k}" ${k === (e.plan_policy || 'auto') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="tw-recall" ${e.recall ? 'checked' : ''}> <span>Lembrar trabalhos anteriores parecidos ao começar uma tarefa</span></label>
       <label>Amostra para o juiz de qualidade (% das tarefas concluídas; 0 desliga)<input id="tw-quality" type="number" min="0" max="100" value="${e.quality ? e.quality.sample : 20}"></label>
+      <label>Reporta a (organograma)<select id="tw-chief"><option value="">— ninguém —</option>${others.filter(o => o.team === e.team).map(o => `<option value="${esc(o.slug)}" ${o.slug === e.reports_to ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></label>
       <label>Revisão dos resultados<select id="tw-review"><option value="off" ${e.review_policy !== 'manager' ? 'selected' : ''}>Só quando a tarefa pedir</option>
         <option value="manager" ${e.review_policy === 'manager' ? 'selected' : ''}>O gestor revisa todo resultado antes de concluir</option></select></label></div>
     <div class="row mt"><button id="tw-save">Salvar</button></div></div>
@@ -539,7 +540,7 @@ async function empSettings(t, e) {
   };
   $('#tw-save').onclick = ev => act(ev.target, () => api('/employees/' + e.slug, { method: 'PATCH', body: {
     colleagues: [...t.querySelectorAll('.tw-col:checked')].map(c => c.value), plan_policy: $('#tw-plan').value, recall: $('#tw-recall').checked,
-    quality_sample: Number($('#tw-quality').value), review_policy: $('#tw-review').value } }).then(route), 'Salvo');
+    quality_sample: Number($('#tw-quality').value), review_policy: $('#tw-review').value, reports_to: $('#tw-chief').value || null } }).then(route), 'Salvo');
   $('#ib-save').onclick = ev => {
     const body = { host: $('#ib-host').value.trim(), port: Number($('#ib-port').value) || 993, user: $('#ib-user').value.trim(),
       folder: $('#ib-folder').value.trim() || 'INBOX', allowed: lines($('#ib-allowed').value), enabled: $('#ib-on').checked };

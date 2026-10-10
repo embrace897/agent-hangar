@@ -12,7 +12,7 @@ from .common import PlatformError, audit, iso
 
 FIELDS = ("title", "mission", "responsibilities", "systems", "kpis", "working_hours", "task_budget_usd",
           "task_time_limit_min", "report_hour", "report_weekday", "plan_policy", "recall", "quality_sample", "review_policy",
-          "colleagues", "channels")
+          "colleagues", "channels", "reports_to_id")
 RULE_FIELDS = ("action_type", "mode", "conditions", "approver", "expires_in_min", "note")
 
 

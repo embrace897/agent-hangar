@@ -100,8 +100,10 @@ def check_handoff(db, e: Employee, task: EmployeeTask, args: dict) -> dict | Non
     title = str(args.get("title") or "").strip()
     if not to or not title:
         return {"status": "denied", "message": "handoff_task: diga para quem (to) e o título (title)"}
-    if to not in (e.colleagues or []):
-        names = ", ".join(e.colleagues or []) or ("none" if en else "nenhum")
+    from .org_chart import handoff_targets
+    allowed = handoff_targets(db, e)  # os colegas liberados, o chefe e quem reporta a ele
+    if to not in allowed:
+        names = ", ".join(allowed) or ("none" if en else "nenhum")
         return {"status": "denied", "message": (f"'{to}' is not one of your colleagues for handoffs ({names}). "
                                                 "Ask your manager." if en else
                                                 f"'{to}' não está entre os colegas liberados para repasse ({names}). "
@@ -311,6 +313,10 @@ def prompt_extras(db, e: Employee, task: EmployeeTask, past: list[dict]) -> list
                     f"result):\n{who}") if en else
                    ("Colegas para quem você pode repassar parte do trabalho com a ferramenta handoff_task (wait=true para "
                     f"continuar com o resultado deles):\n{who}"))
+    from .org_chart import prompt_lines as org_lines
+    org = org_lines(db, e, en)
+    if org:
+        out.append(org)
     if past:
         head = ("Similar work you did before (a reference: check current data before repeating anything):" if en else
                 "Trabalhos anteriores parecidos que você fez (referência: confira os dados atuais antes de repetir):")

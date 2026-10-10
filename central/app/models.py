@@ -129,6 +129,8 @@ class Skill(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     created_by: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | deprecated (não use em agentes novos)
+    cases: Mapped[list | None] = mapped_column(JSON, nullable=True)  # entradas de teste salvas no Skill Studio
 
 
 class McpServer(Base):
@@ -538,6 +540,7 @@ class Employee(Base):
     inbox: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     quality_sample: Mapped[int] = mapped_column(Integer, default=20)  # % das tarefas concluídas que o juiz avalia (0 = nenhuma)
     review_policy: Mapped[str] = mapped_column(String(10), default="off")  # off | manager: todo resultado passa pelo gestor
+    reports_to_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # o Digital employee chefe (organograma)
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -765,6 +768,8 @@ class PluginInstall(Base):
     installed_by: Mapped[str] = mapped_column(String(254), default="")
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     rate_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)  # chamadas por minuto (vazio = o do manifesto)
+    tool_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {ferramenta: off | ask | allow}
+    identity_mode: Mapped[str] = mapped_column(String(12), default="team")  # team | requester | prefer_requester
 
 
 class PluginCall(Base):
@@ -927,3 +932,79 @@ class EmployeeRevision(Base):
     summary: Mapped[str] = mapped_column(String(300), default="")
     changed_by: Mapped[str] = mapped_column(String(254), default="")
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SkillRevision(Base):
+    """Cada versão de uma skill (o conteúdo, os exemplos e o teste), para comparar e restaurar."""
+    __tablename__ = "skill_revisions"
+    __table_args__ = (UniqueConstraint("skill_id", "version"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    examples: Mapped[str] = mapped_column(Text, default="")
+    test: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    changed_by: Mapped[str] = mapped_column(String(254), default="")
+    note: Mapped[str] = mapped_column(String(300), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SkillTestRun(Base):
+    """Uma rodada dos casos de teste de uma skill numa versão: dá para comparar versões."""
+    __tablename__ = "skill_test_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    connection: Mapped[str] = mapped_column(String(100), default="")
+    results: Mapped[list] = mapped_column(JSON, default=list)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    by: Mapped[str] = mapped_column(String(254), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PluginUserAccount(Base):
+    """A conta pessoal de uma pessoa num plugin OAuth2: com identity_mode=requester, o Digital employee usa a conta de
+    quem pediu a tarefa (e não a do time)."""
+    __tablename__ = "plugin_user_accounts"
+    __table_args__ = (UniqueConstraint("plugin_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plugin_id: Mapped[int] = mapped_column(ForeignKey("plugins.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    secret: Mapped[str] = mapped_column(Text, default="")  # JSON criptografado: {oauth: {access_token, refresh_token…}}
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Secret(Base):
+    """Segredo central (da empresa ou de um time), referenciado como secret://nome. O valor é criptografado e nunca volta
+    pela API; quem usa e quando fica registrado."""
+    __tablename__ = "secrets"
+    __table_args__ = (UniqueConstraint("team_id", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    value: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_by: Mapped[str] = mapped_column(String(200), default="")
+
+
+class SecretProposal(Base):
+    """Quem não administra segredos propõe um valor novo; quem administra aprova (sem ver o valor antigo)."""
+    __tablename__ = "secret_proposals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(80))
+    value: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    proposed_by: Mapped[str] = mapped_column(String(254), default="")
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | approved | rejected
+    decided_by: Mapped[str] = mapped_column(String(254), default="")
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

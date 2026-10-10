@@ -63,6 +63,51 @@ class ContinueBody(BaseModel):
     note: str = ""
 
 
+class SecretBody(BaseModel):
+    name: str
+    value: str = ""
+    team: str | None = None
+    description: str | None = None
+    note: str = ""
+
+
+class DecideBody(BaseModel):
+    approve: bool
+
+
+class SkillStudioBody(BaseModel):
+    description: str = ""
+    content: str = ""
+    examples: str = ""
+    test: dict | None = None
+    note: str = ""
+
+
+class CasesBody(BaseModel):
+    cases: list[dict] = Field(default_factory=list)
+
+
+class SkillRunBody(BaseModel):
+    connection: str | None = None
+
+
+class StatusBody(BaseModel):
+    status: str
+
+
+class PackageBody(BaseModel):
+    package: dict | str | None = None
+    catalog: str = ""  # id de um time pronto do catálogo, em vez do pacote
+    team: str
+    manager: str = ""
+
+
+class ExportBody(BaseModel):
+    team: str
+    name: str = ""
+    description: str = ""
+
+
 class MarkBody(BaseModel):
     keys: list[str]
     read: bool | None = None
@@ -137,6 +182,12 @@ def message_edit(task_id: int, message_id: int, body: MessageBody, request: Requ
 @router.delete("/tasks/{task_id}/messages/{message_id}")
 def message_discard(task_id: int, message_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.task_thread.discard(db, acc(request, db), task_id, message_id))
+
+
+# ------------------------------------------------------------------ organograma
+@router.get("/org-chart")
+def org_chart(request: Request, team: str | None = None, db=Depends(db_dep)):
+    return guard(lambda: svc.org_chart.chart(db, acc(request, db), team))
 
 
 # ------------------------------------------------------------------ dependências, pausa e continuar
@@ -233,6 +284,98 @@ def budget_delete(policy_id: int, request: Request, db=Depends(db_dep)):
 def budget_release(incident_id: int, body: ReleaseBody, request: Request, db=Depends(db_dep)):
     """Libera o resto da janela (a parada não volta até a próxima); as tarefas paradas voltam para a fila."""
     return guard(lambda: svc.budgets.resolve(db, acc(request, db), incident_id, body.note))
+
+
+# ------------------------------------------------------------------ Skill Studio
+@router.get("/skills")
+def skills(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.list_skills(db, acc(request, db)))
+
+
+@router.get("/skills/{name}")
+def skill(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.detail(db, acc(request, db), name))
+
+
+@router.put("/skills/{name}")
+def skill_save(name: str, body: SkillStudioBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.save(db, acc(request, db), name, body.description, body.content, body.examples,
+                                               body.test, body.note))
+
+
+@router.put("/skills/{name}/cases")
+def skill_cases(name: str, body: CasesBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.set_cases(db, acc(request, db), name, body.cases))
+
+
+@router.post("/skills/{name}/test")
+def skill_test(name: str, body: SkillRunBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.run_tests(db, acc(request, db), name, body.connection))
+
+
+@router.post("/skills/{name}/restore/{version}")
+def skill_restore(name: str, version: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.restore(db, acc(request, db), name, version))
+
+
+@router.post("/skills/{name}/status")
+def skill_status(name: str, body: StatusBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.skill_studio.set_status(db, acc(request, db), name, body.status))
+
+
+# ------------------------------------------------------------------ pacotes de time
+@router.get("/packages/catalog")
+def package_catalog(request: Request, db=Depends(db_dep)):
+    acc(request, db)
+    return svc.packages.catalog()
+
+
+@router.post("/packages/export")
+def package_export(body: ExportBody, request: Request, db=Depends(db_dep)):
+    """O pacote do time em JSON (o portal baixa como YAML). Sem segredos, instalações de plugins nem orçamentos."""
+    return guard(lambda: svc.packages.export(db, acc(request, db), body.team, body.name, body.description))
+
+
+def _pkg(body: PackageBody):
+    return svc.packages.catalog_doc(body.catalog) if body.catalog else body.package
+
+
+@router.post("/packages/preview")
+def package_preview(body: PackageBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.packages.preview(db, acc(request, db), _pkg(body), body.team, body.manager))
+
+
+@router.post("/packages/install")
+def package_install(body: PackageBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.packages.install(db, acc(request, db), _pkg(body), body.team, body.manager))
+
+
+# ------------------------------------------------------------------ cofre de segredos
+@router.get("/secrets")
+def secrets(request: Request, db=Depends(db_dep)):
+    """Nomes, escopo, versão e uso — nunca os valores."""
+    return guard(lambda: svc.secrets_vault.list_secrets(db, acc(request, db)))
+
+
+@router.put("/secrets")
+def secret_put(body: SecretBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.secrets_vault.put(db, acc(request, db), body.name, body.value, body.team, body.description))
+
+
+@router.delete("/secrets/{secret_id}")
+def secret_delete(secret_id: int, request: Request, db=Depends(db_dep)):
+    guard(lambda: svc.secrets_vault.delete(db, acc(request, db), secret_id))
+    return {"deleted": secret_id}
+
+
+@router.post("/secrets/proposals")
+def secret_propose(body: SecretBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.secrets_vault.propose(db, acc(request, db), body.name, body.value, body.team, body.note))
+
+
+@router.post("/secrets/proposals/{proposal_id}/decide")
+def secret_decide(proposal_id: int, body: DecideBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.secrets_vault.decide(db, acc(request, db), proposal_id, body.approve))
 
 
 # ------------------------------------------------------------------ caixa de entrada e busca

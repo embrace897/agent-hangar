@@ -167,6 +167,23 @@ function plSignature(p) {
 
 const CALL_STATUS = { ok: ['ok', 'ok'], error: ['erro', 'bad'], limited: ['limite', 'warn'] };
 
+const POLICY_LABEL = { allow: 'a alçada decide', ask: 'pede aprovação a cada uso', off: 'desligada' };
+const IDENTITY_LABEL = { team: 'a conta do time', requester: 'a conta de quem pediu (obrigatória)', prefer_requester: 'a de quem pediu, se conectada; senão a do time' };
+
+function plPolicy(m, inst) {
+  const pol = inst.tool_policy || {};
+  return `<details class="mt"><summary><b>Ações e identidade</b> <span class="mute small">${Object.keys(pol).length ? `${Object.keys(pol).length} ${window.t('com política própria')}` : ''}</span></summary>
+    <div class="mute small">Por ação: desligada some para os agentes; “pede aprovação” passa pela decisão de uma pessoa a cada uso (só Digital employees usam).</div>
+    <table class="small mt">${m.tools.map(t => `<tr><td><code class="inline" data-noi18n>${esc(t.name)}</code> <span class="mute">${esc(ACTION_LABEL[t.action] || t.action)}</span></td>
+      <td><select class="pl-pol" data-t="${esc(t.name)}" style="width:auto">${Object.entries(POLICY_LABEL).map(([k, v]) => `<option value="${k}" ${(pol[t.name] || 'allow') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</table>
+    ${m.auth.type === 'oauth2' ? `<label class="mt">Conta usada<select class="pl-ident" style="width:auto">${Object.entries(IDENTITY_LABEL).map(([k, v]) => `<option value="${k}" ${(inst.identity_mode || 'team') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <div class="mute small"><span>Contas pessoais conectadas:</span> ${inst.personal_accounts || 0}</div>` : ''}
+    <div class="row mt"><button class="ghost pl-pol-save">Salvar ações</button></div>
+    <h4 class="mt">Testar uma ação</h4><div class="mute small">Executa de verdade, com a credencial do time, e fica na auditoria.</div>
+    <div class="row mt" style="gap:6px"><select class="pl-try-tool" style="width:auto">${m.tools.map(t => `<option>${esc(t.name)}</option>`).join('')}</select>
+      <input class="pl-try-args code" value="{}" style="flex:1" data-noi18n><button class="ghost pl-try">Executar</button></div><pre class="code small pl-try-out" data-noi18n hidden></pre></details>`;
+}
+
 function plCalls(r) {
   if (!r.items.length) return '<div class="mute small mt">Nenhuma chamada registrada.</div>';
   return `<table class="small mt"><tr><th>Quando</th><th>Quem</th><th>Ferramenta</th><th>Resultado</th><th>Tempo</th></tr>
@@ -205,6 +222,7 @@ function plInstallForm(p, m, inst, team, emps, stage = false) {
     ${!stage ? `<div class="grid g2 mt"><label>Limite (chamadas por minuto)<input class="pl-rate" type="number" min="0" max="6000"
         value="${inst && inst.rate_limit ? inst.rate_limit : ''}" placeholder="${inst ? inst.rate_limit_effective || window.t('sem limite') : ''}"></label>
         <div class="mute small" style="align-self:end">${window.t('Vazio ou 0: o padrão do manifesto ou da empresa. Acima disso, a chamada volta como erro para o agente.')}</div></div>` : ''}
+    ${!stage && inst ? plPolicy(m, inst) : ''}
     ${plOauth(m, inst)}${stage ? plStageTriggers(m, inst) : plTriggers(m, inst, emps)}${plServer(inst)}
     ${inst && !stage ? `<div class="mute small mt"><span>Chamadas:</span> ${inst.stats.calls || 0} · <span>erros:</span> ${inst.stats.errors || 0}${inst.stats.last_call ? ` · <span>última</span> <span>${ago(inst.stats.last_call)}</span>` : ''}
       ${inst.last_test ? ` · <span>teste:</span> ${inst.last_test.ok ? '<span class="pill ok">ok</span>' : `<span class="pill bad">falhou</span> <span data-noi18n>${esc(inst.last_test.sample || '')}</span>`}` : ''}</div>` : ''}
@@ -260,6 +278,10 @@ async function pluginDetail(name) {
       <span class="mute small">${esc(r.by)} · <span>${ago(r.at)}</span></span>${r.note ? `<div class="small" data-noi18n>${esc(r.note)}</div>` : ''}</span>
       ${targets.includes(r.team) ? `<button class="ghost pl-req-x" data-t="${esc(r.team)}">Dispensar</button>` : '<span class="mute small">aguardando o mantenedor</span>'}</div>`).join('')}</div>` : ''}
   ${p.readme ? `<div class="card mt md" data-noi18n>${mdLite(p.readme)}</div>` : ''}
+  ${p.live && m.auth.type === 'oauth2' && prodInstalls.some(i => i.identity_mode && i.identity_mode !== 'team') ? `<div class="card mt"><h2>Minha conta</h2>
+    <div class="mute small">Este plugin usa a conta de quem pede a tarefa: conecte a sua para os Digital employees agirem em seu nome quando você pedir.</div>
+    <div class="row mt" style="gap:6px">${p.my_account ? '<span class="pill ok">conectada</span><button class="ghost danger" id="pl-my-off">Desconectar</button>'
+      : `<button id="pl-my-on">Conectar a minha conta</button>`}</div></div>` : ''}
   <div class="grid g2 mt"><div class="card"><h2>Permissões</h2><dl class="kv">
       ${perm.runtime === 'server' ? `<dt>Código</dt><dd><span class="pill info">servidor em container</span>
         <div class="small mt"><code class="inline" data-noi18n>${esc(perm.image)}</code> ${perm.pinned ? '<span class="pill ok">fixada por digest</span>' : '<span class="pill warn">sem digest (desenvolvimento)</span>'}</div></dd>
@@ -295,6 +317,9 @@ async function pluginDetail(name) {
     <textarea id="pl-yaml" rows="18" class="code mt" data-noi18n>${esc(p.yaml)}</textarea>
     <div class="row mt"><button class="ghost" id="pl-update">Salvar rascunho</button>${!p.approved_version || ME.is_admin ? '<button class="ghost danger" id="pl-delete">Apagar</button>' : ''}</div></div>` : ''}`;
   const on = (sel, fn) => { const b = $(sel); if (b) b.onclick = fn; };
+  on('#pl-my-on', ev => act(ev.target, () => api(`/plugins/${name}/my-account/connect`, { method: 'POST', body: { team: (prodInstalls.find(i => i.identity_mode !== 'team') || {}).team || null } })
+    .then(r => { location.href = r.authorize_url; })));
+  on('#pl-my-off', ev => act(ev.target, () => api(`/plugins/${name}/my-account`, { method: 'DELETE' }).then(route), 'Conta desconectada'));
   on('#pl-submit', ev => act(ev.target, () => api(`/plugins/${name}/submit`, { method: 'POST' }).then(route), 'Enviado para revisão'));
   on('#pl-update', ev => act(ev.target, () => api(`/plugins/${name}`, { method: 'PUT', body: { manifest: $('#pl-yaml').value } }).then(route), 'Rascunho salvo'));
   on('#pl-delete', ev => confirm(`${window.t('Apagar o plugin')} ${name}?`) && act(ev.target, () => api(`/plugins/${name}`, { method: 'DELETE' }).then(() => { location.hash = '#/plugins'; })));
@@ -347,6 +372,23 @@ async function pluginDetail(name) {
         }));
       };
     });
+    const ps = $('.pl-pol-save', card);
+    if (ps) ps.onclick = ev => {
+      const body = { team, tool_policy: Object.fromEntries([...card.querySelectorAll('.pl-pol')].map(s => [s.dataset.t, s.value])) };
+      const idm = $('.pl-ident', card);
+      if (idm) body.identity_mode = idm.value;
+      act(ev.target, () => api(`/plugins/${name}/install`, { method: 'PUT', body }).then(route), 'Ações salvas');
+    };
+    const tr = $('.pl-try', card);
+    if (tr) tr.onclick = ev => {
+      let args;
+      try { args = JSON.parse($('.pl-try-args', card).value || '{}'); } catch { return toast(window.t('Os argumentos precisam ser JSON'), true); }
+      const tool = $('.pl-try-tool', card).value;
+      if (!confirm(`${window.t('Executar de verdade')} ${tool}?`)) return;
+      act(ev.target, () => api(`/plugins/${name}/install/try`, { method: 'POST', body: { team, tool, args } }).then(r => {
+        const out = $('.pl-try-out', card); out.hidden = false; out.textContent = `${r.ok ? 'ok' : 'erro'}${r.status ? ` · HTTP ${r.status}` : ''}\n${r.result}`;
+      }));
+    };
     const calls = $('.pl-calls', card);
     if (calls) calls.onclick = ev => act(ev.target, () => api(`/plugins/${name}/calls${q}`).then(r => { $('.pl-calls-out', card).innerHTML = plCalls(r); }));
     const lg = $('.pl-logs', card);

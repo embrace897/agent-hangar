@@ -372,3 +372,184 @@ async function filesPage() {
   $('#fgo').onclick = go;
   $('#fq').onkeydown = e => { if (e.key === 'Enter') go(); };
 }
+
+/* ---------- fase C: organograma, Skill Studio, pacotes de time e cofre de segredos ---------- */
+async function orgChartPage() {
+  const team = qsOf().get('team') || '';
+  const d = await api('/org-chart' + (team ? `?team=${encodeURIComponent(team)}` : ''));
+  const kids = {}, slugs = new Set(d.nodes.map(n => n.slug));
+  d.nodes.forEach(n => { const p = n.reports_to && slugs.has(n.reports_to) ? n.reports_to : ''; (kids[p] = kids[p] || []).push(n); });
+  const teams = [...new Set(d.nodes.map(n => n.team).filter(Boolean))];
+  const node = n => `<li><div class="org-node"><a href="#/employees/${esc(n.slug)}"><b>${esc(n.name)}</b></a> ${empPill(n.status)}
+      <div class="mute small"><span data-noi18n>${esc(n.title)}</span> · <span>${esc(LEVEL_LABEL[n.level] || n.level)}</span>
+        ${n.manager ? ` · <span>gestor:</span> <span data-noi18n>${esc(n.manager)}</span>` : ''}</div></div>
+    ${(kids[n.slug] || []).length ? `<ul>${kids[n.slug].map(node).join('')}</ul>` : ''}</li>`;
+  main.innerHTML = `<div class="row between"><div><h1>Organograma</h1><div class="sub">Quem reporta a quem entre os Digital employees. O chefe delega para quem reporta a ele, e quem reporta sobe para o chefe o que não é seu (sempre pela alçada). O gestor de cada um continua sendo uma pessoa.</div></div>
+    <select id="oc-team" style="width:auto"><option value="">${window.t('Todos os times')}</option>${teams.map(t => `<option ${t === team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+  ${d.nodes.length ? `<div class="card org"><ul>${(kids[''] || []).map(node).join('')}</ul></div>
+    <div class="mute small mt">Defina o chefe em <b>Configurações → Trabalho em equipe</b> de cada Digital employee.</div>`
+    : '<div class="card empty"><div class="mute">Nenhum Digital employee visível.</div></div>'}`;
+  $('#oc-team').onchange = () => { location.hash = '#/org' + ($('#oc-team').value ? `?team=${encodeURIComponent($('#oc-team').value)}` : ''); };
+}
+
+async function skillsPage() {
+  const list = await api('/skills');
+  const canCreate = ME.is_admin || myTeams('developer').length;
+  main.innerHTML = `<h1>Skill Studio</h1><div class="sub">As skills da empresa: procedimentos e conhecimento que os agentes usam. Edite, teste com entradas salvas, compare versões e restaure a anterior quando uma mudança piorar o resultado.</div>
+  ${list.length ? `<div class="card"><table class="small"><tr><th>Skill</th><th>Versão</th><th>Casos</th><th>Último teste</th><th>Status</th></tr>
+    ${list.map(s => `<tr><td><a href="#/skills/${encodeURIComponent(s.name)}"><b data-noi18n>${esc(s.name)}</b></a><div class="mute" data-noi18n>${esc(s.description || '')}</div></td>
+      <td>v${s.version}</td><td>${s.cases}</td>
+      <td>${s.last_run ? `${s.last_run.passed ? '<span class="pill ok">passou</span>' : '<span class="pill bad">falhou</span>'} <span class="mute">v${s.last_run.version} · <span>${when(s.last_run.at)}</span></span>` : '<span class="mute">—</span>'}</td>
+      <td>${s.status === 'deprecated' ? '<span class="pill warn">descontinuada</span>' : '<span class="pill ok">ativa</span>'}</td></tr>`).join('')}</table></div>`
+    : '<div class="card empty"><div class="mute">Nenhuma skill ainda.</div></div>'}
+  ${canCreate ? `<div class="card mt"><h2>Nova skill</h2><div class="grid g2"><label>Nome<input id="sk-name" placeholder="ex.: tom-de-voz" data-noi18n></label>
+      <label>Descrição<input id="sk-desc"></label></div><label class="mt">Conteúdo (markdown)<textarea id="sk-content" rows="6" class="code" data-noi18n></textarea></label>
+    <div class="row mt"><button id="sk-go">Criar</button></div></div>` : ''}`;
+  const go = $('#sk-go');
+  if (go) go.onclick = ev => act(ev.target, () => api('/skills/' + encodeURIComponent($('#sk-name').value.trim()), { method: 'PUT', body: {
+    description: $('#sk-desc').value.trim(), content: $('#sk-content').value } }).then(s => { location.hash = '#/skills/' + encodeURIComponent(s.name); }), 'Skill criada');
+}
+
+async function skillDetail(name) {
+  const s = await api('/skills/' + encodeURIComponent(name));
+  const ed = s.can_edit;
+  const casesTxt = JSON.stringify(s.case_list || [], null, 1);
+  main.innerHTML = `<a href="#/skills" class="mute small">← Skill Studio</a>
+  <div class="row between"><div><h1 data-noi18n>${esc(s.name)}</h1><div class="sub">v${s.version} · ${s.status === 'deprecated' ? '<span class="pill warn">descontinuada</span>' : '<span class="pill ok">ativa</span>'}
+    <span data-noi18n>${esc(s.description || '')}</span></div></div>
+    ${ed ? `<button class="ghost" id="sk-dep">${s.status === 'deprecated' ? 'Reativar' : 'Descontinuar'}</button>` : ''}</div>
+  <div class="grid g2"><div class="card"><h2>Conteúdo</h2>
+      <label>Descrição<input id="sk-desc" value="${esc(s.description || '')}" ${ed ? '' : 'disabled'}></label>
+      <label class="mt">Conteúdo<textarea id="sk-content" rows="12" class="code" data-noi18n ${ed ? '' : 'disabled'}>${esc(s.content)}</textarea></label>
+      <label class="mt">Exemplos<textarea id="sk-ex" rows="4" class="code" data-noi18n ${ed ? '' : 'disabled'}>${esc(s.examples || '')}</textarea></label>
+      ${ed ? `<div class="row mt" style="gap:6px"><input id="sk-note" placeholder="${esc(window.t('o que mudou (opcional)'))}" style="flex:1"><button id="sk-save">Salvar versão nova</button></div>` : ''}</div>
+    <div class="card"><h2>Testes</h2><div class="mute small">Cada caso: <code class="inline">input</code> e o que esperar (<code class="inline">expect_contains</code>, <code class="inline">expect_regex</code> ou <code class="inline">judge</code>).
+        Sem conexão de LLM, a rodada é mock e o conteúdo não é avaliado.</div>
+      <textarea id="sk-cases" rows="8" class="code mt" data-noi18n ${ed ? '' : 'disabled'}>${esc(casesTxt)}</textarea>
+      ${ed ? `<div class="row mt" style="gap:6px"><button class="ghost" id="sk-cases-save">Salvar casos</button>
+        <select id="sk-conn" style="width:auto"><option value="">${window.t('mock (sem LLM)')}</option>${(s.connections || []).map(c => `<option>${esc(c)}</option>`).join('')}</select>
+        <button id="sk-run">Rodar os testes</button></div>` : ''}<div id="sk-out"></div>
+      ${(s.runs || []).length ? `<h3 class="mt">Rodadas</h3>${s.runs.map(r => `<div class="li small">${r.passed ? '<span class="pill ok">passou</span>' : '<span class="pill bad">falhou</span>'}
+        v${r.version} · <span data-noi18n>${esc(r.connection)}</span> · <span data-noi18n>${esc(r.by)}</span> · <span>${when(r.at)}</span>
+        <span class="mute">(${r.results.filter(x => x.passed).length}/${r.results.length})</span></div>`).join('')}` : ''}</div></div>
+  <div class="card mt"><h2>Versões</h2>${(s.revisions || []).map(r => `<div class="li row between small"><span><b>v${r.version}</b> <span class="mute"><span data-noi18n>${esc(r.changed_by)}</span> · <span>${when(r.at)}</span>
+      ${r.note ? ` · <span data-noi18n>${esc(r.note)}</span>` : ''}</span><details><summary class="mute">${window.t('ver conteúdo')}</summary><pre class="code small" data-noi18n>${esc(r.content)}</pre></details></span>
+      ${ed && r.version !== s.version ? `<button class="ghost small sk-restore" data-v="${r.version}">Restaurar</button>` : r.version === s.version ? '<span class="pill ok">atual</span>' : ''}</div>`).join('')}</div>`;
+  if (!ed) return;
+  const n = encodeURIComponent(name);
+  $('#sk-save').onclick = ev => act(ev.target, () => api('/skills/' + n, { method: 'PUT', body: { description: $('#sk-desc').value, content: $('#sk-content').value,
+    examples: $('#sk-ex').value, test: s.test, note: $('#sk-note').value } }).then(route), 'Versão salva');
+  $('#sk-cases-save').onclick = ev => {
+    let cases;
+    try { cases = JSON.parse($('#sk-cases').value || '[]'); } catch { return toast(window.t('Os casos precisam ser JSON (uma lista)'), true); }
+    act(ev.target, () => api(`/skills/${n}/cases`, { method: 'PUT', body: { cases } }).then(route), 'Casos salvos');
+  };
+  $('#sk-run').onclick = ev => act(ev.target, () => api(`/skills/${n}/test`, { method: 'POST', body: { connection: $('#sk-conn').value || null } }).then(r => {
+    $('#sk-out').innerHTML = `<div class="card mt small">${r.passed ? '<span class="pill ok">passou</span>' : '<span class="pill bad">falhou</span>'}${r.mock ? ' <span class="pill">mock</span>' : ''}
+      ${r.results.map(x => `<div class="li">${x.passed ? icon('check', 'ok-ic') : icon('x', 'bad-ic')} <b data-noi18n>${esc(x.name)}</b><div class="mute" data-noi18n>${esc(x.detail)}</div></div>`).join('')}</div>`;
+  }));
+  $('#sk-dep').onclick = ev => act(ev.target, () => api(`/skills/${n}/status`, { method: 'POST', body: { status: s.status === 'deprecated' ? 'active' : 'deprecated' } }).then(route));
+  main.querySelectorAll('.sk-restore').forEach(b => b.onclick = ev => confirm(`${window.t('Restaurar a versão')} v${b.dataset.v}?`) &&
+    act(ev.target, () => api(`/skills/${n}/restore/${b.dataset.v}`, { method: 'POST' }).then(route), 'Versão restaurada'));
+}
+
+async function packagesPage() {
+  const cat = await api('/packages/catalog');
+  const mteams = myTeams('maintainer'), dteams = myTeams('developer');
+  const teamSel = (id, teams) => `<select id="${id}" style="width:auto">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name || t.slug)}</option>`).join('')}</select>`;
+  main.innerHTML = `<h1>Pacotes de time</h1><div class="sub">Leve a configuração de um time para outro, ou comece de um time pronto: cargos, alçada, rotinas, organograma, skills, metas e projetos.
+    Segredos, instalações de plugins e orçamentos não vão no pacote. Os Digital employees chegam em rascunho e passam pela experiência e pela admissão.</div>
+  <h2 class="mt">Times prontos</h2>${cat.length ? `<div class="grid g2">${cat.map(c => `<div class="card"><b data-noi18n>${esc(c.name)}</b><div class="mute small" data-noi18n>${esc(c.description || '')}</div>
+      <div class="small mt">${c.employees.map(e => `<div>${icon('bot')} <span data-noi18n>${esc(e.name)}</span> <span class="mute" data-noi18n>— ${esc(e.title)}${e.reports_to ? ` (→ ${esc(e.reports_to)})` : ''}</span></div>`).join('')}</div>
+      ${c.projects.length ? `<div class="small mute mt">${icon('folder')} <span data-noi18n>${c.projects.map(esc).join(', ')}</span></div>` : ''}
+      ${mteams.length ? `<div class="row mt" style="gap:6px"><button class="ghost pk-cat" data-id="${esc(c.id)}">Instalar</button></div>` : ''}</div>`).join('')}</div>`
+    : '<div class="card mute">Nenhum time pronto nesta instalação.</div>'}
+  ${mteams.length ? `<div class="card mt"><h2>Importar um pacote</h2><div class="mute small">Cole o pacote (JSON ou YAML) ou escolha o arquivo. Primeiro vem a prévia; nada é criado sem confirmar.</div>
+      <textarea id="pk-doc" rows="6" class="code mt" data-noi18n placeholder="kind: hangar-package"></textarea>
+      <div class="row mt" style="gap:6px"><input type="file" id="pk-file" accept=".json,.yaml,.yml"></div>
+      <div class="grid g2 mt"><label>Para o time${teamSel('pk-team', mteams)}</label><label>Gestor dos Digital employees (e-mail)<input id="pk-mgr" value="${esc(ME.name || '')}" data-noi18n></label></div>
+      <div class="row mt"><button id="pk-preview">Ver a prévia</button></div><div id="pk-out"></div></div>` : ''}
+  ${dteams.length ? `<div class="card mt"><h2>Exportar um time</h2><div class="row" style="gap:6px">${teamSel('px-team', dteams)}<button class="ghost" id="px-go">Baixar o pacote</button></div></div>` : ''}`;
+  let source = null;
+  const preview = (body) => act($('#pk-preview') || document.body, () => api('/packages/preview', { method: 'POST', body }).then(pv => {
+    $('#pk-out').innerHTML = `<div class="card mt ${pv.ok ? '' : 'bad-card'}"><b data-noi18n>${esc(pv.name || '')}</b> → <span data-noi18n>${esc(pv.team)}</span>
+      <div class="small mt">${pv.employees.map(e => `<div>${icon('bot')} <span data-noi18n>${esc(e.slug)}</span> <span class="mute" data-noi18n>${esc(e.title)}</span>${e.renamed ? ` <span class="pill">${window.t('renomeado')}</span>` : ''}</div>`).join('')}</div>
+      ${pv.skills.length ? `<div class="small mt"><span class="mute">Skills:</span> ${pv.skills.map(s => `<span data-noi18n>${esc(s.name)}</span>${s.exists ? ` <span class="mute">(${window.t('já existe: reaproveitada')})</span>` : ''}`).join(', ')}</div>` : ''}
+      ${pv.goals.length ? `<div class="small"><span class="mute">Metas:</span> <span data-noi18n>${pv.goals.map(esc).join(', ')}</span></div>` : ''}
+      ${pv.problems.length ? `<div class="small mt bad-ic">${pv.problems.map(esc).join('<br>')}</div>` : ''}
+      ${pv.ok ? '<div class="row mt"><button id="pk-install">Instalar</button></div>' : ''}</div>`;
+    const ins = $('#pk-install');
+    if (ins) ins.onclick = ev => act(ev.target, () => api('/packages/install', { method: 'POST', body }).then(r => {
+      toast(`${r.created.employees.length} ${window.t('Digital employee(s) criados em rascunho')}`);
+      location.hash = '#/employees';
+    }));
+  }));
+  main.querySelectorAll('.pk-cat').forEach(b => b.onclick = () => {
+    source = { catalog: b.dataset.id };
+    if (!$('#pk-out')) return;
+    $('#pk-doc').value = '';
+    preview({ ...source, team: $('#pk-team').value, manager: $('#pk-mgr').value.trim() });
+    $('#pk-out').scrollIntoView({ behavior: 'smooth' });
+  });
+  const file = $('#pk-file');
+  if (file) file.onchange = async () => { const f = file.files[0]; if (f) $('#pk-doc').value = await f.text(); };
+  const pv = $('#pk-preview');
+  if (pv) pv.onclick = () => {
+    const doc = $('#pk-doc').value.trim();
+    source = doc ? { package: doc } : source;
+    if (!source) return toast(window.t('Cole um pacote ou escolha um time pronto'), true);
+    preview({ ...source, team: $('#pk-team').value, manager: $('#pk-mgr').value.trim() });
+  };
+  const px = $('#px-go');
+  if (px) px.onclick = ev => act(ev.target, () => api('/packages/export', { method: 'POST', body: { team: $('#px-team').value } }).then(pkg => {
+    const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${$('#px-team').value}.hangar-package.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }), 'Pacote exportado');
+}
+
+async function secretsPage() {
+  const d = await api('/secrets');
+  const mteams = myTeams('maintainer');
+  const canManage = ME.is_admin || mteams.length;
+  main.innerHTML = `<h1>Segredos</h1><div class="sub">Credenciais guardadas num lugar só e referenciadas como <code class="inline">secret://nome</code> (por enquanto, na credencial e nas configurações secretas das instalações de plugins).
+    O valor é criptografado e nunca volta: trocar aqui vale na hora em todo lugar que usa. Cada uso fica contado.</div>
+  <div class="card"><h2>Cofre (${d.secrets.length})</h2>${d.secrets.length ? `<table class="small"><tr><th>Nome</th><th>Escopo</th><th>Versão</th><th>Usos</th><th>Último uso</th><th></th></tr>
+    ${d.secrets.map(s => `<tr data-id="${s.id}" data-name="${esc(s.name)}" data-team="${esc(s.team || '')}"><td><code class="inline" data-noi18n>${esc(s.ref)}</code>${s.description ? `<div class="mute" data-noi18n>${esc(s.description)}</div>` : ''}</td>
+      <td>${s.team ? `<span data-noi18n>${esc(s.team)}</span>` : window.t('empresa')}</td><td>v${s.version} <span class="mute"><span data-noi18n>${esc(s.updated_by)}</span></span></td>
+      <td>${s.uses}</td><td class="mute">${s.last_used_at ? `<span>${when(s.last_used_at)}</span> · <span data-noi18n>${esc(s.last_used_by)}</span>` : '—'}</td>
+      <td>${s.can_manage ? '<button class="ghost small sc-rot">Trocar valor</button> <button class="ghost small danger sc-del">Apagar</button>' : ''}</td></tr>`).join('')}</table>`
+    : '<div class="mute">Nenhum segredo ainda.</div>'}</div>
+  <div class="grid g2 mt">${canManage ? `<div class="card"><h2>Novo segredo</h2>
+      <label>Nome<input id="sc-name" placeholder="ex.: erp-api-key" data-noi18n></label>
+      <label class="mt">De quem<select id="sc-team">${ME.is_admin ? `<option value="">${window.t('Empresa')}</option>` : ''}${mteams.map(t => `<option value="${esc(t.slug)}">${esc(t.name || t.slug)}</option>`).join('')}</select></label>
+      <label class="mt">Valor<input id="sc-value" type="password" autocomplete="off"></label><label class="mt">Descrição<input id="sc-desc"></label>
+      <div class="row mt"><button id="sc-go">Guardar</button></div></div>` : ''}
+    <div class="card"><h2>Propor um valor</h2><div class="mute small">Sem permissão para o cofre? Proponha (por exemplo, a chave nova de um sistema): quem administra aprova sem ver o valor antigo.</div>
+      <label class="mt">Nome<input id="sp-name" data-noi18n></label>
+      <label class="mt">Time<select id="sp-team"><option value="">${window.t('Empresa')}</option>${(ME.teams || []).map(t => `<option value="${esc(t.slug)}">${esc(t.name || t.slug)}</option>`).join('')}</select></label>
+      <label class="mt">Valor<input id="sp-value" type="password" autocomplete="off"></label><label class="mt">Nota<input id="sp-note"></label>
+      <div class="row mt"><button class="ghost" id="sp-go">Propor</button></div></div></div>
+  ${d.proposals.length ? `<div class="card mt"><h2>Propostas</h2>${d.proposals.map(p => `<div class="li row between small" data-id="${p.id}"><span><code class="inline" data-noi18n>${esc(p.name)}</code>
+      ${p.team ? `<span data-noi18n>${esc(p.team)}</span>` : window.t('empresa')} · <span data-noi18n>${esc(p.proposed_by)}</span> · <span>${when(p.created_at)}</span>
+      ${p.note ? ` · <span data-noi18n>${esc(p.note)}</span>` : ''} <span class="pill ${p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'warn'}">${esc(window.t(p.status === 'approved' ? 'aprovada' : p.status === 'rejected' ? 'recusada' : 'aberta'))}</span></span>
+      ${p.can_decide ? '<span class="row" style="gap:4px"><button class="small sp-yes">Aprovar</button><button class="ghost small danger sp-no">Recusar</button></span>' : ''}</div>`).join('')}</div>` : ''}`;
+  const go = $('#sc-go');
+  if (go) go.onclick = ev => act(ev.target, () => api('/secrets', { method: 'PUT', body: { name: $('#sc-name').value.trim(), team: $('#sc-team').value || null,
+    value: $('#sc-value').value, description: $('#sc-desc').value } }).then(secretsPage), 'Segredo guardado');
+  $('#sp-go').onclick = ev => act(ev.target, () => api('/secrets/proposals', { method: 'POST', body: { name: $('#sp-name').value.trim(), team: $('#sp-team').value || null,
+    value: $('#sp-value').value, note: $('#sp-note').value } }).then(secretsPage), 'Proposta enviada');
+  main.querySelectorAll('tr[data-id]').forEach(tr => {
+    const rot = $('.sc-rot', tr), del = $('.sc-del', tr);
+    if (rot) rot.onclick = ev => { const v = prompt(window.t('Novo valor:')); if (v) act(ev.target, () => api('/secrets', { method: 'PUT', body: { name: tr.dataset.name, team: tr.dataset.team || null, value: v } }).then(secretsPage), 'Valor trocado'); };
+    if (del) del.onclick = ev => confirm(window.t('Apagar este segredo? O que o usa deixa de funcionar.')) && act(ev.target, () => api('/secrets/' + tr.dataset.id, { method: 'DELETE' }).then(secretsPage));
+  });
+  main.querySelectorAll('.li[data-id]').forEach(li => {
+    const y = $('.sp-yes', li), n = $('.sp-no', li);
+    if (y) y.onclick = ev => act(ev.target, () => api(`/secrets/proposals/${li.dataset.id}/decide`, { method: 'POST', body: { approve: true } }).then(secretsPage), 'Proposta aprovada');
+    if (n) n.onclick = ev => act(ev.target, () => api(`/secrets/proposals/${li.dataset.id}/decide`, { method: 'POST', body: { approve: false } }).then(secretsPage));
+  });
+}
