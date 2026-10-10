@@ -29,10 +29,10 @@ ALLOW = re.compile(r"^(e2e|E2E|https?://|[\w.-]+@[\w.-]+$)")
 DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/api/templates", "/api/employees",
                   "/api/plugins", "/api/teams", "/api/remote-mcps", "/api/connect", "/api/deployments", "/api/tests",
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
-PAGES_APP = ["", "inbox", "search?q=e2e", "projects", "goals", "budgets", "agents", "agents/catalog", "agents/new", "approvals",
+PAGES_APP = ["", "inbox", "search?q=e2e", "projects", "goals", "budgets", "files", "agents", "agents/catalog", "agents/new", "approvals",
              "employees", "employees/new", "manager", "decisions",
              "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit", "users"]
-PAGES_UI = ["", "inbox", "projects", "goals", "budgets", "agents", "approvals", "workforce/overview", "workforce/catalog", "workforce/floor", "workforce/notify",
+PAGES_UI = ["", "inbox", "projects", "goals", "budgets", "files", "agents", "approvals", "workforce/overview", "workforce/catalog", "workforce/floor", "workforce/notify",
             "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
             "audit", "teams", "users", "keys", "sso"]
 

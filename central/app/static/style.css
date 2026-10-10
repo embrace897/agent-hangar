@@ -301,3 +301,5 @@ li.st-doing{font-weight:600}
 .msg-human.queued{border-style:dashed}
 .msg-agent{align-self:flex-start;background:var(--panel-2)}
 .msg-agent summary{cursor:pointer;max-width:100%}
+details.inline{display:inline-block}
+details.inline summary{cursor:pointer}

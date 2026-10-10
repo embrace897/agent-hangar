@@ -1,8 +1,13 @@
 """O trabalho do dia a dia: metas, projetos, a conversa da tarefa, orçamentos, a caixa de entrada e a busca."""
+import urllib.parse
+
 from fastapi import APIRouter, Depends, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import services as svc
+from ..db import SessionLocal
 from .deps import acc, db_dep, guard
 
 router = APIRouter(prefix="/api")
@@ -42,6 +47,19 @@ class BudgetBody(BaseModel):
 
 
 class ReleaseBody(BaseModel):
+    note: str = ""
+
+
+class DepBody(BaseModel):
+    on: int
+
+
+class HoldBody(BaseModel):
+    on: bool = True
+
+
+class ContinueBody(BaseModel):
+    confirm: bool = False
     note: str = ""
 
 
@@ -119,6 +137,70 @@ def message_edit(task_id: int, message_id: int, body: MessageBody, request: Requ
 @router.delete("/tasks/{task_id}/messages/{message_id}")
 def message_discard(task_id: int, message_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.task_thread.discard(db, acc(request, db), task_id, message_id))
+
+
+# ------------------------------------------------------------------ dependências, pausa e continuar
+@router.post("/tasks/{task_id}/dependencies")
+def dep_add(task_id: int, body: DepBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.task_flow.add_dependency(db, acc(request, db), task_id, body.on))
+
+
+@router.delete("/tasks/{task_id}/dependencies/{on_id}")
+def dep_remove(task_id: int, on_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.task_flow.remove_dependency(db, acc(request, db), task_id, on_id))
+
+
+@router.post("/tasks/{task_id}/hold")
+def hold(task_id: int, body: HoldBody, request: Request, db=Depends(db_dep)):
+    """Pausa (ou retoma) a tarefa e as que ela repassou."""
+    return guard(lambda: svc.task_flow.hold(db, acc(request, db), task_id, body.on))
+
+
+@router.post("/tasks/{task_id}/continue")
+def continue_task(task_id: int, body: ContinueBody, request: Request, db=Depends(db_dep)):
+    """Tarefa com falha: mais rodadas, do checkpoint. Se a última rodada fez algo fora da plataforma, exige confirm."""
+    return guard(lambda: svc.task_flow.continue_task(db, acc(request, db), task_id, body.confirm, body.note))
+
+
+# ------------------------------------------------------------------ arquivos (anexos e entregáveis)
+@router.post("/tasks/{task_id}/files")
+async def file_upload(task_id: int, request: Request, name: str = "", note: str = ""):
+    """O corpo é o arquivo; o nome vai em ?name= (e a nota em ?note=)."""
+    data = await request.body()
+    ctype = request.headers.get("content-type", "")
+
+    def go():
+        with SessionLocal() as db:
+            return guard(lambda: svc.task_files.upload(db, acc(request, db), task_id, name, data, ctype, note))
+    return await run_in_threadpool(go)
+
+
+@router.get("/tasks/{task_id}/files")
+def files(task_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.task_files.list_files(db, acc(request, db), task_id))
+
+
+@router.get("/files")
+def file_library(request: Request, q: str = "", kind: str = "output", project: str = "", employee: str = "",
+                 db=Depends(db_dep)):
+    return guard(lambda: svc.task_files.library(db, acc(request, db), q, kind, project, employee))
+
+
+@router.get("/files/{file_id}")
+def file_get(file_id: int, request: Request, inline: bool = False, db=Depends(db_dep)):
+    f = guard(lambda: svc.task_files.get(db, acc(request, db), file_id))
+    show = inline and f.content_type in svc.task_files.INLINE
+    disp = "inline" if show else "attachment"
+    headers = {"Content-Disposition": f"{disp}; filename*=UTF-8''{urllib.parse.quote(f.name)}",
+               "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'",
+               "Cache-Control": "private, no-store"}
+    return Response(f.data, media_type=f.content_type if show else "application/octet-stream", headers=headers)
+
+
+@router.delete("/files/{file_id}")
+def file_delete(file_id: int, request: Request, db=Depends(db_dep)):
+    guard(lambda: svc.task_files.delete(db, acc(request, db), file_id))
+    return {"deleted": file_id}
 
 
 # ------------------------------------------------------------------ orçamentos

@@ -37,7 +37,7 @@ log = logging.getLogger("hangar.notify")
 CHANNELS = ("auto", "slack", "teams", "email", "off")
 DEFAULTS = {"digest_hour": 9, "expiry_warn_min": 60, "overdue_escalate_min": 120, "due_soon_min": 60}
 LIMITS = {"digest_hour": (-1, 23), "expiry_warn_min": (0, 1440), "overdue_escalate_min": (5, 10080), "due_soon_min": (0, 1440)}
-OPEN_TASK = ("new", "in_progress", "waiting_human", "waiting_budget")
+OPEN_TASK = ("new", "in_progress", "waiting_human", "waiting_budget", "blocked", "in_review", "on_hold")
 HTTP = lambda: httpx.Client(timeout=15)  # noqa: E731  (os testes trocam)
 
 
@@ -340,7 +340,8 @@ L = {
     "pt": {"approve": "Aprovar", "edit": "Editar", "reject": "Recusar", "answer": "Responder", "open": "Abrir no portal",
            "approval": "quer fazer uma ação que precisa da sua aprovação", "question": "tem uma pergunta para você",
            "admission": "terminou a experiência: admitir?", "capability": "precisa de uma capacidade que não tem",
-           "notice": "fez uma ação e avisa", "plan": "propõe um plano para a tarefa", "why": "Motivo", "task": "Tarefa", "expires": "Expira",
+           "notice": "fez uma ação e avisa", "plan": "propõe um plano para a tarefa",
+           "review": "entregou um resultado para a sua revisão", "why": "Motivo", "task": "Tarefa", "expires": "Expira",
            "escalated": "Escalado para você (sem resposta no prazo)", "expiring": "Vai expirar em breve",
            "two": "Exige duas aprovações", "approved": "Aprovado por", "approve_edited": "Aprovado com edição por",
            "rejected": "Recusado por", "answered": "Respondido por", "instructed": "Instruído por",
@@ -349,7 +350,8 @@ L = {
     "en": {"approve": "Approve", "edit": "Edit", "reject": "Reject", "answer": "Answer", "open": "Open in the portal",
            "approval": "wants to take an action that needs your approval", "question": "has a question for you",
            "admission": "finished probation: hire?", "capability": "needs a capability it doesn't have",
-           "notice": "took an action and lets you know", "plan": "proposes a plan for the task", "why": "Reason", "task": "Task", "expires": "Expires",
+           "notice": "took an action and lets you know", "plan": "proposes a plan for the task",
+           "review": "delivered a result for your review", "why": "Reason", "task": "Task", "expires": "Expires",
            "escalated": "Escalated to you (no answer in time)", "expiring": "Expires soon",
            "two": "Needs two approvals", "approved": "Approved by", "approve_edited": "Approved with edits by",
            "rejected": "Rejected by", "answered": "Answered by", "instructed": "Instructed by",
@@ -361,7 +363,7 @@ L = {
 def verbs(r: HumanRequest) -> list[str]:
     """Botões que a mensagem oferece: o resto (capacidade, aviso) é decidido no portal."""
     return {"approval": ["approve", "edit", "reject"], "question": ["answer"],
-            "admission": ["approve", "reject"], "plan": ["approve", "reject"]}.get(r.kind, [])
+            "admission": ["approve", "reject"], "plan": ["approve", "reject"], "review": ["approve", "reject"]}.get(r.kind, [])
 
 
 def _who(db, e: Employee) -> tuple[str, str]:
@@ -397,6 +399,8 @@ def content(db, r: HumanRequest, why: str = "new") -> dict:
         lines.append(r.question[:2000])
     elif r.kind == "capability":
         lines.append(str((r.action_payload or {}).get("need", ""))[:500])
+    elif r.kind == "review":
+        code = str((r.action_payload or {}).get("result", ""))[:2500]
     elif r.kind == "plan":
         code = "\n".join(f"{i + 1}. {s}" for i, s in enumerate((r.edited_payload or r.action_payload or {}).get("steps", [])))
     if r.rationale and r.kind != "question":

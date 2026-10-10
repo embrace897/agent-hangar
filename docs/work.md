@@ -71,6 +71,53 @@ projects, goals, plugins and skills. It only returns what the person can see.
 by members of the employee's team, and by auditors and admins. Seeing an agent in the company catalog no longer gives
 access to its work.
 
+## Dependencies, review and hold
+
+- **Dependencies.** A task can depend on others (`blocked_by` when assigning, or *Add dependency* on the task). It
+  waits in `blocked` until they are all done, then joins the queue with each one's result in its prompt
+  ("PREREQUISITE TASK #12 DONE: …"). A dependency that fails or is cancelled leaves the task stuck (it shows in the
+  inbox) until someone continues the dependency or removes it. Cycles are refused.
+- **Review before finishing.** With *The result goes through review* on the task (`review`, optional `reviewer`
+  e-mail) or the job's *Review of results* set to the manager, a finished round does not close the task: it goes to
+  `in_review` and the reviewer gets a decision with the result. *Approve and finish* closes it; *Request changes*
+  sends the reason back to the employee as one more round.
+- **Hold.** *Pause* holds the task and the tasks it handed off (`on_hold`) until someone resumes it. A task in the
+  middle of a round is paused after the round, or cancelled.
+
+## Files and deliverables
+
+- **Attach** a file on the task page (the requester or anyone who can assign tasks to the employee). The employee
+  hears about it in the conversation and reads it with `read_file`.
+- **Deliverables.** The employee saves outputs with `save_file` (text or base64). The same name becomes a new version;
+  older ones stay downloadable. `list_files`, `read_file` and `save_file` are platform tools inside the employee's own
+  task, so they need no authority.
+- **Viewing.** Text, common images and PDF open in the browser; anything else (HTML, SVG…) only downloads, and every
+  response carries a sandboxing `Content-Security-Policy`.
+- **Limits.** Files are stored in the database, which works with several replicas without a shared volume:
+  `FILES_MAX_MB` (10) per file and `FILES_TASK_MAX_MB` (50) per task.
+- **Deliverables page** (`#/files`): the latest version of every output from the tasks you can read.
+
+## Recovery
+
+A stopped task explains itself in *Why it stopped*:
+- the state (failed, budget, decision, colleague, dependency, paused, retry scheduled);
+- the cause;
+- who has the next action, and the actions available.
+
+**Continue the task** gives a failed task 3 more rounds from its checkpoint. If the last round may have done
+something outside the platform (an action that is not just reading, allowed without approval), it asks you to
+confirm first, and the employee is told not to repeat it.
+
+## Job history
+
+Every change to a Digital employee's job, authority or settings becomes a version:
+- what the job looked like after the change;
+- who changed it, and when;
+- which fields changed.
+
+*Restore* applies an old version as a new one, so nothing is lost. The autonomy level and shadow mode keep their own
+history in the career plan.
+
 ## API
 
 | Method | Path | Description |
@@ -87,5 +134,13 @@ access to its work.
 | GET | `/api/inbox` | `?view=all|unread|decisions|blocked|mine|archived` |
 | POST | `/api/inbox/mark` | `{keys, read, archived}` |
 | GET | `/api/search` | `?q=&kinds=agent,employee,task,project,goal,plugin,skill` |
+| POST / DELETE | `/api/tasks/{id}/dependencies` | `{on}` / `/{on_id}`: add or remove a dependency |
+| POST | `/api/tasks/{id}/hold` | `{on}`: pause or resume the task and the tasks it handed off |
+| POST | `/api/tasks/{id}/continue` | `{confirm, note}`: continue a failed task (confirm when it may have side effects) |
+| GET / POST | `/api/tasks/{id}/files` | List / upload (body = file, `?name=&note=`) |
+| GET / DELETE | `/api/files/{id}` | Download (`?inline=1` for safe types) / delete one version |
+| GET | `/api/files` | Deliverables library (`?kind=output|input&q=&project=&employee=`) |
+| GET | `/api/employees/{slug}/revisions` | Job history |
+| POST | `/api/employees/{slug}/revisions/{v}/restore` | Restore a version |
 
-`POST /api/employees/{slug}/tasks` also takes `project`.
+`POST /api/employees/{slug}/tasks` also takes `project`, `review`, `reviewer` and `blocked_by`.

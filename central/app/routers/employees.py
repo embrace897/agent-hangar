@@ -65,6 +65,9 @@ class TaskBody(BaseModel):
     due_at: datetime | None = None
     plan_approval: bool = False  # o funcionário propõe o plano e só executa depois da aprovação do gestor
     project: str | None = None  # o projeto a que a tarefa serve (o agente recebe o contexto e a cadeia de metas)
+    review: bool = False  # o resultado passa por revisão (do gestor, ou de reviewer) antes de concluir
+    reviewer: str | None = None  # e-mail de quem revisa
+    blocked_by: list[int] = Field(default_factory=list)  # tarefas que precisam terminar antes
 
 
 class InboxBody(BaseModel):
@@ -195,7 +198,8 @@ def tasks(slug: str, request: Request, status: str | None = None, db=Depends(db_
 @router.post("/employees/{slug}/tasks")
 def assign(slug: str, body: TaskBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.assign(db, acc(request, db), slug, body.title, body.body, body.priority,
-                                              body.due_at, plan_approval=body.plan_approval, project=body.project))
+                                              body.due_at, plan_approval=body.plan_approval, project=body.project,
+                                              review=body.review, reviewer=body.reviewer, blocked_by=body.blocked_by))
 
 
 @router.put("/employees/{slug}/inbox")
@@ -307,6 +311,17 @@ def task(task_id: int, request: Request, db=Depends(db_dep)):
 class QualityBody(BaseModel):
     score: int
     note: str = ""
+
+
+@router.get("/employees/{slug}/revisions")
+def revisions(slug: str, request: Request, db=Depends(db_dep)):
+    """Histórico do cargo, da alçada e das configurações (o retrato de cada versão e o que mudou)."""
+    return guard(lambda: svc.employee_revisions.list_revisions(db, acc(request, db), slug))
+
+
+@router.post("/employees/{slug}/revisions/{version}/restore")
+def restore(slug: str, version: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.employee_revisions.restore(db, acc(request, db), slug, version))
 
 
 @router.post("/tasks/{task_id}/quality")

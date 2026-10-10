@@ -268,3 +268,107 @@ window.addEventListener('load', () => {
   setTimeout(refreshInboxBadge, 1500);
   setInterval(() => { if (document.visibilityState === 'visible') refreshInboxBadge(); }, 60000);
 });
+
+/* ---------- fase B: por que parou, dependências, arquivos e o histórico do cargo ---------- */
+const DIAG_STATE = { failed: 'Falhou', budget: 'Parada por orçamento', decision: 'Esperando uma decisão', colleague: 'Esperando um colega',
+  dependency: 'Esperando dependências', hold: 'Pausada', retry: 'Nova tentativa marcada' };
+const fmtSize = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+
+function diagnosisView(x) {
+  const d = x.diagnosis;
+  if (!d) return '';
+  const act = d.actions || [];
+  return `<div class="card mt ${d.state === 'failed' || d.state === 'budget' ? 'bad-card' : 'warn-card'}"><h2>Por que parou</h2>
+    <div><b>${esc(DIAG_STATE[d.state] || d.state)}</b> — <span data-noi18n>${esc(d.cause || '')}</span></div>
+    ${d.owner ? `<div class="small mt"><span class="mute">Próxima ação com:</span> <span data-noi18n>${esc(d.owner)}</span></div>` : ''}
+    ${d.state === 'failed' ? `<div class="small mute mt"><span>Rodadas usadas</span> ${d.runs} / ${d.limit} · <span>tentativas</span> ${d.attempts}</div>` : ''}
+    ${(d.side_effects || []).length ? `<div class="small mt"><b>A última rodada pode ter feito algo fora da plataforma:</b> <span data-noi18n>${d.side_effects.map(esc).join(', ')}</span>.
+      <span>Confira antes de continuar: o funcionário é avisado para não repetir.</span></div>` : ''}
+    <div class="row mt" style="gap:6px">${act.includes('continue') ? `<input id="dg-note" placeholder="${esc(window.t('instrução para continuar (opcional)'))}" style="flex:1">
+        <button id="dg-continue">${(d.side_effects || []).length ? 'Confirmar e continuar' : 'Continuar a tarefa'}</button>` : ''}
+      ${act.includes('budgets') ? '<a href="#/budgets"><button class="ghost">Abrir orçamentos</button></a>' : ''}
+      ${act.includes('decide') ? '<a href="#/decisions"><button class="ghost">Abrir decisões</button></a>' : ''}
+      ${act.includes('open_child') && d.child ? `<a href="#/tasks/${d.child}"><button class="ghost">Abrir a tarefa do colega</button></a>` : ''}
+      ${act.includes('resume') ? '<button class="ghost" id="dg-resume">Retomar</button>' : ''}</div></div>`;
+}
+
+function depsView(x) {
+  const dp = x.dependencies || { depends_on: [], blocks: [] };
+  const canAdd = ['new', 'blocked', 'on_hold'].includes(x.status);
+  if (!dp.depends_on.length && !dp.blocks.length && !canAdd) return '';
+  const row = (t, rm) => `<div class="li row between small"><span><a href="#/tasks/${t.id}" data-noi18n>#${t.id} ${esc(t.title)}</a> ${taskPill(t.status)}</span>
+    ${rm && canAdd ? `<button class="ghost small dp-rm" data-on="${t.id}">Remover</button>` : ''}</div>`;
+  return `<div class="card mt"><h2>Dependências</h2>
+    ${dp.depends_on.length ? `<div class="mute small">Esta tarefa começa depois de:</div>${dp.depends_on.map(t => row(t, true)).join('')}` : ''}
+    ${dp.blocks.length ? `<div class="mute small mt">Estas esperam por ela:</div>${dp.blocks.map(t => row(t, false)).join('')}` : ''}
+    ${canAdd ? `<div class="row mt" style="gap:6px"><input id="dp-on" placeholder="${esc(window.t('número da tarefa'))}" style="max-width:180px" data-noi18n>
+      <button class="ghost" id="dp-add">Adicionar dependência</button></div>` : ''}</div>`;
+}
+
+function filesView(x) {
+  const fs = x.files || [];
+  return `<div class="card mt"><h2>Arquivos</h2>
+    <div class="mute small">Anexe o que o Digital employee precisa ler; os entregáveis que ele salva aparecem aqui. O mesmo nome vira uma versão nova.</div>
+    ${fs.length ? `<table class="small mt"><tr><th>Arquivo</th><th>Tipo</th><th>Versão</th><th>Tamanho</th><th>Por</th><th></th></tr>
+      ${fs.map(f => `<tr data-id="${f.id}"><td><b data-noi18n>${esc(f.name)}</b>${f.note ? `<div class="mute" data-noi18n>${esc(f.note)}</div>` : ''}</td>
+        <td>${f.kind === 'output' ? '<span class="pill ok">entregável</span>' : '<span class="pill">anexo</span>'}</td>
+        <td>v${f.version}${(f.history || []).length ? ` <details class="inline"><summary class="mute">${f.history.length} <span>antiga(s)</span></summary>
+          ${f.history.map(h => `<div><a href="/api/files/${h.id}" download>v${h.version}</a> <span class="mute"><span>${when(h.at)}</span></span></div>`).join('')}</details>` : ''}</td>
+        <td>${fmtSize(f.size)}</td><td class="mute" data-noi18n>${esc(f.uploaded_by)}</td>
+        <td style="white-space:nowrap">${f.inline ? `<a href="/api/files/${f.id}?inline=1" target="_blank" rel="noopener">Ver</a> · ` : ''}<a href="/api/files/${f.id}" download>Baixar</a>
+          · <a href="javascript:void 0" class="fl-del bad-ic">Apagar</a></td></tr>`).join('')}</table>` : '<div class="mute small mt">Nenhum arquivo ainda.</div>'}
+    ${['cancelled', 'expired'].includes(x.status) ? '' : `<div class="row mt" style="gap:6px"><input type="file" id="fl-up"><input id="fl-note" placeholder="${esc(window.t('nota (opcional)'))}" style="flex:1">
+      <button class="ghost" id="fl-go">Anexar</button></div>`}</div>`;
+}
+
+function bindTaskFlow(x, id) {
+  const on = (sel, fn) => { const b = $(sel); if (b) b.onclick = fn; };
+  on('#t-hold', ev => act(ev.target, () => api(`/tasks/${id}/hold`, { method: 'POST', body: { on: true } }).then(route), 'Tarefa pausada'));
+  const resume = ev => act(ev.target, () => api(`/tasks/${id}/hold`, { method: 'POST', body: { on: false } }).then(route), 'Tarefa retomada');
+  on('#t-resume', resume);
+  on('#dg-resume', resume);
+  on('#dg-continue', ev => act(ev.target, () => api(`/tasks/${id}/continue`, { method: 'POST', body: {
+    confirm: ((x.diagnosis || {}).side_effects || []).length > 0, note: $('#dg-note').value } }).then(route), 'A tarefa voltou para a fila'));
+  on('#dp-add', ev => act(ev.target, () => api(`/tasks/${id}/dependencies`, { method: 'POST', body: { on: Number(($('#dp-on').value.match(/\d+/) || [0])[0]) } }).then(route), 'Dependência adicionada'));
+  main.querySelectorAll('.dp-rm').forEach(b => b.onclick = ev => act(ev.target, () => api(`/tasks/${id}/dependencies/${b.dataset.on}`, { method: 'DELETE' }).then(route)));
+  main.querySelectorAll('tr[data-id] .fl-del').forEach(b => b.onclick = ev => confirm(window.t('Apagar este arquivo (esta versão)?')) &&
+    act(ev.target, () => api(`/files/${b.closest('tr').dataset.id}`, { method: 'DELETE' }).then(route), 'Arquivo apagado'));
+  on('#fl-go', ev => {
+    const f = $('#fl-up').files[0];
+    if (!f) return toast(window.t('Escolha um arquivo'), true);
+    const q = `?name=${encodeURIComponent(f.name)}&note=${encodeURIComponent($('#fl-note').value)}`;
+    act(ev.target, async () => {
+      const r = await fetch(`/api/tasks/${id}/files${q}`, { method: 'POST', body: f, credentials: 'same-origin',
+        headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-CSRF-Token': (document.cookie.match(/hangar_csrf=([^;]+)/) || [])[1] || '' } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+      return route();
+    }, 'Arquivo anexado');
+  });
+}
+
+async function loadRevisions(slug, box) {
+  const revs = await api(`/employees/${slug}/revisions`).catch(() => []);
+  box.innerHTML = revs.length ? revs.slice(0, 15).map(r => `<div class="li row between small"><span><b>v${r.version}</b> <span data-noi18n>${esc(r.summary)}</span>
+      <span class="mute">· <span data-noi18n>${esc(r.changed_by)}</span> · <span>${when(r.at)}</span>${r.changed.length ? ` · <span>mudou:</span> <span data-noi18n>${esc(r.changed.join(', '))}</span>` : ''}</span></span>
+      ${r.current ? '<span class="pill ok">atual</span>' : `<button class="ghost small rv-go" data-v="${r.version}">Restaurar</button>`}</div>`).join('')
+    : '<span class="mute small">Sem histórico ainda.</span>';
+  box.querySelectorAll('.rv-go').forEach(b => b.onclick = ev => confirm(`${window.t('Restaurar a versão')} v${b.dataset.v}?`) &&
+    act(ev.target, () => api(`/employees/${slug}/revisions/${b.dataset.v}/restore`, { method: 'POST' }).then(route), 'Versão restaurada'));
+}
+
+async function filesPage() {
+  const qs = qsOf(), q = qs.get('q') || '', kind = qs.get('kind') || 'output';
+  const list = await api(`/files?kind=${kind}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+  main.innerHTML = `<h1>Entregáveis</h1><div class="sub">O que os Digital employees entregaram (e os anexos das tarefas), de todas as tarefas que você pode ver. A última versão de cada arquivo.</div>
+    <div class="row mt" style="gap:8px"><input id="fq" value="${esc(q)}" placeholder="${esc(window.t('nome do arquivo'))}" style="max-width:280px" data-noi18n>
+      <select id="fk" style="width:auto"><option value="output" ${kind === 'output' ? 'selected' : ''}>Entregáveis</option><option value="input" ${kind === 'input' ? 'selected' : ''}>Anexos</option></select>
+      <button class="ghost" id="fgo">Filtrar</button></div>
+    ${list.length ? `<div class="card mt"><table class="small"><tr><th>Arquivo</th><th>Tarefa</th><th>Digital employee</th><th>Versão</th><th>Tamanho</th><th></th></tr>
+      ${list.map(f => `<tr><td><b data-noi18n>${esc(f.name)}</b></td><td><a href="#/tasks/${f.task_id}" data-noi18n>#${f.task_id} ${esc(f.task_title)}</a></td>
+        <td data-noi18n>${esc(f.employee_name)}</td><td>v${f.version} <span class="mute"><span>${when(f.at)}</span></span></td><td>${fmtSize(f.size)}</td>
+        <td>${f.inline ? `<a href="/api/files/${f.id}?inline=1" target="_blank" rel="noopener">Ver</a> · ` : ''}<a href="/api/files/${f.id}" download>Baixar</a></td></tr>`).join('')}</table></div>`
+      : '<div class="card empty mt"><div class="mute">Nada encontrado.</div></div>'}`;
+  const go = () => { location.hash = `#/files?kind=${$('#fk').value}${$('#fq').value.trim() ? `&q=${encodeURIComponent($('#fq').value.trim())}` : ''}`; };
+  $('#fgo').onclick = go;
+  $('#fq').onkeydown = e => { if (e.key === 'Enter') go(); };
+}

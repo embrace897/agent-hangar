@@ -10,6 +10,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       employee_dashboard,
                       employee_gate,
                       employee_quality,
+                      employee_revisions,
                       employee_tasks,
                       employee_teamwork,
                       employee_work,
@@ -27,6 +28,8 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       registry,
                       remote_mcp,
                       schedules,
+                      task_files,
+                      task_flow,
                       task_thread,
                       vscode,
 )

@@ -177,6 +177,13 @@ def gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, ar
          kind: str = "tool") -> dict:
     """allow | wait (pedido de decisão aberto) | deny. kind='ask_human': o agente pergunta algo ao gestor; 'plan': o
     plano da tarefa (sem alçada; pode exigir aprovação); 'handoff': repasse a um colega (alçada `delegate`)."""
+    if kind == "files":  # arquivos da própria tarefa: a plataforma executa, sem alçada (nada sai dela)
+        from . import task_files
+        e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
+        task = db.get(EmployeeTask, task_id) if task_id else None
+        if e is None or task is None or task.employee_id != e.id:
+            return {"status": "denied", "message": "arquivos só dentro de uma tarefa deste Digital employee"}
+        return task_files.agent_tool(db, e, task, tool, args)
     if kind in ("plan", "handoff"):
         from . import employee_teamwork as teamwork
         e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
@@ -456,6 +463,12 @@ def _decide(db: Session, acc: Access, request_id: int, decision: str, edit: dict
     if r.kind == "capability":
         return _decide_capability(db, acc, r, e, task, decision, edit or {}, reason, who)
 
+    if r.kind == "review":  # o resultado antes de concluir: aprovar ou pedir mudanças
+        from . import task_flow
+        task_flow.decide_review(db, r, e, task, decision, reason, who)
+        audit(db, who, f"employee.review.{r.decision}", _slug(db, e), f"#{r.id}")
+        return request_dict(db, r, e)
+
     if r.kind == "plan":  # plano de uma tarefa longa: aprovar (ou editar) antes da execução
         from . import employee_teamwork as teamwork
         teamwork.decide_plan(db, r, e, task, decision, edit or {}, reason, who)
@@ -646,8 +659,8 @@ def run_task(task_id: int) -> EmployeeTask | None:
         e = db.get(Employee, task.employee_id)
         a = db.get(Agent, e.agent_id)
         env = "stage" if (task.probation or e.status == "probation") else "prod"
-        if task.runs >= config.EMPLOYEE_MAX_RUNS:
-            return _finish(db, task, "failed", error=f"limite de {config.EMPLOYEE_MAX_RUNS} rodadas atingido")
+        if task.runs >= config.EMPLOYEE_MAX_RUNS + (task.extra_runs or 0):
+            return _finish(db, task, "failed", error=f"limite de {config.EMPLOYEE_MAX_RUNS + (task.extra_runs or 0)} rodadas atingido")
         if task.cost_usd > e.task_budget_usd:
             return _finish(db, task, "failed", error=f"orçamento da tarefa (US$ {e.task_budget_usd}) estourado")
         from . import budgets
@@ -725,6 +738,10 @@ def run_task(task_id: int) -> EmployeeTask | None:
             event(db, task, "note", {"continue": "mensagem nova na conversa"})
             db.commit()
             return task
+        from . import task_flow
+        e = db.get(Employee, task.employee_id)
+        if task_flow.needs_review(task, e):  # o resultado passa pelo revisor antes de concluir
+            return task_flow.send_to_review(db, task, e, content)
         return _finish(db, task, "done", result=content)
 
 
@@ -745,6 +762,8 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
     chat_tasks.task_finished(db, task)  # veio do Slack ou do Teams: o resultado volta para lá
     from . import employee_quality
     employee_quality.task_finished(db, task)  # a amostra vai para o juiz de qualidade
+    from . import task_flow
+    task_flow.task_finished(db, task)  # as tarefas que dependiam desta andam (ou travam, se falhou)
     if task.probation:
         from .employees import probation_progress
         probation_progress(db, db.get(Employee, task.employee_id))

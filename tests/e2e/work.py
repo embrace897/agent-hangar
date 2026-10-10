@@ -48,6 +48,38 @@ def phase_a(dev, mgr, mgr_email, team):
     return slug, proj["slug"], tid
 
 
+def phase_b(dev, mgr, slug):
+    first = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Collect contracts", "body": "list them"}))["id"]
+    second = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Summarise", "body": "summary",
+                                                               "blocked_by": [first], "review": True}))["id"]
+    check("dependência: espera a anterior", wf.task(dev, second)["status"] in ("blocked", "new", "in_progress", "in_review"))
+    wf.until(dev, first, ("done",))
+    t = wf.until(dev, second, ("in_review",))
+    check("revisão: o resultado espera o revisor", t is not None and t["diagnosis"]["state"] == "decision", t and t["status"])
+    req = next(d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "review" and d["task"]["id"] == second)
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "reject", "reason": "add the totals"}))
+    t = wf.until(dev, second, ("in_review",))
+    req = next(d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "review" and d["task"]["id"] == second)
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve"}))
+    t = wf.task(dev, second)
+    check("revisão: mudanças pedidas, depois aprovada", t["status"] == "done" and
+          any(ev["kind"] == "review_decision" for ev in t["events"]), t["status"])
+    # entregável salvo pelo agente (mock: "use save_file {json}") e anexo lido por ele
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Write the report", "body":
+                                                            'use save_file {"name": "report.md", "content": "# Q4"}'}))["id"]
+    wf.until(dev, tid, ("done",))
+    files = ok(dev.get(f"/api/tasks/{tid}/files"))
+    check("arquivos: o entregável salvo pelo agente", any(f["name"] == "report.md" and f["kind"] == "output" for f in files), files)
+    rep = next(f for f in files if f["name"] == "report.md")
+    check("arquivos: download", dev.get(f"/api/files/{rep['id']}?inline=1").text == "# Q4")
+    up = dev.post(f"/api/tasks/{tid}/files?name=notes.txt", content=b"remember ACME", headers={"Content-Type": "text/plain"})
+    check("arquivos: anexo de quem pediu", up.status_code == 200 and up.json()["kind"] == "input", up.text[:200])
+    lib = ok(dev.get("/api/files"))
+    check("biblioteca de entregáveis", any(f["name"] == "report.md" for f in lib), len(lib))
+    revs = ok(mgr.get(f"/api/employees/{slug}/revisions"))
+    check("histórico do cargo", revs and revs[-1]["version"] == 1, revs[:1])
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -55,7 +87,8 @@ def main():
     wf.created["team"] = team
     mgr, mgr_email, _ = wf.person("mgr", "maintainer", team)
     dev, _, _ = wf.person("dev", "developer", team)
-    phase_a(dev, mgr, mgr_email, team)
+    slug, _, _ = phase_a(dev, mgr, mgr_email, team)
+    phase_b(dev, mgr, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

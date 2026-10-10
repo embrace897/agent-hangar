@@ -7,14 +7,15 @@ const EMP_STATUS = { onboarding: ['Contratação', ''], probation: ['Em experiê
   paused: ['Pausado', 'warn'], offboarded: ['Desligado', 'bad'] };
 const TASK_STATUS = { draft: ['Rascunho', ''], new: ['Na fila', 'info'], in_progress: ['Trabalhando', 'info'],
   waiting_human: ['Aguardando decisão', 'warn'], waiting_task: ['Aguardando colega', 'info'], done: ['Concluída', 'ok'], failed: ['Falhou', 'bad'],
-  cancelled: ['Cancelada', ''], expired: ['Expirou', 'bad'], waiting_budget: ['Parada por orçamento', 'bad'] };
+  cancelled: ['Cancelada', ''], expired: ['Expirou', 'bad'], waiting_budget: ['Parada por orçamento', 'bad'],
+  blocked: ['Esperando dependências', 'info'], in_review: ['Em revisão', 'warn'], on_hold: ['Pausada', ''] };
 const ACTION_LABEL = { read: 'Ler e consultar', delegate: 'Delegar a outro agente', write_internal: 'Alterar dados internos', run_code: 'Executar código (harness)',
   send_external: 'Enviar para fora', speak_for_company: 'Falar em nome da empresa', publish: 'Publicar',
   financial: 'Dinheiro', delete: 'Apagar', prod_change: 'Mudar produção' };
 const MODE_LABEL = { auto: ['Sozinho', 'ok'], notify: ['Faz e avisa', 'info'], approve: ['Pede aprovação', 'warn'],
   approve_2: ['Duas aprovações', 'warn'], never: ['Nunca', 'bad'] };
 const LEVEL_LABEL = { intern: 'Estagiário', junior: 'Júnior', pleno: 'Pleno', senior: 'Sênior' };
-const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano' };
+const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão' };
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',
@@ -249,6 +250,10 @@ function empOverview(t, e) {
         <label>Prazo (opcional)<input id="as-due" type="datetime-local"></label></div>
       <label class="mt">Projeto (opcional)<select id="as-proj"><option value="">—</option></select></label>
       <label class="row small mt" style="gap:6px"><input type="checkbox" id="as-plan" ${e.plan_policy === 'approve' ? 'checked disabled' : ''}> <span>Quero aprovar o plano antes da execução</span></label>
+      <details class="mt small"><summary>Mais opções</summary>
+        <label class="row small mt" style="gap:6px"><input type="checkbox" id="as-review" ${e.review_policy === 'manager' ? 'checked disabled' : ''}> <span>O resultado passa por revisão antes de concluir</span></label>
+        <div class="grid g2"><label>Revisor (e-mail; vazio = o gestor)<input id="as-reviewer" data-noi18n></label>
+          <label>Depende das tarefas (números, separados por vírgula)<input id="as-deps" placeholder="ex.: 12, 15" data-noi18n></label></div></details>
       <div class="row mt"><button id="as-go">Entregar</button></div>
       <div class="mute small mt">Ele trabalha em segundo plano. Ações fora da alçada viram pedidos de decisão para o gestor.</div>`
       : `<div class="mute">${e.status === 'onboarding' ? 'Comece o período de experiência para ele receber tarefas.' : 'Desligado: não recebe mais tarefas.'}</div>`}</div></div>`;
@@ -261,7 +266,8 @@ function empOverview(t, e) {
   if (b) b.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/tasks`, { method: 'POST',
     body: { title: $('#as-title').value.trim(), body: $('#as-body').value.trim(), priority: Number($('#as-prio').value),
       due_at: $('#as-due').value ? new Date($('#as-due').value).toISOString() : null, plan_approval: $('#as-plan').checked,
-      project: $('#as-proj').value || null } })
+      project: $('#as-proj').value || null, review: $('#as-review').checked, reviewer: $('#as-reviewer').value.trim() || null,
+      blocked_by: $('#as-deps').value.split(/[^0-9]+/).filter(Boolean).map(Number) } })
     .then(r => { location.hash = `#/tasks/${r.id}`; }), 'Tarefa entregue');
 }
 
@@ -481,7 +487,9 @@ async function empSettings(t, e) {
       <b>${esc(o.name)}</b> <span class="mute" data-noi18n>${esc(o.title)}</span> ${empPill(o.status)}</label>`).join('') : '<div class="mute">Nenhum outro Digital employee visível para você.</div>'}</div>
     <div class="grid g2 mt"><label>Plano nas tarefas<select id="tw-plan">${Object.entries(PLAN_POLICY).map(([k, v]) => `<option value="${k}" ${k === (e.plan_policy || 'auto') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="tw-recall" ${e.recall ? 'checked' : ''}> <span>Lembrar trabalhos anteriores parecidos ao começar uma tarefa</span></label>
-      <label>Amostra para o juiz de qualidade (% das tarefas concluídas; 0 desliga)<input id="tw-quality" type="number" min="0" max="100" value="${e.quality ? e.quality.sample : 20}"></label></div>
+      <label>Amostra para o juiz de qualidade (% das tarefas concluídas; 0 desliga)<input id="tw-quality" type="number" min="0" max="100" value="${e.quality ? e.quality.sample : 20}"></label>
+      <label>Revisão dos resultados<select id="tw-review"><option value="off" ${e.review_policy !== 'manager' ? 'selected' : ''}>Só quando a tarefa pedir</option>
+        <option value="manager" ${e.review_policy === 'manager' ? 'selected' : ''}>O gestor revisa todo resultado antes de concluir</option></select></label></div>
     <div class="row mt"><button id="tw-save">Salvar</button></div></div>
   <div class="card mt"><div class="row between"><h2>Caixa de e-mail</h2>${ib.enabled ? '<span class="pill ok">lendo</span>' : '<span class="pill">desligada</span>'}</div>
     <div class="mute small">Cada e-mail novo de um remetente permitido vira uma tarefa (o mesmo e-mail não vira duas). Sem lista, só pessoas da empresa. O conteúdo do e-mail é tratado
@@ -502,8 +510,11 @@ async function empSettings(t, e) {
       <div class="mute small">${esc(l.source === 'manual' ? 'escrita' : 'aprendida')} por ${esc(l.added_by)} · ${ago(l.at)}</div></span>
       <button class="ghost ls-del">Remover</button></div>`).join('') || '<div class="mute mt">Nenhuma lição ainda.</div>'}
     <div class="row mt"><input id="ls-text" placeholder="ex.: sempre copie vendas@empresa.com em e-mails para clientes" style="flex:1"><button class="ghost" id="ls-add">Adicionar</button></div></div>
+  <div class="card mt"><h2>Histórico do cargo</h2><div class="mute small">Cada mudança no cargo, na alçada ou nas configurações vira uma versão. Restaurar aplica a versão antiga como uma nova: nada se perde.</div>
+    <div id="s-revs" class="mt"><span class="mute small">…</span></div></div>
   <div class="card mt bad-card"><h2>Desligar</h2><div class="mute small">Cancela as tarefas e as decisões abertas e para os containers. O histórico, os relatórios e a auditoria ficam.</div>
     <div class="row mt"><button class="danger" id="s-off" ${e.status === 'offboarded' ? 'disabled' : ''}>${window.t('Desligar')} ${esc(e.name)}</button></div></div>`;
+  loadRevisions(e.slug, $('#s-revs'));
   const kbox = $('#s-kpis');
   const addKpi = k => kbox.insertAdjacentHTML('beforeend', `<div class="grid g3 mt s-kpi">
     <input class="k-name" placeholder="Meta" value="${esc(k.name || '')}" data-noi18n>
@@ -528,7 +539,7 @@ async function empSettings(t, e) {
   };
   $('#tw-save').onclick = ev => act(ev.target, () => api('/employees/' + e.slug, { method: 'PATCH', body: {
     colleagues: [...t.querySelectorAll('.tw-col:checked')].map(c => c.value), plan_policy: $('#tw-plan').value, recall: $('#tw-recall').checked,
-    quality_sample: Number($('#tw-quality').value) } }).then(route), 'Salvo');
+    quality_sample: Number($('#tw-quality').value), review_policy: $('#tw-review').value } }).then(route), 'Salvo');
   $('#ib-save').onclick = ev => {
     const body = { host: $('#ib-host').value.trim(), port: Number($('#ib-port').value) || 993, user: $('#ib-user').value.trim(),
       folder: $('#ib-folder').value.trim() || 'INBOX', allowed: lines($('#ib-allowed').value), enabled: $('#ib-on').checked };
@@ -553,7 +564,10 @@ async function taskPage(id) {
   main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
   <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)} pedida por ${esc(x.requester)}${x.via ? ` <span>pelo</span> ${esc(VIA_LABEL[x.via] || x.via)}` : ''} · ${when(x.created_at)}
     · ${x.runs} rodada(s) · ${usd(x.cost_usd)}</div>${duePill(x)}</div>
-    ${['done', 'failed', 'cancelled', 'expired'].includes(x.status) ? '' : '<button class="ghost danger" id="t-cancel">Cancelar tarefa</button>'}</div>
+    <span class="row" style="gap:6px">${['new', 'blocked', 'waiting_task', 'waiting_budget'].includes(x.status) ? '<button class="ghost" id="t-hold">Pausar</button>' : ''}
+      ${x.status === 'on_hold' ? '<button id="t-resume">Retomar</button>' : ''}
+      ${['done', 'failed', 'cancelled', 'expired'].includes(x.status) ? '' : '<button class="ghost danger" id="t-cancel">Cancelar tarefa</button>'}</span></div>
+  ${x.review_required && !['done', 'failed', 'cancelled'].includes(x.status) ? '<div class="small mute"><span class="pill warn">revisão</span> <span>o resultado passa por revisão antes de concluir</span></div>' : ''}
   ${x.body ? `<div class="card"><h2>Pedido</h2><div data-noi18n style="white-space:pre-wrap">${esc(x.body)}</div>${x.expected ? `<div class="mute small mt">Esperado: <span data-noi18n>${esc(x.expected)}</span></div>` : ''}</div>` : ''}
   ${x.result || x.error ? `<div class="card mt ${x.error ? 'bad-card' : ''}"><h2>${x.error ? 'Erro' : 'Resultado'}</h2><div class="md" data-noi18n>${x.result ? mdLite(x.result) : esc(x.error)}</div></div>` : ''}
   ${(x.goals || []).length || x.project ? `<div class="card mt small">${x.project ? `${icon('folder')} <a href="#/projects/${esc(x.project.slug)}" data-noi18n>${esc(x.project.name)}</a>` : ''}
@@ -561,10 +575,12 @@ async function taskPage(id) {
   ${threadView(x)}
   ${x.status === 'done' ? qualityView(x) : ''}
   ${open.length ? `<div class="mt">${open.map(decisionCard).join('')}</div>` : ''}
+  ${diagnosisView(x)}${depsView(x)}${filesView(x)}
   ${planView(x)}${linkView(x)}
   <div class="card mt"><h2>Linha do tempo</h2>${(x.events || []).map(ev => `<div class="li small"><div class="row between"><b>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</b><span class="mute">${ago(ev.at)}</span></div>
     <div class="mute one-line" data-noi18n title="${esc(JSON.stringify(ev.payload))}">${esc(JSON.stringify(ev.payload))}</div></div>`).join('') || '<div class="mute">—</div>'}</div>`;
   bindThread(id);
+  bindTaskFlow(x, id);
   main.querySelectorAll('.q-star').forEach(b => b.onclick = ev => act(ev.target, () => api(`/tasks/${id}/quality`, { method: 'POST',
     body: { score: Number(b.dataset.s), note: $('#q-note').value.trim() } }).then(route), 'Nota salva'));
   const c = $('#t-cancel');
@@ -659,6 +675,11 @@ function decisionCard(d) {
     body = `<div class="mt">Terminou o período de experiência. <a href="#/employees/${esc(d.employee)}/probation">Ver os resultados</a> e decidir se ele vai para produção.</div>
       <input class="dc-reason mt" placeholder="Comentário (opcional)">`;
     btns = '<button class="dc-go" data-d="approve">Admitir em produção</button><button class="ghost danger dc-go" data-d="reject">Ainda não</button>';
+  } else if (d.kind === 'review') {
+    body = `<div class="mt"><b>Resultado para revisar</b> — a tarefa só conclui com a sua aprovação.</div>
+      <div class="card mt md" data-noi18n style="max-height:320px;overflow:auto">${mdLite((d.payload || {}).result || d.question || '')}</div>
+      <input class="dc-reason mt" placeholder="O que mudar (para pedir mudanças)">`;
+    btns = '<button class="dc-go" data-d="approve">Aprovar e concluir</button><button class="ghost danger dc-go" data-d="reject">Pedir mudanças</button>';
   } else if (d.kind === 'plan') {
     const steps = (d.payload || {}).steps || [];
     body = `<div class="mt"><b>Plano proposto</b> (${steps.length} etapas) — a execução só começa depois da sua aprovação.</div>

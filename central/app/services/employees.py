@@ -250,6 +250,8 @@ def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
     set_text(db, acc, a.slug, _guide_text(e, a, manager, gatemod.summary(db, e), pt), acc.p.name,
              version=a.current_version)
     audit(db, acc.p.name, "employee.hire", a.slug, f"{e.title} · gestor {manager.email}")
+    from .employee_revisions import record
+    record(db, e, acc.p.name, "contratação")
     return {"created": True, "employee": employee_dict(db, e, acc, detail=True),
             "next": f"start_probation('{a.slug}'): sobe em stage e roda as tarefas de experiência; o gestor aprova a admissão"}
 
@@ -315,6 +317,12 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
             TaskMessage.task_id == t.id, TaskMessage.status != "discarded").order_by(TaskMessage.id))]
         pr = db.get(Project, t.project_id) if t.project_id else None
         d["goals"] = [{"id": g.id, "title": g.title, "status": g.status} for g in chain(db, t.goal_id or (pr.goal_id if pr else None))]
+        from . import task_flow
+        d["dependencies"] = task_flow.deps_of(db, t)
+        d["diagnosis"] = task_flow.diagnosis(db, t)
+        from .task_files import _grouped
+        d["files"] = _grouped(db, t.id)
+        d["review_required"] = bool(t.review_required) or (db.get(Employee, t.employee_id).review_policy == "manager")
         d.update(teamwork.links(db, t))
         d["requests"] = [tasksmod.request_dict(db, r) for r in
                          db.scalars(select(HumanRequest).where(HumanRequest.task_id == t.id).order_by(HumanRequest.id))]
@@ -350,7 +358,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  kpi_status=workmod.kpi_status(db, e), routines=workmod.routines_of(db, e),
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
                  quality=qualitymod.stats(db, e),
-                 colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall),
+                 colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
                          "expires_in_min": r.expires_in_min, "note": r.note}
@@ -539,6 +547,10 @@ def update(db: Session, acc: Access, slug: str, changes: dict) -> dict:
         e.plan_policy = changes["plan_policy"]
     if changes.get("recall") is not None:
         e.recall = bool(changes["recall"])
+    if changes.get("review_policy") is not None:
+        if changes["review_policy"] not in ("off", "manager"):
+            raise PlatformError("review_policy: off | manager")
+        e.review_policy = changes["review_policy"]
     if changes.get("quality_sample") is not None:
         try:
             v = int(changes["quality_sample"])
@@ -552,6 +564,8 @@ def update(db: Session, acc: Access, slug: str, changes: dict) -> dict:
         e.report_webhook = check_webhook(changes["report_webhook"]) if changes["report_webhook"] else ""
     db.commit()
     audit(db, acc.p.name, "employee.update", slug, ", ".join(sorted(changes))[:300])
+    from .employee_revisions import record
+    record(db, e, acc.p.name, "configurações: " + ", ".join(sorted(changes))[:200])
     return employee_dict(db, e, acc, detail=True)
 
 
@@ -569,18 +583,29 @@ def set_authority(db: Session, acc: Access, slug: str, rules: list[dict]) -> dic
                 for r in parsed if r["action_type"] in floor
                 and gatemod.RANK[r["mode"]] < gatemod.RANK[floor[r["action_type"]].min_mode]]
     audit(db, acc.p.name, "employee.authority", slug, f"{len(parsed)} regra(s)")
+    from .employee_revisions import record
+    record(db, e, acc.p.name, f"alçada: {len(parsed)} regra(s)")
     return {"authority": gatemod.summary(db, e), "rules": employee_dict(db, e, acc, True)["rules"], "warnings": warnings}
 
 
 def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", priority: int = 2, due_at=None,
-           source: str = "portal", plan_approval: bool = False, project: str | None = None) -> dict:
+           source: str = "portal", plan_approval: bool = False, project: str | None = None, review: bool = False,
+           reviewer: str | None = None, blocked_by: list[int] | None = None) -> dict:
     e, a = find(db, acc, slug, "assign")
     if e.status not in ("probation", "active", "paused"):
         raise PlatformError(f"'{slug}' ainda não trabalha (status {e.status}): comece o período de experiência")
+    from . import task_flow
     from .goals import project_for_task
     p = project_for_task(db, acc, project, e)
+    blockers = task_flow.check_blockers(db, acc, blocked_by)
+    rid = task_flow.reviewer_id(db, reviewer)
     t = tasksmod.create_task(db, e, title, body, source, acc.p.name, acc.p.user_id, priority, due_at,
                              plan_approval=plan_approval, project_id=p.id if p else None)
+    if review or rid:
+        t.review_required, t.reviewer_user_id = True, rid
+        db.commit()
+    if blockers:
+        task_flow.attach_blockers(db, t, blockers, acc.p.name)
     audit(db, acc.p.name, "employee.task", slug, f"#{t.id} {t.title[:120]}")
     return task_dict(db, t)
 
@@ -619,6 +644,8 @@ def cancel_task(db: Session, acc: Access, task_id: int) -> dict:
     for r in db.scalars(select(HumanRequest).where(HumanRequest.task_id == t.id, HumanRequest.status == "open")):
         r.status, r.decided_at, r.decided_by = "cancelled", now(), acc.p.name
     db.commit()
+    from . import task_flow
+    task_flow.task_finished(db, t)
     from . import employee_teamwork as teamwork
     teamwork.child_finished(db, t)
     audit(db, acc.p.name, "employee.task.cancel", a.slug, f"#{t.id}")

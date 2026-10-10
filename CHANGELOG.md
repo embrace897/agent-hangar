@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
   of the window.
 - **Inbox and search:** a personal inbox (decisions, tasks I asked for, stuck work I manage, budget stops) with read and
   archived state, and company search (`Ctrl+K`) filtered by access.
+- **Dependencies and review:** a task can wait for others (and gets their results); a result can go through review
+  (the manager or a named reviewer) before the task finishes; a task tree can be paused and resumed.
+- **Files and deliverables:** attach files to a task; the employee reads them (`read_file`) and saves versioned
+  deliverables (`save_file`); a deliverables library; safe preview for text, images and PDF.
+- **Recovery:** *Why it stopped* explains the state, the cause and who acts next; *Continue the task* resumes a failed
+  task from its checkpoint and asks to confirm when the last round may have had side effects.
+- **Job history:** every change to a Digital employee's job, authority or settings is a version that can be restored.
 
 ### Changed
 - Reading a Digital employee's task (request, result, conversation) now needs the requester, the people who answer for

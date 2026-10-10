@@ -109,6 +109,8 @@ PLUGIN_COSIGN_KEY = _env("PLUGIN_COSIGN_KEY")
 PLUGIN_COSIGN_IDENTITY = _env("PLUGIN_COSIGN_IDENTITY")  # regex, ex.: ^https://github.com/minha-empresa/
 PLUGIN_COSIGN_ISSUER = _env("PLUGIN_COSIGN_ISSUER", "https://token.actions.githubusercontent.com")
 PLUGIN_REQUIRE_SIGNED = _env("PLUGIN_REQUIRE_SIGNED", "0") == "1"
+FILES_MAX_MB = int(_env("FILES_MAX_MB", "10"))  # tamanho máximo de um arquivo de tarefa (anexo ou entregável)
+FILES_TASK_MAX_MB = int(_env("FILES_TASK_MAX_MB", "50"))  # soma dos arquivos de uma tarefa (todas as versões)
 INBOX_POLL_S = int(_env("INBOX_POLL_S", "60"))  # de quanto em quanto tempo a caixa de e-mail de um funcionário é lida
 DECISION_LINK_TTL_H = int(_env("DECISION_LINK_TTL_H", "48"))  # validade do link assinado de decisão (Teams/e-mail)
 # e-mail das decisões e do resumo diário (opcional): sem SMTP_HOST, o canal e-mail fica desligado

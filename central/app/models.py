@@ -1,7 +1,19 @@
 """Modelo de dados. Mudança de schema = nova migração em central/migrations/versions (Alembic)."""
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -525,6 +537,7 @@ class Employee(Base):
     # caixa de e-mail (IMAP) como canal de entrada: {host, port, user, password (cripto), folder, allowed, last_check…}
     inbox: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     quality_sample: Mapped[int] = mapped_column(Integer, default=20)  # % das tarefas concluídas que o juiz avalia (0 = nenhuma)
+    review_policy: Mapped[str] = mapped_column(String(10), default="off")  # off | manager: todo resultado passa pelo gestor
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -606,6 +619,9 @@ class EmployeeTask(Base):
     quality_by: Mapped[str] = mapped_column(String(254), default="")  # "judge" ou o e-mail de quem avaliou
     project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # o projeto a que serve
     goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # meta explícita (senão, a do projeto)
+    review_required: Mapped[bool] = mapped_column(Boolean, default=False)  # o resultado passa por revisão antes de concluir
+    reviewer_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # vazio = o gestor do funcionário
+    extra_runs: Mapped[int] = mapped_column(Integer, default=0)  # rodadas a mais concedidas ao continuar uma tarefa
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -868,3 +884,46 @@ class InboxState(Base):
     item: Mapped[str] = mapped_column(String(40))  # task:12 | decision:5 | budget:3
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class TaskDependency(Base):
+    """A tarefa só começa quando as tarefas de que depende terminarem; os resultados delas chegam no prompt."""
+    __tablename__ = "task_dependencies"
+    __table_args__ = (UniqueConstraint("task_id", "depends_on_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    depends_on_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskFile(Base):
+    """Arquivo de uma tarefa: o que a pessoa anexou (input) ou o que o Digital employee entregou (output). O mesmo nome
+    vira uma versão nova; as anteriores ficam."""
+    __tablename__ = "task_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    kind: Mapped[str] = mapped_column(String(8), default="input")  # input | output
+    content_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    data: Mapped[bytes] = mapped_column(LargeBinary, default=b"")  # no banco: vale igual com várias réplicas (FILES_MAX_MB)
+    uploaded_by: Mapped[str] = mapped_column(String(254), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class EmployeeRevision(Base):
+    """Cada mudança no cargo, na alçada ou nas configurações de um Digital employee: o retrato depois da mudança, quem
+    mudou e quando. Restaurar aplica um retrato antigo como uma revisão nova."""
+    __tablename__ = "employee_revisions"
+    __table_args__ = (UniqueConstraint("employee_id", "version"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    summary: Mapped[str] = mapped_column(String(300), default="")
+    changed_by: Mapped[str] = mapped_column(String(254), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

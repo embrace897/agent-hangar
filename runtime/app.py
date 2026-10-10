@@ -405,6 +405,18 @@ async def build_tools() -> tuple[list[Tool], bool]:
                                                             "details": {"type": "string", "description": "o que fazer e o contexto"},
                                                             "wait": {"type": "boolean"}},
                            "required": ["to", "title"]}, _ask, ref="hangar:handoff_task"))
+        tools.append(Tool("list_files", "Lista os arquivos da tarefa: os anexados por quem pediu e os que você já salvou.",
+                          {"type": "object", "properties": {}}, _ask, ref="hangar:list_files"))
+        tools.append(Tool("read_file", "Lê um arquivo de texto da tarefa (o mais novo, ou a versão pedida).",
+                          {"type": "object", "properties": {"name": {"type": "string"}, "version": {"type": "integer"}},
+                           "required": ["name"]}, _ask, ref="hangar:read_file"))
+        tools.append(Tool("save_file", "Salva um entregável da tarefa (relatório, planilha CSV, rascunho…). O mesmo nome vira "
+                          "uma versão nova. Use content (texto) ou content_base64 (binário).",
+                          {"type": "object", "properties": {"name": {"type": "string"}, "content": {"type": "string"},
+                                                            "content_base64": {"type": "string"},
+                                                            "content_type": {"type": "string"},
+                                                            "note": {"type": "string", "description": "o que é este arquivo"}},
+                           "required": ["name"]}, _ask, ref="hangar:save_file"))
     return tools, complete
 
 
@@ -782,7 +794,8 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
         tool = by_name.get(name)
         if EMPLOYEE and tool is not None and tool.ref:  # Digital employee: a alçada decide antes de executar
             g = await _gate(tool, args, rationale, {"ask_human": "ask_human", "request_capability": "capability",
-                                                    "update_plan": "plan", "handoff_task": "handoff"}.get(name, "tool"))
+                                                    "update_plan": "plan", "handoff_task": "handoff", "list_files": "files",
+                                                    "read_file": "files", "save_file": "files"}.get(name, "tool"))
             if g.get("status") == "waiting":
                 trace.append({"tool": name, "args": {k: str(v)[:200] for k, v in args.items()},
                               "result": f"aguardando decisão #{g.get('request_id')}"})
