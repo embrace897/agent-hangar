@@ -155,6 +155,8 @@ jobs:
           docker network connect hangar_plugins e2e-echo
           pip install "mcp>=1.10,<2" pyyaml
           HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) ECHO_URL=http://e2e-echo:8080 python tests/e2e/workforce.py
+      - name: Day-to-day work (E2E)
+        run: HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py
       - name: Interface in English (no Portuguese left on screen)
         run: |
           pip install httpx playwright==1.63.0

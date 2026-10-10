@@ -1,0 +1,270 @@
+/* O trabalho do dia a dia: caixa de entrada, busca, projetos, metas, orçamentos e a conversa da tarefa. */
+const GOAL_STATUS = { planned: ['Planejada', ''], active: ['Ativa', 'info'], achieved: ['Atingida', 'ok'], dropped: ['Abandonada', 'bad'] };
+const INBOX_VIEWS = { all: 'Tudo', unread: 'Não lidas', decisions: 'Decisões', blocked: 'Travadas', mine: 'Que eu pedi', archived: 'Arquivadas' };
+const INBOX_ICON = { decision: 'approve', task: 'briefcase', budget: 'wallet' };
+const SEARCH_KIND = { agent: 'Agentes', employee: 'Digital employees', task: 'Tarefas', project: 'Projetos', goal: 'Metas', plugin: 'Plugins', skill: 'Skills' };
+const BUDGET_SCOPE = { org: 'Empresa', team: 'Time', agent: 'Agente', project: 'Projeto' };
+const BUDGET_STATE = { ok: ['ok', 'ok'], warning: ['aviso', 'warn'], stopped: ['parado', 'bad'] };
+const goalPill = s => pillOf(GOAL_STATUS, s);
+const scopeOf = x => `<span class="mute small">${esc(window.t(BUDGET_SCOPE[x.scope_type] || x.scope_type))}</span>${x.scope ? ` <b data-noi18n>${esc(x.scope)}</b>` : ''}`;
+const qsOf = () => new URLSearchParams(location.hash.split('?')[1] || '');
+const myTeams = (min = 'developer') => (ME.teams || []).filter(t => ME.is_admin || ({ consumer: 1, developer: 2, maintainer: 3 }[t.role] || 0) >= ({ consumer: 1, developer: 2, maintainer: 3 }[min]));
+
+/* ---------- caixa de entrada ---------- */
+async function inboxPage() {
+  const view = qsOf().get('view') || 'all';
+  const box = await api('/inbox?view=' + view);
+  main.innerHTML = `<div class="row between"><div><h1>Caixa de entrada</h1>
+      <div class="sub">O que precisa de você: decisões, as tarefas que você pediu, o que travou nos Digital employees que você gerencia e os orçamentos parados.
+        Arquivar é só seu: não conclui nem cancela nada.</div></div>
+    ${box.items.some(i => i.unread) ? '<button class="ghost" id="ib-all">Marcar tudo como lido</button>' : ''}</div>
+  <div class="tabs">${Object.entries(INBOX_VIEWS).map(([k, v]) => `<a href="#/inbox?view=${k}" class="${k === view ? 'on' : ''}">${v}${box.counts[k] ? ` (${box.counts[k]})` : ''}</a>`).join('')}</div>
+  ${box.items.length ? `<div class="card">${box.items.map(i => `<div class="li row between ib-item ${i.unread ? 'unread' : ''}" data-k="${esc(i.key)}" data-u="${esc(i.url)}">
+      <span class="row" style="gap:10px;min-width:0">${icon(INBOX_ICON[i.kind] || 'inbox')}<span style="min-width:0">
+        <a href="${esc(i.url)}" class="ib-open">${i.kind === 'budget' ? `<b>${esc(window.t('Orçamento'))}:</b> ${scopeOf(i)}` : `<b data-noi18n>${esc(i.title)}</b>`}</a> ${i.unread ? '<span class="pill info">nova</span>' : ''}
+        <div class="mute small">${i.kind === 'task' ? `${taskPill(i.status)} <span data-noi18n>${esc(i.employee_name || '')}</span>${i.requested ? ' · <span>você pediu</span>' : ''}`
+          : i.kind === 'decision' ? `<span>Decisão</span> · <span data-noi18n>${esc(i.employee || '')}</span>${i.mine ? ' · <span>com você</span>' : ''}`
+          : `<span class="pill ${i.budget_kind === 'hard_stop' ? 'bad' : 'warn'}">${i.budget_kind === 'hard_stop' ? 'parado' : 'aviso'}</span>`} · <span>${when(i.at)}</span></div></span></span>
+      <span class="row" style="gap:4px">${i.unread ? '<button class="ghost small ib-read">Lida</button>' : ''}
+        <button class="ghost small ib-arch">${i.archived ? 'Desarquivar' : 'Arquivar'}</button></span></div>`).join('')}</div>`
+    : `<div class="card empty"><h2>Nada aqui</h2><div class="mute">${view === 'all' ? 'Tudo em dia.' : 'Nada nesta visão.'}</div></div>`}`;
+  const mark = (keys, body) => api('/inbox/mark', { method: 'POST', body: { keys, ...body } });
+  main.querySelectorAll('.ib-item').forEach(row => {
+    const k = row.dataset.k;
+    const rb = $('.ib-read', row);
+    if (rb) rb.onclick = ev => act(ev.target, () => mark([k], { read: true }).then(inboxPage));
+    $('.ib-arch', row).onclick = ev => act(ev.target, () => mark([k], { archived: view !== 'archived' }).then(inboxPage));
+    $('.ib-open', row).onclick = () => { mark([k], { read: true }).then(refreshInboxBadge); };
+  });
+  const all = $('#ib-all');
+  if (all) all.onclick = ev => act(ev.target, () => mark(box.items.filter(i => i.unread).map(i => i.key), { read: true }).then(inboxPage));
+  refreshInboxBadge();
+}
+
+async function refreshInboxBadge() {
+  const b = $('#inbox-badge');
+  if (!b || !ME || !ME.user) return;
+  try {
+    const box = await api('/inbox?view=unread');
+    b.textContent = box.counts.unread || '';
+    b.hidden = !box.counts.unread;
+  } catch { /* sem caixa (ex.: chave de API): fica escondido */ }
+}
+
+/* ---------- busca ---------- */
+async function searchPage() {
+  const q = qsOf().get('q') || '';
+  main.innerHTML = `<h1>Buscar</h1><div class="sub">Agentes, Digital employees, tarefas, projetos, metas, plugins e skills — só o que você pode ver.</div>
+    <div class="row mt" style="gap:8px"><input id="sq" value="${esc(q)}" placeholder="o que você procura?" style="flex:1" autofocus><button id="sq-go">Buscar</button></div><div id="sr" class="mt"></div>`;
+  const go = () => { const v = $('#sq').value.trim(); if (v) location.hash = '#/search?q=' + encodeURIComponent(v); };
+  $('#sq-go').onclick = go;
+  $('#sq').onkeydown = e => { if (e.key === 'Enter') go(); };
+  if (q.length < 2) return;
+  const r = await api('/search?q=' + encodeURIComponent(q));
+  const groups = {};
+  r.items.forEach(x => (groups[x.kind] = groups[x.kind] || []).push(x));
+  $('#sr').innerHTML = r.items.length ? Object.entries(groups).map(([k, xs]) => `<div class="card mt"><h2>${esc(SEARCH_KIND[k] || k)} (${xs.length})</h2>
+      ${xs.map(x => `<div class="li"><a href="${esc(x.url)}"><b data-noi18n>${esc(x.title)}</b></a> <span class="mute small" data-noi18n>${esc(x.sub || '')}</span>
+        ${x.snippet ? `<div class="mute small" data-noi18n>${esc(x.snippet)}</div>` : ''}</div>`).join('')}</div>`).join('')
+    : `<div class="card empty"><div class="mute">Nada encontrado para “<span data-noi18n>${esc(q)}</span>”.</div></div>`;
+}
+
+function bindGlobalSearch() {
+  const box = $('#gsearch');
+  if (!box) return;
+  box.onkeydown = e => { if (e.key === 'Enter' && box.value.trim()) { location.hash = '#/search?q=' + encodeURIComponent(box.value.trim()); box.value = ''; box.blur(); } };
+  document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); box.focus(); } });
+}
+
+/* ---------- projetos ---------- */
+async function projectsPage() {
+  const archived = qsOf().get('archived') === '1';
+  const [list, goals] = await Promise.all([api('/projects' + (archived ? '?archived=true' : '')), api('/goals')]);
+  const teams = myTeams('developer');
+  main.innerHTML = `<div class="row between"><div><h1>Projetos (${list.length})</h1>
+      <div class="sub">Agrupam as tarefas de um time em torno de um resultado. O Digital employee recebe o projeto, as instruções e a cadeia de metas: sabe por que a tarefa existe.</div></div>
+    <a href="#/projects${archived ? '' : '?archived=1'}" class="small">${archived ? 'Esconder arquivados' : 'Mostrar arquivados'}</a></div>
+  ${list.length ? `<div class="grid g3">${list.map(p => `<div class="card agent-card"><div class="row between"><a href="#/projects/${esc(p.slug)}"><b data-noi18n>${esc(p.name)}</b></a>
+      ${p.status === 'archived' ? '<span class="pill">arquivado</span>' : ''}</div>
+      <div class="mute small"><span data-noi18n>${esc(p.team_name || '—')}</span>${p.goal ? ` · ${icon('target')} <span data-noi18n>${esc(p.goal.title)}</span>` : ''}</div>
+      ${p.description ? `<div class="small mt one-line" data-noi18n>${esc(p.description)}</div>` : ''}
+      <div class="small mt"><span>${p.open}</span> <span class="mute">${window.t('abertas')}</span> · <span>${p.done}</span> <span class="mute">${window.t('concluídas')}</span> · ${usd(p.cost_usd)}</div></div>`).join('')}</div>`
+    : '<div class="card empty"><div class="mute">Nenhum projeto ainda.</div></div>'}
+  ${teams.length ? `<div class="card mt"><h2>Novo projeto</h2><div class="grid g2">
+      <label>Nome<input id="np-name" maxlength="200"></label>
+      <label>Time<select id="np-team">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name || t.slug)}</option>`).join('')}</select></label>
+      <label>Meta<select id="np-goal"><option value="">— nenhuma —</option>${goals.map(g => `<option value="${g.id}" data-team="${esc(g.team || '')}">${esc(g.title)}${g.team ? ` (${esc(g.team)})` : ''}</option>`).join('')}</select></label>
+      <label>Digital employee padrão<select id="np-emp"><option value="">—</option></select></label>
+      <label style="grid-column:1/-1">Descrição<input id="np-desc"></label>
+      <label style="grid-column:1/-1">Instruções (entram no prompt de cada tarefa do projeto)<textarea id="np-instr" rows="3"></textarea></label></div>
+    <div class="row mt"><button id="np-go">Criar projeto</button></div></div>` : ''}`;
+  if (!teams.length) return;
+  const emps = await api('/employees').catch(() => []);
+  const fill = () => {
+    const team = (ME.teams || []).find(t => t.slug === $('#np-team').value);
+    $('#np-emp').innerHTML = '<option value="">—</option>' + emps.filter(e => e.status !== 'offboarded' && (!team || e.team === team.id))
+      .map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('');
+  };
+  fill();
+  $('#np-team').onchange = fill;
+  $('#np-go').onclick = ev => act(ev.target, () => api('/projects', { method: 'POST', body: { name: $('#np-name').value.trim(), team: $('#np-team').value,
+    goal_id: Number($('#np-goal').value) || null, default_employee: $('#np-emp').value || null, description: $('#np-desc').value.trim(),
+    instructions: $('#np-instr').value } }).then(p => { location.hash = `#/projects/${p.slug}`; }), 'Projeto criado');
+}
+
+async function projectDetail(slug) {
+  const p = await api('/projects/' + slug);
+  const emps = (await api('/employees').catch(() => [])).filter(e => ['probation', 'active', 'paused'].includes(e.status));
+  const team = (ME.teams || []).find(t => t.slug === p.team);
+  const mine = emps.filter(e => !team || e.team === team.id);
+  main.innerHTML = `<a href="#/projects" class="mute small">← Projetos</a>
+  <div class="row between"><div><h1 data-noi18n>${esc(p.name)}</h1><div class="sub"><span data-noi18n>${esc(p.team_name || '—')}</span> · ${p.open} <span>${window.t('abertas')}</span> ·
+      ${p.done} <span>${window.t('concluídas')}</span> · ${usd(p.cost_usd)}${p.status === 'archived' ? ' · <span class="pill">arquivado</span>' : ''}</div></div>
+    ${p.can_edit ? `<button class="ghost" id="pj-arch">${p.status === 'archived' ? 'Reativar' : 'Arquivar'}</button>` : ''}</div>
+  ${p.goal_chain.length ? `<div class="card">${icon('target')} <b>Serve a:</b> ${p.goal_chain.map(g => `<span data-noi18n>${esc(g.title)}</span>`).join(' <span class="mute">→</span> ')}</div>` : ''}
+  ${p.description ? `<div class="mute mt" data-noi18n>${esc(p.description)}</div>` : ''}
+  <div class="grid g2 mt"><div class="card"><h2>Nova tarefa no projeto</h2>${p.status === 'active' && mine.length ? `
+      <label>Para<select id="pt-emp">${mine.map(e => `<option value="${esc(e.slug)}" ${e.slug === p.default_employee ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></label>
+      <label class="mt">Título<input id="pt-title" maxlength="300"></label><label class="mt">Detalhes<textarea id="pt-body" rows="4"></textarea></label>
+      <div class="row mt"><button id="pt-go">Entregar</button></div>` : '<div class="mute">Sem Digital employee trabalhando neste time (ou projeto arquivado).</div>'}</div>
+    <div class="card"><h2>Instruções</h2>${p.can_edit ? `<textarea id="pj-instr" rows="6">${esc(p.instructions || '')}</textarea>
+      <label class="mt">Meta<select id="pj-goal"><option value="">— nenhuma —</option></select></label>
+      <div class="row mt"><button class="ghost" id="pj-save">Salvar</button></div>` : `<div data-noi18n style="white-space:pre-wrap">${esc(p.instructions || '—')}</div>`}</div></div>
+  <div class="card mt"><h2>Tarefas (${p.task_list.length})</h2>${p.task_list.length ? `<table><tr><th>Tarefa</th><th>Digital employee</th><th>Status</th><th>Custo</th><th></th></tr>
+    ${p.task_list.map(x => `<tr><td><a href="#/tasks/${x.id}"><b data-noi18n>#${x.id} ${esc(x.title)}</b></a></td><td data-noi18n>${esc(x.employee_name)}</td>
+      <td>${taskPill(x.status)}</td><td class="small">${usd(x.cost_usd)}</td><td class="mute small"><span>${when(x.created_at)}</span></td></tr>`).join('')}</table>`
+    : '<div class="mute">Nenhuma tarefa ainda.</div>'}</div>`;
+  const go = $('#pt-go');
+  if (go) go.onclick = ev => act(ev.target, () => api(`/employees/${$('#pt-emp').value}/tasks`, { method: 'POST', body: {
+    title: $('#pt-title').value.trim(), body: $('#pt-body').value.trim(), project: p.slug } }).then(r => { location.hash = `#/tasks/${r.id}`; }), 'Tarefa entregue');
+  if (p.can_edit) {
+    const goals = await api('/goals');
+    $('#pj-goal').innerHTML += goals.filter(g => !g.team || g.team === p.team).map(g => `<option value="${g.id}" ${p.goal && p.goal.id === g.id ? 'selected' : ''}>${esc(g.title)}</option>`).join('');
+    $('#pj-save').onclick = ev => act(ev.target, () => api('/projects/' + slug, { method: 'PATCH', body: { instructions: $('#pj-instr').value,
+      goal_id: Number($('#pj-goal').value) || null } }).then(route), 'Salvo');
+    $('#pj-arch').onclick = ev => act(ev.target, () => api('/projects/' + slug, { method: 'PATCH', body: { status: p.status === 'archived' ? 'active' : 'archived' } }).then(route));
+  }
+}
+
+/* ---------- metas ---------- */
+async function goalsPage() {
+  const goals = await api('/goals');
+  const kids = {};
+  goals.forEach(g => (kids[g.parent_id || 0] = kids[g.parent_id || 0] || []).push(g));
+  const node = (g, depth) => `<div class="li goal-row" data-id="${g.id}" style="margin-left:${depth * 22}px"><div class="row between">
+      <span>${icon('target')} <b data-noi18n>${esc(g.title)}</b> ${goalPill(g.status)} <span class="mute small">${g.team ? `<span data-noi18n>${esc(g.team_name)}</span>` : window.t('empresa')}
+        ${g.owner ? ` · <span data-noi18n>${esc(g.owner)}</span>` : ''}${g.target_date ? ` · <span>até</span> ${esc(g.target_date)}` : ''}${g.projects ? ` · ${g.projects} <span>projeto(s)</span>` : ''}</span></span>
+      ${g.can_edit ? `<span class="row small" style="gap:4px"><select class="g-st">${Object.entries(GOAL_STATUS).map(([k, v]) => `<option value="${k}" ${k === g.status ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
+        <button class="ghost small g-del">Apagar</button></span>` : ''}</div>
+      ${g.description ? `<div class="mute small" data-noi18n>${esc(g.description)}</div>` : ''}</div>
+    ${(kids[g.id] || []).map(c => node(c, depth + 1)).join('')}`;
+  const canCreate = ME.is_admin || myTeams('maintainer').length;
+  main.innerHTML = `<h1>Metas</h1><div class="sub">O porquê do trabalho. Metas da empresa (definidas por um admin) e dos times (pelo mantenedor), em árvore. Projetos e tarefas apontam para elas, e o Digital employee recebe a cadeia de metas no prompt.</div>
+  ${goals.length ? `<div class="card">${(kids[0] || []).map(g => node(g, 0)).join('')}</div>` : '<div class="card empty"><div class="mute">Nenhuma meta ainda.</div></div>'}
+  ${canCreate ? `<div class="card mt"><h2>Nova meta</h2><div class="grid g2">
+      <label>Título<input id="ng-title" maxlength="300"></label>
+      <label>De quem<select id="ng-team">${ME.is_admin ? `<option value="">${window.t('Empresa')}</option>` : ''}${myTeams('maintainer').map(t => `<option value="${esc(t.slug)}">${esc(t.name || t.slug)}</option>`).join('')}</select></label>
+      <label>Meta-pai<select id="ng-parent"><option value="">— nenhuma —</option>${goals.map(g => `<option value="${g.id}">${esc(g.title)}</option>`).join('')}</select></label>
+      <label>Dono (e-mail)<input id="ng-owner" placeholder="${esc(ME.name || '')}" data-noi18n></label>
+      <label>Data alvo<input id="ng-date" type="date"></label>
+      <label>Descrição<input id="ng-desc"></label></div>
+    <div class="row mt"><button id="ng-go">Criar meta</button></div></div>` : ''}`;
+  main.querySelectorAll('.goal-row').forEach(r => {
+    const id = r.dataset.id, st = $('.g-st', r), del = $('.g-del', r);
+    if (st) st.onchange = () => act(st, () => api('/goals/' + id, { method: 'PATCH', body: { status: st.value } }).then(goalsPage), 'Meta atualizada');
+    if (del) del.onclick = ev => confirm(window.t('Apagar esta meta?')) && act(ev.target, () => api('/goals/' + id, { method: 'DELETE' }).then(goalsPage));
+  });
+  const go = $('#ng-go');
+  if (go) go.onclick = ev => act(ev.target, () => api('/goals', { method: 'POST', body: { title: $('#ng-title').value.trim(), team: $('#ng-team').value || null,
+    parent_id: Number($('#ng-parent').value) || null, owner: $('#ng-owner').value.trim() || null, target_date: $('#ng-date').value,
+    description: $('#ng-desc').value.trim() } }).then(goalsPage), 'Meta criada');
+}
+
+/* ---------- orçamentos ---------- */
+async function budgetsPage() {
+  const b = await api('/budgets');
+  const canCreate = ME.is_admin || myTeams('maintainer').length;
+  const bar = p => `<div class="bar"><span style="width:${Math.min(100, p.percent || 0)}%" class="${p.state === 'stopped' ? 'bad' : p.state === 'warning' ? 'warn' : ''}"></span></div>`;
+  main.innerHTML = `<h1>Orçamentos</h1><div class="sub">Limites por empresa, time, agente (inclusive o de um Digital employee) ou projeto, por dia ou por mês. No aviso, quem responde pelo escopo é avisado;
+    no limite, o trabalho para (o gateway recusa e as tarefas esperam) até alguém liberar. O custo é o registrado pela plataforma, não a fatura do provedor.</div>
+  ${b.incidents.filter(i => i.status === 'open').length ? `<div class="card warn-card"><h2>Incidentes abertos</h2>${b.incidents.filter(i => i.status === 'open').map(i => `<div class="li row between">
+      <span><span class="pill ${i.kind === 'hard_stop' ? 'bad' : 'warn'}">${i.kind === 'hard_stop' ? 'parado' : 'aviso'}</span> ${scopeOf(i)}
+        <span class="mute small">${usd(i.spent_usd)} / ${usd(i.amount_usd)} · ${esc(i.window_key)} · <span>${when(i.opened_at)}</span></span></span>
+      ${i.can_resolve ? `<button class="ghost bi-rel" data-id="${i.id}">${i.kind === 'hard_stop' ? 'Liberar o resto da janela' : 'Dispensar'}</button>` : ''}</div>`).join('')}</div>` : ''}
+  <div class="card mt"><h2>Políticas (${b.policies.length})</h2>${b.policies.length ? `<table><tr><th>Escopo</th><th>Janela</th><th>Gasto</th><th></th><th>Limite</th><th>Estado</th><th></th></tr>
+    ${b.policies.map(p => `<tr data-id="${p.id}"><td>${scopeOf(p)}</td>
+      <td>${p.window === 'day' ? window.t('dia') : window.t('mês')}</td><td>${usd(p.spent_usd)}</td><td style="width:120px">${bar(p)}</td>
+      <td>${usd(p.amount_usd)} <span class="mute small">(${window.t('aviso em')} ${p.warn_percent}%${p.hard_stop ? '' : `, ${window.t('sem parada')}`})</span></td>
+      <td>${pillOf(BUDGET_STATE, p.state)}</td>
+      <td>${p.can_manage ? '<button class="ghost small bp-edit">Mudar limite</button> <button class="ghost small danger bp-del">Remover</button>' : ''}</td></tr>`).join('')}</table>`
+    : '<div class="mute">Nenhum orçamento definido.</div>'}</div>
+  ${canCreate ? `<div class="card mt"><h2>Novo orçamento</h2><div class="grid g3">
+      <label>Escopo<select id="nb-type">${ME.is_admin ? `<option value="org">${window.t('Empresa')}</option>` : ''}<option value="team">${window.t('Time')}</option>
+        <option value="agent">${window.t('Agente')}</option><option value="project">${window.t('Projeto')}</option></select></label>
+      <label>Qual (slug)<input id="nb-scope" list="nb-opts" data-noi18n><datalist id="nb-opts"></datalist></label>
+      <label>Janela<select id="nb-win"><option value="month">${window.t('mês')}</option><option value="day">${window.t('dia')}</option></select></label>
+      <label>Limite (US$)<input id="nb-amount" type="number" step="0.01" min="0.01"></label>
+      <label>Aviso em (%)<input id="nb-warn" type="number" min="1" max="100" value="80"></label>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nb-stop" checked> <span>Parar o trabalho ao atingir o limite</span></label></div>
+    <div class="row mt"><button id="nb-go">Criar orçamento</button></div></div>` : ''}
+  ${b.incidents.filter(i => i.status !== 'open').length ? `<div class="card mt"><h2>Histórico</h2>${b.incidents.filter(i => i.status !== 'open').slice(0, 20).map(i => `<div class="li small">
+      <span class="pill">${i.kind === 'hard_stop' ? 'parado' : 'aviso'}</span> ${scopeOf(i)} · ${esc(i.window_key)} · ${usd(i.spent_usd)} / ${usd(i.amount_usd)}
+      <span class="mute">— <span>liberado por</span> ${esc(i.resolved_by)} ${i.resolved_at ? `<span>${when(i.resolved_at)}</span>` : ''}${i.note ? ` · <span data-noi18n>${esc(i.note)}</span>` : ''}</span></div>`).join('')}</div>` : ''}`;
+  main.querySelectorAll('.bi-rel').forEach(btn => btn.onclick = ev => {
+    const note = prompt(window.t('Motivo (fica na auditoria):'));
+    if (note !== null) act(ev.target, () => api(`/budgets/incidents/${btn.dataset.id}/release`, { method: 'POST', body: { note } }).then(budgetsPage), 'Liberado');
+  });
+  main.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id, ed = $('.bp-edit', tr), del = $('.bp-del', tr);
+    if (ed) ed.onclick = ev => { const v = prompt(window.t('Novo limite (US$):')); if (v) act(ev.target, () => api('/budgets/' + id, { method: 'PATCH', body: { amount_usd: Number(v) } }).then(budgetsPage), 'Limite atualizado'); };
+    if (del) del.onclick = ev => confirm(window.t('Remover este orçamento?')) && act(ev.target, () => api('/budgets/' + id, { method: 'DELETE' }).then(budgetsPage));
+  });
+  const go = $('#nb-go');
+  if (!go) return;
+  const opts = async () => {
+    const tp = $('#nb-type').value, dl = $('#nb-opts');
+    $('#nb-scope').disabled = tp === 'org';
+    const list = tp === 'team' ? myTeams('maintainer').map(t => t.slug) : tp === 'project' ? (await api('/projects')).map(p => p.slug)
+      : tp === 'agent' ? (await api('/agents').catch(() => [])).map(a => a.slug) : [];
+    dl.innerHTML = list.map(s => `<option value="${esc(s)}">`).join('');
+  };
+  $('#nb-type').onchange = opts;
+  opts();
+  go.onclick = ev => act(ev.target, () => api('/budgets', { method: 'POST', body: { scope_type: $('#nb-type').value, scope: $('#nb-scope').value.trim() || null,
+    window: $('#nb-win').value, amount_usd: Number($('#nb-amount').value), warn_percent: Number($('#nb-warn').value), hard_stop: $('#nb-stop').checked } }).then(budgetsPage), 'Orçamento criado');
+}
+
+/* ---------- a conversa da tarefa ---------- */
+function threadView(x) {
+  const msgs = x.messages || [];
+  const reopen = ['done', 'failed'].includes(x.status) && !x.probation;
+  const closed = ['cancelled', 'expired'].includes(x.status) || (['done', 'failed'].includes(x.status) && x.probation);
+  return `<div class="card mt"><h2>Conversa</h2>
+    <div class="mute small">Escreva para o Digital employee. Enquanto ele trabalha, a mensagem fica na fila (dá para editar ou descartar) e entra na próxima rodada.
+      ${reopen ? '<b>Esta tarefa terminou: uma mensagem a reabre.</b>' : ''}</div>
+    <div class="thread mt">${msgs.map(m => m.agent ? `<div class="msg-agent"><div class="mute small">${icon('bot')} <span>Digital employee</span> · <span>${when(m.at)}</span></div>
+        <details ${m === msgs[msgs.length - 1] ? 'open' : ''}><summary class="small one-line" data-noi18n>${esc(m.body.slice(0, 140))}</summary><div class="md" data-noi18n>${mdLite(m.body)}</div></details></div>`
+      : `<div class="msg-human ${m.status === 'queued' ? 'queued' : ''}" data-id="${m.id}"><div class="mute small"><span data-noi18n>${esc(m.author)}</span> · <span>${when(m.at)}</span>
+          ${m.status === 'queued' ? ' · <span class="pill info">na fila</span>' : ''}</div><div class="m-body" data-noi18n style="white-space:pre-wrap">${esc(m.body)}</div>
+        ${m.status === 'queued' && m.author === ME.name ? '<div class="row small" style="gap:4px"><button class="ghost small th-edit">Editar</button><button class="ghost small th-drop">Descartar</button></div>' : ''}</div>`).join('')
+      || '<div class="mute small">Nenhuma mensagem ainda.</div>'}</div>
+    ${closed ? '' : `<div class="row mt" style="gap:8px;align-items:flex-end"><textarea id="th-body" rows="2" placeholder="${esc(window.t(reopen ? 'acompanhamento: o que mais ele deve fazer?' : 'mais contexto, uma correção, uma prioridade…'))}" style="flex:1"></textarea>
+      <button id="th-send">${reopen ? 'Reabrir com esta mensagem' : 'Enviar'}</button></div>`}</div>`;
+}
+
+function bindThread(id) {
+  const send = $('#th-send');
+  if (send) send.onclick = ev => act(ev.target, () => api(`/tasks/${id}/messages`, { method: 'POST', body: { body: $('#th-body').value } }).then(route), 'Mensagem enviada');
+  main.querySelectorAll('.msg-human[data-id]').forEach(m => {
+    const mid = m.dataset.id, ed = $('.th-edit', m), dr = $('.th-drop', m);
+    if (ed) ed.onclick = ev => { const v = prompt(window.t('Editar a mensagem:'), $('.m-body', m).textContent); if (v) act(ev.target, () => api(`/tasks/${id}/messages/${mid}`, { method: 'PATCH', body: { body: v } }).then(route)); };
+    if (dr) dr.onclick = ev => act(ev.target, () => api(`/tasks/${id}/messages/${mid}`, { method: 'DELETE' }).then(route), 'Mensagem descartada');
+  });
+}
+
+// work.js carrega antes do app.js ($, api, ME): liga a busca e o contador da caixa depois que a página carregou
+window.addEventListener('load', () => {
+  bindGlobalSearch();
+  setTimeout(refreshInboxBadge, 1500);
+  setInterval(() => { if (document.visibilityState === 'visible') refreshInboxBadge(); }, 60000);
+});

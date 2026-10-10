@@ -27,6 +27,7 @@ from .routers import (
     remote_mcp,
     schedules,
     scim,
+    work,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -201,6 +202,7 @@ def metrics(request: Request):
 app.include_router(access.router)
 app.include_router(admin.router)
 app.include_router(employees.router)
+app.include_router(work.router)  # metas, projetos, conversa da tarefa, orçamentos, caixa de entrada e busca
 app.include_router(employees.hooks)
 app.include_router(notify.router)
 app.include_router(plugins.router)

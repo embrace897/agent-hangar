@@ -64,6 +64,7 @@ class TaskBody(BaseModel):
     priority: int = 2
     due_at: datetime | None = None
     plan_approval: bool = False  # o funcionário propõe o plano e só executa depois da aprovação do gestor
+    project: str | None = None  # o projeto a que a tarefa serve (o agente recebe o contexto e a cadeia de metas)
 
 
 class InboxBody(BaseModel):
@@ -194,7 +195,7 @@ def tasks(slug: str, request: Request, status: str | None = None, db=Depends(db_
 @router.post("/employees/{slug}/tasks")
 def assign(slug: str, body: TaskBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.assign(db, acc(request, db), slug, body.title, body.body, body.priority,
-                                              body.due_at, plan_approval=body.plan_approval))
+                                              body.due_at, plan_approval=body.plan_approval, project=body.project))
 
 
 @router.put("/employees/{slug}/inbox")

@@ -276,6 +276,23 @@ def _names(db: Session, ids) -> dict[int, str]:
     return {u.id: (u.name or u.email) for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
 
 
+def can_read_task(acc: Access, t: EmployeeTask, e: Employee) -> bool:
+    """Ler uma tarefa (pedido, resultado, conversa): quem pediu, quem responde pelo funcionário, quem é do time dele,
+    auditores e admins. Ver o agente no catálogo (visibilidade da empresa) não dá acesso ao trabalho dele."""
+    uid = acc.p.user_id
+    if acc.p.is_auditor:
+        return True
+    if uid and (uid == t.requester_user_id or uid in (e.manager_user_id, e.owner_user_id, *(e.backup_user_ids or []))):
+        return True
+    return bool(e.team_id) and e.team_id in acc.teams
+
+
+def _project_ref(db: Session, project_id: int | None) -> dict | None:
+    from ..models import Project
+    p = db.get(Project, project_id) if project_id else None
+    return {"slug": p.slug, "name": p.name} if p else None
+
+
 def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
     d = {"id": t.id, "title": t.title, "body": t.body, "source": t.source, "requester": t.requester, "status": t.status,
          "priority": t.priority, "probation": t.probation, "expected": t.expected, "result": t.result, "error": t.error,
@@ -284,13 +301,20 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
          "plan": t.plan or None, "plan_state": t.plan_state or "", "plan_approval": bool(t.plan_approval),
          "progress": teamwork.progress(t), "parent_task_id": t.parent_task_id, "waiting_on": t.waiting_on,
          "quality": t.quality, "quality_note": t.quality_note or "", "quality_by": t.quality_by or "",
-         "via": next(iter(t.origin or {}), ""),
+         "via": next(iter(t.origin or {}), ""), "project": _project_ref(db, t.project_id),
          "created_at": iso(tasksmod._aware(t.created_at)),
          "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None}
     if detail:
         from ..models import TaskEvent
         d["events"] = [{"kind": ev.kind, "payload": ev.payload, "at": iso(tasksmod._aware(ev.at))}
                        for ev in db.scalars(select(TaskEvent).where(TaskEvent.task_id == t.id).order_by(TaskEvent.id))]
+        from ..models import Project, TaskMessage
+        from .goals import chain
+        from .task_thread import message_dict
+        d["messages"] = [message_dict(m) for m in db.scalars(select(TaskMessage).where(
+            TaskMessage.task_id == t.id, TaskMessage.status != "discarded").order_by(TaskMessage.id))]
+        pr = db.get(Project, t.project_id) if t.project_id else None
+        d["goals"] = [{"id": g.id, "title": g.title, "status": g.status} for g in chain(db, t.goal_id or (pr.goal_id if pr else None))]
         d.update(teamwork.links(db, t))
         d["requests"] = [tasksmod.request_dict(db, r) for r in
                          db.scalars(select(HumanRequest).where(HumanRequest.task_id == t.id).order_by(HumanRequest.id))]
@@ -549,12 +573,14 @@ def set_authority(db: Session, acc: Access, slug: str, rules: list[dict]) -> dic
 
 
 def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", priority: int = 2, due_at=None,
-           source: str = "portal", plan_approval: bool = False) -> dict:
+           source: str = "portal", plan_approval: bool = False, project: str | None = None) -> dict:
     e, a = find(db, acc, slug, "assign")
     if e.status not in ("probation", "active", "paused"):
         raise PlatformError(f"'{slug}' ainda não trabalha (status {e.status}): comece o período de experiência")
+    from .goals import project_for_task
+    p = project_for_task(db, acc, project, e)
     t = tasksmod.create_task(db, e, title, body, source, acc.p.name, acc.p.user_id, priority, due_at,
-                             plan_approval=plan_approval)
+                             plan_approval=plan_approval, project_id=p.id if p else None)
     audit(db, acc.p.name, "employee.task", slug, f"#{t.id} {t.title[:120]}")
     return task_dict(db, t)
 
@@ -572,7 +598,10 @@ def task_detail(db: Session, acc: Access, task_id: int) -> dict:
     if t is None:
         raise PlatformError(f"tarefa #{task_id} não existe")
     e = db.get(Employee, t.employee_id)
-    find(db, acc, db.get(Agent, e.agent_id).slug)
+    if not can_read_task(acc, t, e):
+        raise Forbidden(f"tarefa #{task_id} não encontrada ou sem acesso")
+    from .inbox import seen_task
+    seen_task(db, acc, t.id)
     return task_dict(db, t, detail=True)
 
 

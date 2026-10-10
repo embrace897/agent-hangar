@@ -604,6 +604,8 @@ class EmployeeTask(Base):
     quality: Mapped[int | None] = mapped_column(Integer, nullable=True)  # nota 1-5 do resultado (juiz ou gestor)
     quality_note: Mapped[str] = mapped_column(Text, default="")
     quality_by: Mapped[str] = mapped_column(String(254), default="")  # "judge" ou o e-mail de quem avaliou
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # o projeto a que serve
+    goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # meta explícita (senão, a do projeto)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -769,3 +771,100 @@ class PluginCall(Base):
     args: Mapped[str] = mapped_column(Text, default="")
     result: Mapped[str] = mapped_column(Text, default="")
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Goal(Base):
+    """Meta da empresa (sem time) ou de um time, em árvore. Projetos e tarefas apontam para a meta a que servem, e o
+    agente recebe a cadeia de metas no prompt: sabe o porquê, não só o título."""
+    __tablename__ = "goals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="active")  # planned | active | achieved | dropped
+    target_date: Mapped[str] = mapped_column(String(10), default="")  # AAAA-MM-DD
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Project(Base):
+    """Agrupa tarefas de um time em torno de um resultado: meta, instruções (entram no prompt de cada tarefa) e o
+    Digital employee padrão."""
+    __tablename__ = "projects"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | archived
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskMessage(Base):
+    """A conversa da tarefa: mensagens de pessoas (na fila enquanto o agente trabalha, entregues na próxima rodada) e
+    as respostas do agente."""
+    __tablename__ = "task_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    author: Mapped[str] = mapped_column(String(254), default="")  # e-mail de quem escreveu, ou "agent"
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(12), default="queued")  # queued | delivered | discarded | agent
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BudgetPolicy(Base):
+    """Orçamento com escopo (empresa, time, agente, Digital employee ou projeto) e janela (dia ou mês): aviso em
+    warn_percent e, com hard_stop, o trabalho para até alguém autorizado liberar."""
+    __tablename__ = "budget_policies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    scope_type: Mapped[str] = mapped_column(String(12))  # org | team | agent | project
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    window: Mapped[str] = mapped_column(String(8), default="month")  # day | month
+    amount_usd: Mapped[float] = mapped_column(Float)
+    warn_percent: Mapped[int] = mapped_column(Integer, default=80)
+    hard_stop: Mapped[bool] = mapped_column(Boolean, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BudgetIncident(Base):
+    """Um orçamento cruzou o aviso ou o limite numa janela. A parada fica aberta até alguém liberar (aumentar o
+    orçamento ou liberar o resto da janela)."""
+    __tablename__ = "budget_incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("budget_policies.id", ondelete="CASCADE"), index=True)
+    window_key: Mapped[str] = mapped_column(String(10))  # AAAA-MM ou AAAA-MM-DD
+    kind: Mapped[str] = mapped_column(String(10))  # warning | hard_stop
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | resolved
+    spent_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    amount_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    resolved_by: Mapped[str] = mapped_column(String(254), default="")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+
+class InboxState(Base):
+    """Por pessoa: quando leu cada item da caixa de entrada (tarefa, decisão, incidente) e se arquivou. Arquivar é
+    pessoal: não conclui nem cancela nada."""
+    __tablename__ = "inbox_states"
+    __table_args__ = (UniqueConstraint("user_id", "item"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    item: Mapped[str] = mapped_column(String(40))  # task:12 | decision:5 | budget:3
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)

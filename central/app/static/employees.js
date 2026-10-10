@@ -7,7 +7,7 @@ const EMP_STATUS = { onboarding: ['Contratação', ''], probation: ['Em experiê
   paused: ['Pausado', 'warn'], offboarded: ['Desligado', 'bad'] };
 const TASK_STATUS = { draft: ['Rascunho', ''], new: ['Na fila', 'info'], in_progress: ['Trabalhando', 'info'],
   waiting_human: ['Aguardando decisão', 'warn'], waiting_task: ['Aguardando colega', 'info'], done: ['Concluída', 'ok'], failed: ['Falhou', 'bad'],
-  cancelled: ['Cancelada', ''], expired: ['Expirou', 'bad'] };
+  cancelled: ['Cancelada', ''], expired: ['Expirou', 'bad'], waiting_budget: ['Parada por orçamento', 'bad'] };
 const ACTION_LABEL = { read: 'Ler e consultar', delegate: 'Delegar a outro agente', write_internal: 'Alterar dados internos', run_code: 'Executar código (harness)',
   send_external: 'Enviar para fora', speak_for_company: 'Falar em nome da empresa', publish: 'Publicar',
   financial: 'Dinheiro', delete: 'Apagar', prod_change: 'Mudar produção' };
@@ -247,14 +247,21 @@ function empOverview(t, e) {
       <label class="mt">Detalhes<textarea id="as-body" rows="5" placeholder="contexto, dados, prazo e o que você espera receber"></textarea></label>
       <div class="grid g2 mt"><label>Prioridade<select id="as-prio"><option value="1">Alta</option><option value="2" selected>Normal</option><option value="3">Baixa</option></select></label>
         <label>Prazo (opcional)<input id="as-due" type="datetime-local"></label></div>
+      <label class="mt">Projeto (opcional)<select id="as-proj"><option value="">—</option></select></label>
       <label class="row small mt" style="gap:6px"><input type="checkbox" id="as-plan" ${e.plan_policy === 'approve' ? 'checked disabled' : ''}> <span>Quero aprovar o plano antes da execução</span></label>
       <div class="row mt"><button id="as-go">Entregar</button></div>
       <div class="mute small mt">Ele trabalha em segundo plano. Ações fora da alçada viram pedidos de decisão para o gestor.</div>`
       : `<div class="mute">${e.status === 'onboarding' ? 'Comece o período de experiência para ele receber tarefas.' : 'Desligado: não recebe mais tarefas.'}</div>`}</div></div>`;
+  const proj = $('#as-proj');
+  if (proj) api('/projects').then(list => {
+    const team = (ME.teams || []).find(x => x.id === e.team);
+    proj.innerHTML += list.filter(p => !team || p.team === team.slug).map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join('');
+  }).catch(() => {});
   const b = $('#as-go');
   if (b) b.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/tasks`, { method: 'POST',
     body: { title: $('#as-title').value.trim(), body: $('#as-body').value.trim(), priority: Number($('#as-prio').value),
-      due_at: $('#as-due').value ? new Date($('#as-due').value).toISOString() : null, plan_approval: $('#as-plan').checked } })
+      due_at: $('#as-due').value ? new Date($('#as-due').value).toISOString() : null, plan_approval: $('#as-plan').checked,
+      project: $('#as-proj').value || null } })
     .then(r => { location.hash = `#/tasks/${r.id}`; }), 'Tarefa entregue');
 }
 
@@ -549,11 +556,15 @@ async function taskPage(id) {
     ${['done', 'failed', 'cancelled', 'expired'].includes(x.status) ? '' : '<button class="ghost danger" id="t-cancel">Cancelar tarefa</button>'}</div>
   ${x.body ? `<div class="card"><h2>Pedido</h2><div data-noi18n style="white-space:pre-wrap">${esc(x.body)}</div>${x.expected ? `<div class="mute small mt">Esperado: <span data-noi18n>${esc(x.expected)}</span></div>` : ''}</div>` : ''}
   ${x.result || x.error ? `<div class="card mt ${x.error ? 'bad-card' : ''}"><h2>${x.error ? 'Erro' : 'Resultado'}</h2><div class="md" data-noi18n>${x.result ? mdLite(x.result) : esc(x.error)}</div></div>` : ''}
+  ${(x.goals || []).length || x.project ? `<div class="card mt small">${x.project ? `${icon('folder')} <a href="#/projects/${esc(x.project.slug)}" data-noi18n>${esc(x.project.name)}</a>` : ''}
+    ${(x.goals || []).length ? ` ${icon('target')} <span>Serve a:</span> ${x.goals.map(g => `<span data-noi18n>${esc(g.title)}</span>`).join(' → ')}` : ''}</div>` : ''}
+  ${threadView(x)}
   ${x.status === 'done' ? qualityView(x) : ''}
   ${open.length ? `<div class="mt">${open.map(decisionCard).join('')}</div>` : ''}
   ${planView(x)}${linkView(x)}
   <div class="card mt"><h2>Linha do tempo</h2>${(x.events || []).map(ev => `<div class="li small"><div class="row between"><b>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</b><span class="mute">${ago(ev.at)}</span></div>
     <div class="mute one-line" data-noi18n title="${esc(JSON.stringify(ev.payload))}">${esc(JSON.stringify(ev.payload))}</div></div>`).join('') || '<div class="mute">—</div>'}</div>`;
+  bindThread(id);
   main.querySelectorAll('.q-star').forEach(b => b.onclick = ev => act(ev.target, () => api(`/tasks/${id}/quality`, { method: 'POST',
     body: { score: Number(b.dataset.s), note: $('#q-note').value.trim() } }).then(route), 'Nota salva'));
   const c = $('#t-cancel');

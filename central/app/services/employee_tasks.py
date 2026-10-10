@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -104,7 +105,8 @@ def task_prompt(task: EmployeeTask, lang: str = "pt", lessons: list | None = Non
 def create_task(db: Session, e: Employee, title: str, body: str = "", source: str = "portal", requester: str = "",
                 requester_user_id: int | None = None, priority: int = 2, due_at=None, probation: bool = False,
                 expected: str = "", status: str = "new", dedupe_key: str = "",
-                routine_id: int | None = None, plan_approval: bool = False) -> EmployeeTask:
+                routine_id: int | None = None, plan_approval: bool = False, project_id: int | None = None,
+                goal_id: int | None = None) -> EmployeeTask:
     if not (title or "").strip():
         raise PlatformError("a tarefa precisa de um título")
     if e.status == "offboarded":
@@ -112,12 +114,16 @@ def create_task(db: Session, e: Employee, title: str, body: str = "", source: st
     t = EmployeeTask(employee_id=e.id, title=title.strip()[:300], body=body or "", source=source, requester=requester,
                      requester_user_id=requester_user_id, priority=max(1, min(int(priority or 2), 3)), due_at=due_at,
                      probation=probation, expected=expected or "", status=status, dedupe_key=(dedupe_key or "")[:200],
-                     routine_id=routine_id, plan_approval=bool(plan_approval))
+                     routine_id=routine_id, plan_approval=bool(plan_approval), project_id=project_id, goal_id=goal_id)
     db.add(t)
     db.flush()
     from . import employee_teamwork as teamwork
     past = [] if probation else teamwork.recall(db, e, t.title, t.body)
     extra = [] if probation else teamwork.prompt_extras(db, e, t, past)
+    from .goals import task_context
+    ctx = task_context(db, t, lang_of(e) == "en")  # projeto, instruções e a cadeia de metas: o porquê da tarefa
+    if ctx:
+        extra = [ctx, *extra]
     event(db, t, "created", {"source": source, "requester": requester, "probation": probation,
                              **({"routine": routine_id} if routine_id else {}),
                              **({"dedupe_key": t.dedupe_key} if t.dedupe_key else {}),
@@ -594,6 +600,9 @@ def sweep(db: Session) -> dict:
 
 
 # ------------------------------------------------------------------ executor
+_last_budget_sweep = 0.0
+
+
 def tick() -> list[int]:
     """Reserva tarefas na fila (de Digital employees em experiência ou ativos) para esta réplica executar."""
     claimed = []
@@ -605,6 +614,11 @@ def tick() -> list[int]:
         fire_routines(db)
         from .employee_teamwork import poll_inboxes
         poll_inboxes(db)  # caixa de e-mail como canal de entrada
+        global _last_budget_sweep
+        if time.monotonic() - _last_budget_sweep > 60:  # avisos e paradas de orçamento, mesmo sem chamada nova
+            _last_budget_sweep = time.monotonic()
+            from .budgets import sweep as budget_sweep
+            budget_sweep(db)
         rows = db.execute(select(EmployeeTask.id, EmployeeTask.probation, Employee.status)
                           .join(Employee, Employee.id == EmployeeTask.employee_id)
                           .where(EmployeeTask.status == "new", Employee.status.in_(("probation", "active")),
@@ -636,8 +650,20 @@ def run_task(task_id: int) -> EmployeeTask | None:
             return _finish(db, task, "failed", error=f"limite de {config.EMPLOYEE_MAX_RUNS} rodadas atingido")
         if task.cost_usd > e.task_budget_usd:
             return _finish(db, task, "failed", error=f"orçamento da tarefa (US$ {e.task_budget_usd}) estourado")
+        from . import budgets
+        stop = budgets.stopped(db, a, task.project_id)
+        if stop:  # orçamento do escopo parado: espera alguém liberar, sem perder o checkpoint
+            task.status, task.worker = "waiting_budget", ""
+            event(db, task, "budget", stop)
+            db.commit()
+            return task
         cp = last_checkpoint(db, task)
         messages = list(cp.messages if cp else [{"role": "user", "content": task_prompt(task, lang_of(e))}])
+        from . import task_thread
+        delivered = task_thread.deliver(db, task, messages, lang_of(e))  # o que chegou na conversa da tarefa
+        if len(delivered) != len(messages):  # já no checkpoint: uma rodada que falhe não perde as mensagens
+            messages = delivered
+            checkpoint(db, task, messages)
         task.runs += 1
         event(db, task, "run", {"run": task.runs, "env": env})
         slug, limit_min = a.slug, e.task_time_limit_min
@@ -683,6 +709,8 @@ def run_task(task_id: int) -> EmployeeTask | None:
         note = WAIT_MARK.sub("", content)
         messages = messages + ([{"role": "assistant", "content": note}] if note else [])
         checkpoint(db, task, messages)
+        from . import task_thread
+        task_thread.agent_said(db, task, note)
         if m:
             open_req = db.scalar(select(HumanRequest.id).where(HumanRequest.task_id == task.id, HumanRequest.status == "open",
                                                                HumanRequest.kind.in_(BLOCKING)))
@@ -690,6 +718,11 @@ def run_task(task_id: int) -> EmployeeTask | None:
             task.status = ("waiting_human" if open_req else
                            "waiting_task" if child is not None and child.status not in TERMINAL else
                            "new")  # decidido (ou a repassada terminou) enquanto a rodada terminava: segue
+            db.commit()
+            return task
+        if task_thread.pending(db, task):  # chegou mensagem durante a rodada: mais uma rodada antes de encerrar
+            task.status = "new"
+            event(db, task, "note", {"continue": "mensagem nova na conversa"})
             db.commit()
             return task
         return _finish(db, task, "done", result=content)

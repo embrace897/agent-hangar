@@ -10,7 +10,7 @@ from . import employee_tasks as tasksmod
 from .access import Access, Forbidden
 from .common import PlatformError, iso
 
-OPEN = ("new", "in_progress", "waiting_human", "waiting_task")
+OPEN = ("new", "in_progress", "waiting_human", "waiting_task", "waiting_budget")
 FAIL_ALERT = 25  # % de falha (com 4+ tarefas terminadas) que aparece como gargalo
 
 

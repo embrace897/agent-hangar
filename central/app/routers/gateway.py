@@ -211,6 +211,10 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
             return JSONResponse({"error": f"'{slug}' não está rodando em {env}"}, 503)
         if svc.org.budget_blocked(db, a.team_id):
             return JSONResponse({"error": "orçamento mensal do time esgotado — fale com o mantenedor do time"}, 429)
+        stop = svc.budgets.stopped(db, a)
+        if stop:
+            return JSONResponse({"error": f"orçamento parado ({stop['scope']}, US$ {stop['amount_usd']:g} por "
+                                          f"{'dia' if stop['window'] == 'day' else 'mês'}) — peça para liberar"}, 429)
         spec = svc.spec_of(a)
         info = {"slug": a.slug, "name": a.name, "objective": a.objective, "final_output": a.final_output,
                 "version": a.current_version, "skills": spec.get("skills", []), "id": a.id,

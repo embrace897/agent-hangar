@@ -14,14 +14,18 @@
 <a class="skip" href="#main">Pular para o conteúdo</a>
 <aside id="side">
   <div class="brand"><span class="logo" data-i="logo"></span><span>Agent Hangar</span></div>
+  <div class="gsearch"><input id="gsearch" type="search" placeholder="Buscar… (Ctrl+K)" aria-label="Buscar"></div>
   <nav aria-label="Principal">
     <div class="nav-group">
       <div class="nav-title">Operação</div>
       <a href="#/" data-r="" data-i="gauge">Painel</a>
+      <a href="#/inbox" data-r="inbox" data-i="inbox">Caixa de entrada <span id="inbox-badge" class="badge" hidden></span></a>
       <a href="#/agents" data-r="agents" data-i="bot">Agentes</a>
       <a href="#/approvals" data-r="approvals" data-i="approve">Aprovações <span id="appr-badge" class="badge" hidden></span></a>
       <a href="#/workforce" data-r="workforce" data-i="briefcase">Digital employees</a>
-      <a href="#/decisions" data-r="decisions" data-i="inbox">Decisões <span id="dec-badge" class="badge" hidden></span></a>
+      <a href="#/decisions" data-r="decisions" data-i="approve">Decisões <span id="dec-badge" class="badge" hidden></span></a>
+      <a href="#/projects" data-r="projects" data-i="folder">Projetos</a>
+      <a href="#/goals" data-r="goals" data-i="target">Metas</a>
     </div>
     <div class="nav-group">
       <div class="nav-title">Construção</div>
@@ -36,6 +40,7 @@
       <a href="#/deployments" data-r="deployments" data-i="server">Deployments</a>
       <a href="#/tests" data-r="tests" data-i="flask">Testes</a>
       <a href="#/usage" data-r="usage" data-i="chart">Uso e custo</a>
+      <a href="#/budgets" data-r="budgets" data-i="wallet">Orçamentos</a>
       <a href="#/audit" data-r="audit" data-need="auditor" data-i="scroll">Auditoria</a>
     </div>
     <div class="nav-group">
@@ -58,6 +63,7 @@
 <script src="org.js?v=__V__"></script>
 <script src="employees.js?v=__V__"></script>
 <script src="plugins.js?v=__V__"></script>
+<script src="work.js?v=__V__"></script>
 <script src="app.js?v=__V__"></script>
 </body>
 </html>

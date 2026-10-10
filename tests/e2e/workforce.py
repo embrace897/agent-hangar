@@ -30,6 +30,7 @@ RUN = uuid.uuid4().hex[:6]
 admin = httpx.Client(base_url=URL, timeout=300, headers={"Authorization": f"Bearer {os.environ['HANGAR_TOKEN']}"})
 passed = 0
 created = {"agents": [], "plugins": [], "users": [], "team": None}
+USERS: dict[str, str] = {}  # login de teste de cada pessoa criada ("usuario senha"), para o --keep do work.py
 
 SERVER = r'''
 import os
@@ -84,6 +85,7 @@ def person(key: str, role: str, team: str) -> tuple[httpx.Client, str, str]:
                                           "password": pw}))
     created["users"].append(u["id"])
     ok(admin.post(f"/api/teams/{team}/members", json={"email": email, "role": role}))
+    USERS[key] = f"e2e-{RUN}-{key} {pw}"
     c = httpx.Client(base_url=URL, timeout=300)
     ok(c.post("/api/auth/password", json={"username": f"e2e-{RUN}-{key}", "password": pw}))
     c.headers["X-CSRF-Token"] = c.cookies.get("hangar_csrf") or ""  # sessão por cookie: double-submit, como o portal

@@ -993,6 +993,12 @@ async function route() {
     else if (r === 'employees' && a) await employeeDetail(a, b);
     else if (r === 'tasks' && a) await taskPage(a);
     else if (r === 'manager') await managerPage();
+    else if (r === 'inbox') await inboxPage();
+    else if (r === 'search') await searchPage();
+    else if (r === 'projects' && a) await projectDetail(a);
+    else if (r === 'projects') await projectsPage();
+    else if (r === 'goals') await goalsPage();
+    else if (r === 'budgets') await budgetsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
     else if (r === 'workforce') await workforcePage(a);

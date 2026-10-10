@@ -29,9 +29,10 @@ ALLOW = re.compile(r"^(e2e|E2E|https?://|[\w.-]+@[\w.-]+$)")
 DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/api/templates", "/api/employees",
                   "/api/plugins", "/api/teams", "/api/remote-mcps", "/api/connect", "/api/deployments", "/api/tests",
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
-PAGES_APP = ["", "agents", "agents/catalog", "agents/new", "approvals", "employees", "employees/new", "manager", "decisions",
+PAGES_APP = ["", "inbox", "search?q=e2e", "projects", "goals", "budgets", "agents", "agents/catalog", "agents/new", "approvals",
+             "employees", "employees/new", "manager", "decisions",
              "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit", "users"]
-PAGES_UI = ["", "agents", "approvals", "workforce/overview", "workforce/catalog", "workforce/floor", "workforce/notify",
+PAGES_UI = ["", "inbox", "projects", "goals", "budgets", "agents", "approvals", "workforce/overview", "workforce/catalog", "workforce/floor", "workforce/notify",
             "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
             "audit", "teams", "users", "keys", "sso"]
 
@@ -83,10 +84,21 @@ def setup() -> tuple[str, str, dict]:
         "name": made["plugin"], "title": "E2E i18n", "version": "1.0.0", "base_url": "https://example.com",
         "tools": [{"name": "get_one", "method": "GET", "path": "/one"}],
         "triggers": [{"name": "paid", "title": "Paid", "task_title": "Invoice {{event.id}}", "example": {"id": "1"}}]}}))
+    made["goal"] = ok(admin.post("/api/goals", json={"title": f"E2E goal {RUN}"}))["id"]
+    made["project"] = ok(me.post("/api/projects", json={"name": f"E2E project {RUN}", "team": team, "goal_id": made["goal"],
+                                                         "instructions": "i"}))["slug"]
+    made["budget"] = ok(admin.post("/api/budgets", json={"scope_type": "project", "scope": made["project"],
+                                                         "amount_usd": 10}))["id"]
     return f"e2e-{RUN}-i18n", pw, made
 
 
 def cleanup(made: dict):
+    if made.get("budget"):
+        admin.delete(f"/api/budgets/{made['budget']}")
+    if made.get("project"):
+        admin.patch(f"/api/projects/{made['project']}", json={"status": "archived"})
+    if made.get("goal"):
+        admin.delete(f"/api/goals/{made['goal']}")
     if made.get("employee"):
         admin.delete(f"/api/agents/{made['employee']}")
     admin.delete(f"/api/agents/{made['agent']}")
@@ -126,7 +138,7 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
     pages = [("/app/#/" + p) for p in PAGES_APP] + [("/ui/#/" + p) for p in PAGES_UI] + [
         f"/app/#/agents/{made['agent']}", f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
-        f"/app/#/plugins/{made['plugin']}"]
+        f"/app/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}"]
     with sync_playwright() as p:
         b = p.chromium.launch()
         ctx = b.new_context(viewport={"width": 1440, "height": 1000})

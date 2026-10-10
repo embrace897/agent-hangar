@@ -283,3 +283,21 @@ li.st-doing{font-weight:600}
 
 /* vitrine de plugins: categoria escolhida */
 .pl-cat.on{background:var(--mark-soft);border-color:var(--mark);color:var(--ink)}
+
+/* caixa de entrada, busca, conversa da tarefa e barras de orçamento */
+.gsearch{padding:0 10px 14px}
+.gsearch input{width:100%;background:var(--tarmac-2);border:1px solid transparent;color:var(--tarmac-ink);border-radius:var(--r);padding:7px 10px;font:inherit;font-size:14px}
+.gsearch input::placeholder{color:var(--tarmac-mute)}
+.gsearch input:focus{outline:2px solid var(--mark);outline-offset:1px}
+.ib-item.unread b{font-weight:700}
+.ib-item:not(.unread) b{font-weight:500}
+.bar{height:8px;background:var(--line-2);border-radius:99px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--go)}
+.bar span.warn{background:var(--hold)}
+.bar span.bad{background:var(--stop)}
+.thread{display:flex;flex-direction:column;gap:10px}
+.msg-human,.msg-agent{border:1px solid var(--line);border-radius:var(--r-lg);padding:8px 12px;max-width:min(760px,100%)}
+.msg-human{align-self:flex-end;background:var(--info-bg)}
+.msg-human.queued{border-style:dashed}
+.msg-agent{align-self:flex-start;background:var(--panel-2)}
+.msg-agent summary{cursor:pointer;max-width:100%}

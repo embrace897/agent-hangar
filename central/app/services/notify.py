@@ -37,7 +37,7 @@ log = logging.getLogger("hangar.notify")
 CHANNELS = ("auto", "slack", "teams", "email", "off")
 DEFAULTS = {"digest_hour": 9, "expiry_warn_min": 60, "overdue_escalate_min": 120, "due_soon_min": 60}
 LIMITS = {"digest_hour": (-1, 23), "expiry_warn_min": (0, 1440), "overdue_escalate_min": (5, 10080), "due_soon_min": (0, 1440)}
-OPEN_TASK = ("new", "in_progress", "waiting_human")
+OPEN_TASK = ("new", "in_progress", "waiting_human", "waiting_budget")
 HTTP = lambda: httpx.Client(timeout=15)  # noqa: E731  (os testes trocam)
 
 

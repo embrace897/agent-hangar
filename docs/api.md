@@ -211,6 +211,10 @@ The install routes take `stage: true` for the stage install, a test credential f
 and it never serves agents. `PUT /api/plugins/{name}/install` also takes `oauth_client_id`, `oauth_client_secret` and
 `triggers: {name: {employee, enabled, priority}}` and `rate_limit` (calls per minute; 0 = the default).
 
+## Day-to-day work
+
+Goals, projects, the task's conversation, budgets, the inbox and search: see [work.md](work.md#api).
+
 ## User portal
 
 | Method | Path | Description |

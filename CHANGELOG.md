@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Goals and projects** ([docs/work.md](docs/work.md)): company and team goals as a tree; projects per team with
+  instructions, a goal and a default Digital employee. A task in a project gets the project, its instructions and the
+  chain of goals in its prompt.
+- **The task's conversation:** write on a task while the employee works (queued, editable, delivered in the next
+  round); a message reopens a finished task as a follow-up; the employee's replies are kept in the thread.
+- **Budgets with scope and incidents:** company, team, agent or project, per day or month, with a warning and a hard
+  stop (the gateway answers 429 and tasks wait in `waiting_budget`) until someone raises the limit or releases the rest
+  of the window.
+- **Inbox and search:** a personal inbox (decisions, tasks I asked for, stuck work I manage, budget stops) with read and
+  archived state, and company search (`Ctrl+K`) filtered by access.
+
+### Changed
+- Reading a Digital employee's task (request, result, conversation) now needs the requester, the people who answer for
+  the employee, the employee's team, an auditor or an admin. Seeing the agent in the catalog is no longer enough.
+
 ## [0.24.0] — 2026-10-10
 
 ### Added
