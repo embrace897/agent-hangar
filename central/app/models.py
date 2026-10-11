@@ -25,6 +25,11 @@ class Base(DeclarativeBase):
     pass
 
 
+class OrgScoped:
+    """A empresa dona do registro (várias empresas numa instalação; ver tenancy.py)."""
+    org_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
+
+
 class Agent(Base):
     __tablename__ = "agents"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -50,7 +55,7 @@ class Agent(Base):
     jobs = relationship("Job", cascade="all, delete-orphan", order_by="Job.id.desc()")
 
 
-class AgentVersion(Base):
+class AgentVersion(OrgScoped, Base):
     __tablename__ = "agent_versions"
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"))
@@ -60,7 +65,7 @@ class AgentVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class TestRun(Base):
+class TestRun(OrgScoped, Base):
     __test__ = False
     __tablename__ = "test_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -74,7 +79,7 @@ class TestRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class Deployment(Base):
+class Deployment(OrgScoped, Base):
     __tablename__ = "deployments"
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"))
@@ -90,7 +95,7 @@ class Deployment(Base):
     stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class UsageEvent(Base):
+class UsageEvent(OrgScoped, Base):
     __tablename__ = "usage_events"
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
@@ -106,7 +111,7 @@ class UsageEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
-class AuditLog(Base):
+class AuditLog(OrgScoped, Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(primary_key=True)
     actor: Mapped[str] = mapped_column(String(100))
@@ -116,12 +121,13 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class Skill(Base):
+class Skill(OrgScoped, Base):
     """Habilidade reutilizável (peça de montar agentes): procedimento/conhecimento em markdown, com exemplos e um
     teste próprio que entra nos testes de quem a usa. `version` sobe a cada alteração."""
     __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_skill_org_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
     content: Mapped[str] = mapped_column(Text, default="")
     examples: Mapped[str] = mapped_column(Text, default="")
@@ -133,22 +139,24 @@ class Skill(Base):
     cases: Mapped[list | None] = mapped_column(JSON, nullable=True)  # entradas de teste salvas no Skill Studio
 
 
-class McpServer(Base):
+class McpServer(OrgScoped, Base):
     __tablename__ = "mcp_servers"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_mcpserver_org_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     url: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     # só as ferramentas com este prefixo (ex.: "duckduckgo__" num gateway que agrega vários servidores)
     tool_prefix: Mapped[str] = mapped_column(String(100), default="")
 
 
-class LlmConnection(Base):
+class LlmConnection(OrgScoped, Base):
     """LLM externo (gateway LiteLLM corporativo, OpenRouter, provedor direto…). A plataforma nunca hospeda
     modelo: guarda url + model_name + chave (criptografada, ver crypto.py) e injeta no agente no deploy."""
     __tablename__ = "llm_connections"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_llmconnection_org_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     base_url: Mapped[str] = mapped_column(String(300))
     model_name: Mapped[str] = mapped_column(String(150))
     api_key: Mapped[str] = mapped_column(Text, default="")  # "enc:v1:…" — nunca exposta via API
@@ -163,7 +171,7 @@ class LlmConnection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class Job(Base):
+class Job(OrgScoped, Base):
     """Uma execução de agente-com-harness: container efêmero, 1 por job, sem socket do Docker. O container
     roda a tarefa e chama de volta /internal/jobs/<id>/callback; nenhum container de harness fica ocioso."""
     __tablename__ = "jobs"
@@ -191,7 +199,7 @@ class Job(Base):
     worker: Mapped[str] = mapped_column(String(100), default="")
 
 
-class ApiKey(Base):
+class ApiKey(OrgScoped, Base):
     """Chave de API com escopo. Só o hash é guardado; o valor aparece uma única vez, na criação.
     scopes: ["admin"] (tudo) ou ["invoke"] (só chamar agentes pelo gateway /gw); agents limita o invoke
     a alguns slugs (lista vazia = todos)."""
@@ -226,6 +234,9 @@ class Organization(Base):
     # decisões fora do portal: credenciais do app do Slack (criptografadas), hora do resumo diário, alertas de prazo
     notify: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    slug: Mapped[str] = mapped_column(String(80), default="")
+    domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails desses domínios entram nesta empresa (SSO)
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended
 
 
 class Team(Base):
@@ -264,7 +275,7 @@ class User(Base):
     notify: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class TeamMember(Base):
+class TeamMember(OrgScoped, Base):
     __tablename__ = "team_members"
     __table_args__ = (UniqueConstraint("team_id", "user_id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -289,7 +300,7 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class AccessRequest(Base):
+class AccessRequest(OrgScoped, Base):
     """Pedido de uso de um agente de outro time. approved = concessão ativa (revoked a encerra)."""
     __tablename__ = "access_requests"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -302,7 +313,7 @@ class AccessRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class PromotionRequest(Base):
+class PromotionRequest(OrgScoped, Base):
     """Pedido de promoção para produção de uma versão testada. Aprovado por um mantenedor (ou admin)
     diferente de quem pediu; a versão fica fixada: se a spec mudar, o pedido perde a validade."""
     __tablename__ = "promotion_requests"
@@ -353,7 +364,7 @@ class ScimGroup(Base):
 
 
 # ------------------------------------------------------------------ agendamentos
-class Schedule(Base):
+class Schedule(OrgScoped, Base):
     """Execução agendada de um agente em produção: recorrente (cron de 5 campos, no fuso `timezone`) ou única
     (`run_at`). Enquanto o agente não está em produção, as execuções são puladas — o agendamento passa a valer
     quando ele sobe."""
@@ -375,7 +386,7 @@ class Schedule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class ScheduleRun(Base):
+class ScheduleRun(OrgScoped, Base):
     __tablename__ = "schedule_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
     schedule_id: Mapped[int] = mapped_column(ForeignKey("schedules.id"), index=True)
@@ -405,7 +416,7 @@ class GatewayServer(Base):
     enabled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class RemoteMcp(Base):
+class RemoteMcp(OrgScoped, Base):
     """MCP remoto protegido por OAuth (Activepieces, Notion, Linear…): a central faz o OAuth uma vez (DCR + PKCE),
     guarda os tokens criptografados, renova sozinha e expõe o MCP aos agentes por um proxy interno — o agente nunca
     vê a credencial."""
@@ -447,7 +458,7 @@ class OAuthClient(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class OAuthGrant(Base):
+class OAuthGrant(OrgScoped, Base):
     """Uma autorização (pessoa x app): token de acesso curto + refresh token rotativo. Só os hashes ficam no banco."""
     __tablename__ = "oauth_grants"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -464,7 +475,7 @@ class OAuthGrant(Base):
 
 
 # ------------------------------------------------------------------ montagem a partir do catálogo
-class AgentLineage(Base):
+class AgentLineage(OrgScoped, Base):
     """De onde um agente montado veio: o plano, a base copiada e os especialistas que ele chama, com as versões em
     produção no momento da montagem. Só registra — os agentes de origem nunca são alterados."""
     __tablename__ = "agent_lineage"
@@ -483,7 +494,7 @@ class AgentLineage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class AgentGuide(Base):
+class AgentGuide(OrgScoped, Base):
     """Guia de um agente para quem vai usá-lo: o que é, o que faz e como usar (Markdown). Fica fora da spec de
     propósito: corrigir a documentação não cria versão nova nem exige testes. Cada texto diz a versão que descreve;
     o rascunho gerado por LLM no ship fica marcado (`reviewed=False`) até um mantenedor revisar."""
@@ -500,7 +511,7 @@ class AgentGuide(Base):
 
 
 # ------------------------------------------------------------------ Digital employee (F1)
-class Employee(Base):
+class Employee(OrgScoped, Base):
     """Digital employee: um agente com cargo, gestor humano, alçada e caixa de tarefas. A alçada é aplicada pela
     plataforma (gate), nunca pelo prompt. Ciclo de vida: draft -> onboarding -> probation -> active <-> paused ->
     offboarded."""
@@ -547,7 +558,7 @@ class Employee(Base):
     offboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class AuthorityRule(Base):
+class AuthorityRule(OrgScoped, Base):
     """Alçada do cargo para um tipo de ação: auto | notify | approve | approve_2 | never, com condições opcionais
     sobre os argumentos da ação. O piso da empresa (OrgAuthorityFloor) sempre vence quando é mais restritivo."""
     __tablename__ = "authority_rules"
@@ -561,12 +572,13 @@ class AuthorityRule(Base):
     note: Mapped[str] = mapped_column(Text, default="")
 
 
-class ActionCatalog(Base):
+class ActionCatalog(OrgScoped, Base):
     """Classificação de cada ferramenta por tipo de ação e risco. Ferramenta nova ganha uma classificação automática
     (conservadora) marcada para o admin revisar."""
     __tablename__ = "action_catalog"
+    __table_args__ = (UniqueConstraint("org_id", "tool_ref", name="uq_actioncatalog_org_tool_ref"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    tool_ref: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    tool_ref: Mapped[str] = mapped_column(String(300), index=True)
     action_type: Mapped[str] = mapped_column(String(30))
     risk: Mapped[int] = mapped_column(Integer, default=3)
     reversible: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -574,17 +586,18 @@ class ActionCatalog(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class OrgAuthorityFloor(Base):
+class OrgAuthorityFloor(OrgScoped, Base):
     """Piso da empresa por tipo de ação: nenhum cargo afrouxa. separation=True: quem pediu a tarefa não aprova."""
     __tablename__ = "org_authority_floor"
+    __table_args__ = (UniqueConstraint("org_id", "action_type", name="uq_orgauthorityfloor_org_action_type"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    action_type: Mapped[str] = mapped_column(String(30), unique=True)
+    action_type: Mapped[str] = mapped_column(String(30))
     min_mode: Mapped[str] = mapped_column(String(12))
     separation: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_by: Mapped[str] = mapped_column(String(254), default="")
 
 
-class EmployeeTask(Base):
+class EmployeeTask(OrgScoped, Base):
     """Trabalho entregue a um Digital employee. Roda em etapas com checkpoint; pausa em waiting_human quando uma ação
     precisa de decisão e retoma do checkpoint depois dela."""
     __tablename__ = "employee_tasks"
@@ -631,7 +644,7 @@ class EmployeeTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class TaskEvent(Base):
+class TaskEvent(OrgScoped, Base):
     __tablename__ = "employee_task_events"
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
@@ -640,7 +653,7 @@ class TaskEvent(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class TaskCheckpoint(Base):
+class TaskCheckpoint(OrgScoped, Base):
     __tablename__ = "employee_task_checkpoints"
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
@@ -649,7 +662,7 @@ class TaskCheckpoint(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class HumanRequest(Base):
+class HumanRequest(OrgScoped, Base):
     """Humano no circuito: aprovação de uma ação exata, pergunta, admissão ou aviso. Sem resposta no prazo, escala
     para o substituto; sem resposta de novo, expira em "não fazer"."""
     __tablename__ = "human_requests"
@@ -685,7 +698,7 @@ class HumanRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class EmployeeRoutine(Base):
+class EmployeeRoutine(OrgScoped, Base):
     """Trabalho recorrente de um Digital employee: a cada disparo do cron vira uma tarefa (só com ele ativo, e nunca
     duas ao mesmo tempo: se a anterior ainda está aberta, o disparo é pulado)."""
     __tablename__ = "employee_routines"
@@ -705,7 +718,7 @@ class EmployeeRoutine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class EmployeeReport(Base):
+class EmployeeReport(OrgScoped, Base):
     __tablename__ = "employee_reports"
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), index=True)
@@ -717,13 +730,14 @@ class EmployeeReport(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class Plugin(Base):
+class Plugin(OrgScoped, Base):
     """Plugin declarativo: conecta um sistema à plataforma (ferramentas HTTP, credencial, tipos de ação para a alçada,
     configurações e skills). O rascunho (`manifest`) só vale depois de aprovado por outra pessoa (`approved_manifest`):
     editar cria um novo rascunho e as instalações seguem na versão aprovada até a próxima aprovação."""
     __tablename__ = "plugins"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_plugin_org_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(60), index=True)
     title: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[str] = mapped_column(String(30), default="")
@@ -749,7 +763,7 @@ class Plugin(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class PluginInstall(Base):
+class PluginInstall(OrgScoped, Base):
     """Instalação de um plugin para um time (team_id) ou para a empresa toda (team_id vazio, só admin): configurações,
     segredos criptografados (nunca saem da central) e estatísticas de uso."""
     __tablename__ = "plugin_installs"
@@ -772,7 +786,7 @@ class PluginInstall(Base):
     identity_mode: Mapped[str] = mapped_column(String(12), default="team")  # team | requester | prefer_requester
 
 
-class PluginCall(Base):
+class PluginCall(OrgScoped, Base):
     """Uma chamada de ferramenta de plugin: quem (agente), qual ferramenta, quando, quanto tempo e com que resultado. Os
     argumentos e o trecho da resposta ficam com os segredos mascarados."""
     __tablename__ = "plugin_calls"
@@ -831,7 +845,7 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class TaskMessage(Base):
+class TaskMessage(OrgScoped, Base):
     """A conversa da tarefa: mensagens de pessoas (na fila enquanto o agente trabalha, entregues na próxima rodada) e
     as respostas do agente."""
     __tablename__ = "task_messages"
@@ -862,7 +876,7 @@ class BudgetPolicy(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class BudgetIncident(Base):
+class BudgetIncident(OrgScoped, Base):
     """Um orçamento cruzou o aviso ou o limite numa janela. A parada fica aberta até alguém liberar (aumentar o
     orçamento ou liberar o resto da janela)."""
     __tablename__ = "budget_incidents"
@@ -879,7 +893,7 @@ class BudgetIncident(Base):
     note: Mapped[str] = mapped_column(Text, default="")
 
 
-class InboxState(Base):
+class InboxState(OrgScoped, Base):
     """Por pessoa: quando leu cada item da caixa de entrada (tarefa, decisão, incidente) e se arquivou. Arquivar é
     pessoal: não conclui nem cancela nada."""
     __tablename__ = "inbox_states"
@@ -891,7 +905,7 @@ class InboxState(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
-class TaskDependency(Base):
+class TaskDependency(OrgScoped, Base):
     """A tarefa só começa quando as tarefas de que depende terminarem; os resultados delas chegam no prompt."""
     __tablename__ = "task_dependencies"
     __table_args__ = (UniqueConstraint("task_id", "depends_on_id"),)
@@ -902,7 +916,7 @@ class TaskDependency(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class TaskFile(Base):
+class TaskFile(OrgScoped, Base):
     """Arquivo de uma tarefa: o que a pessoa anexou (input) ou o que o Digital employee entregou (output). O mesmo nome
     vira uma versão nova; as anteriores ficam."""
     __tablename__ = "task_files"
@@ -920,7 +934,7 @@ class TaskFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class EmployeeRevision(Base):
+class EmployeeRevision(OrgScoped, Base):
     """Cada mudança no cargo, na alçada ou nas configurações de um Digital employee: o retrato depois da mudança, quem
     mudou e quando. Restaurar aplica um retrato antigo como uma revisão nova."""
     __tablename__ = "employee_revisions"
@@ -934,7 +948,7 @@ class EmployeeRevision(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class SkillRevision(Base):
+class SkillRevision(OrgScoped, Base):
     """Cada versão de uma skill (o conteúdo, os exemplos e o teste), para comparar e restaurar."""
     __tablename__ = "skill_revisions"
     __table_args__ = (UniqueConstraint("skill_id", "version"),)
@@ -950,7 +964,7 @@ class SkillRevision(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class SkillTestRun(Base):
+class SkillTestRun(OrgScoped, Base):
     """Uma rodada dos casos de teste de uma skill numa versão: dá para comparar versões."""
     __tablename__ = "skill_test_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -963,7 +977,7 @@ class SkillTestRun(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class PluginUserAccount(Base):
+class PluginUserAccount(OrgScoped, Base):
     """A conta pessoal de uma pessoa num plugin OAuth2: com identity_mode=requester, o Digital employee usa a conta de
     quem pediu a tarefa (e não a do time)."""
     __tablename__ = "plugin_user_accounts"
@@ -995,7 +1009,7 @@ class Secret(Base):
     last_used_by: Mapped[str] = mapped_column(String(200), default="")
 
 
-class SecretProposal(Base):
+class SecretProposal(OrgScoped, Base):
     """Quem não administra segredos propõe um valor novo; quem administra aprova (sem ver o valor antigo)."""
     __tablename__ = "secret_proposals"
     id: Mapped[int] = mapped_column(primary_key=True)

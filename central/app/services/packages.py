@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from .. import config
 from ..models import Agent, AuthorityRule, Employee, EmployeeRoutine, EmployeeTask, Goal, Plugin, Project, Skill, now
+from ..tenancy import unscoped
 from .access import RANK, Access, Forbidden, find_team
 from .common import PlatformError, audit, iso, spec_of
 
@@ -114,7 +115,7 @@ def parse(doc) -> dict:
 
 def _free_slug(db: Session, slug: str, taken: set) -> str:
     base, n, s = slug, 2, slug
-    while s in taken or db.scalar(select(Agent.id).where(Agent.slug == s)):
+    while s in taken or db.scalar(unscoped(select(Agent.id).where(Agent.slug == s))):
         s, n = f"{base}-{n}", n + 1
     return s
 

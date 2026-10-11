@@ -39,7 +39,7 @@ const cookieVal = n => (document.cookie.split('; ').find(c => c.startsWith(n + '
 const authHeaders = () => ({ 'Content-Type': 'application/json', 'X-CSRF-Token': cookieVal('hangar_csrf') });
 let ME = null;  // /api/me: quem sou, papéis e times
 const can = (a, p) => (a.permissions || []).includes(p);
-$('#logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/'; location.reload(); };
+$('#logout').onclick = async () => { document.cookie = 'hangar_org=; path=/; max-age=0'; await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/'; location.reload(); };
 
 class AuthError extends Error {}
 async function api(path, opts = {}) {
@@ -1005,6 +1005,7 @@ async function route() {
     else if (r === 'skills') await skillsPage();
     else if (r === 'packages') await packagesPage();
     else if (r === 'secrets') await secretsPage();
+    else if (r === 'orgs') await orgsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
     else if (r === 'workforce') await workforcePage(a);

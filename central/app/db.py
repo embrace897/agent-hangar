@@ -17,6 +17,7 @@ log = logging.getLogger("hangar.db")
 _connect_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(config.DATABASE_URL, pool_pre_ping=True, connect_args=_connect_args)
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
+from . import tenancy  # noqa: E402,F401  (registra o filtro por empresa nas sessões)
 
 BASELINE = "0001_baseline"
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

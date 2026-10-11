@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .. import config
 from ..cron import Cron, CronError, zone
 from ..models import Employee, EmployeeRoutine, EmployeeTask, HumanRequest, Organization, now
+from ..tenancy import current_org
 from . import employee_gate as gatemod
 from . import employee_tasks as tasksmod
 from .access import Access, Forbidden
@@ -28,7 +29,7 @@ from .common import PlatformError, audit, iso
 
 
 def _tz(db: Session) -> str:
-    org = db.get(Organization, 1)
+    org = db.get(Organization, current_org())
     return org.timezone if org and org.timezone else "UTC"
 
 
@@ -197,6 +198,8 @@ def inbound(db: Session, slug: str, token: str, title: str, body: str = "", dedu
         a = get_agent(db, slug)
     except PlatformError:
         raise Forbidden("token inválido") from None
+    from .. import tenancy
+    tenancy.set_org(a.org_id or 1)  # o webhook de entrada age na empresa do funcionário
     e = db.scalar(select(Employee).where(Employee.agent_id == a.id))
     if e is None or not e.webhook_token_hash or not secrets.compare_digest(_hash(token or ""), e.webhook_token_hash):
         raise Forbidden("token inválido")

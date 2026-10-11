@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, config, crypto, db, egress, observability, shared
+from . import auth, config, crypto, db, egress, observability, shared, tenancy
 from . import services as svc
 from .mcp_tools import mcp
 from .routers import (
@@ -153,9 +153,39 @@ class AuthMiddleware:
             return await JSONResponse({"error": "forbidden: a credencial não tem permissão para este recurso"},
                                       403)(scope, receive, send)
         scope.setdefault("state", {})["principal"] = principal
+        org = await run_in_threadpool(_org_of, principal, headers.get("x-hangar-org", ""))
+        if not headers.get("x-hangar-org") and auth.cookie(headers, "hangar_org"):  # o seletor de empresa do portal
+            org = await run_in_threadpool(_org_of, principal, auth.cookie(headers, "hangar_org")) or org
+        if org is None:
+            return await JSONResponse({"error": "empresa desconhecida (X-Hangar-Org)"}, 404)(scope, receive, send)
+        if org == 0:
+            return await JSONResponse({"error": "empresa suspensa: fale com quem administra a instalação"}, 403)(scope, receive, send)
+        tenancy.set_org(org, principal.user_id)  # tudo daqui em diante (e nas threads do FastAPI) age dentro desta empresa
         if path.startswith("/mcp"):
             return await _mcp_logging(self.app, scope, receive, send, headers)
         return await self.app(scope, receive, send)
+
+
+def _org_of(principal, wanted: str) -> int | None:
+    """A empresa da requisição: a de quem chama. O token admin e os admins da empresa principal escolhem pelo
+    X-Hangar-Org (id ou slug); sem ele, a empresa principal."""
+    instance_admin = principal.via == "admin-token" or ("admin" in principal.scopes and principal.org_id is None) or (
+        principal.org_role == "admin" and (principal.org_id or 1) == 1)
+    if not wanted or not instance_admin:
+        org = principal.org_id or 1
+        with db.SessionLocal() as s:  # empresa suspensa: as pessoas dela não entram (quem administra a instalação, sim)
+            from .models import Organization
+            o = s.get(Organization, org)
+            if o is not None and o.status == "suspended" and not instance_admin:
+                return 0
+        return org
+    with db.SessionLocal() as s:
+        from sqlalchemy import select
+
+        from .models import Organization
+        o = s.get(Organization, int(wanted)) if wanted.isdigit() else s.scalar(
+            select(Organization).where(Organization.slug == wanted))
+        return o.id if o else None
 
 
 _RPC_METHOD = re.compile(rb'"method"\s*:\s*"([\w/.-]{1,60})"')

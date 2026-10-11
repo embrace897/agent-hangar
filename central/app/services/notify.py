@@ -29,6 +29,7 @@ from .. import config, crypto
 from ..cron import zone
 from ..db import SessionLocal
 from ..models import Agent, Employee, EmployeeTask, HumanRequest, Organization, User, now
+from ..tenancy import current_org
 from . import employee_tasks as tasksmod
 from .access import Access, Forbidden, principal_for
 from .common import PlatformError, audit, iso
@@ -58,13 +59,32 @@ def _run(fn, *args):
 
 
 def _bg(fn, *args):
-    """Envia em segundo plano (os testes trocam por execução direta)."""
-    _pool.submit(_run, fn, *args)
+    """Envia em segundo plano (os testes trocam por execução direta), na empresa de quem disparou."""
+    import contextvars
+    _pool.submit(contextvars.copy_context().run, _run, fn, *args)
+
+
+def verify_slack_any(db, raw: bytes, headers: dict) -> dict:
+    """O Slack não diz de que empresa é: a assinatura confere com o segredo de uma delas, que vira o contexto."""
+    from .. import tenancy
+    last = None
+    for o in db.scalars(select(Organization).order_by(Organization.id)):
+        cfg = {**DEFAULTS, **(o.notify or {})}
+        if not cfg.get("slack_signing_secret"):
+            continue
+        try:
+            _verify_slack(cfg, raw, headers)
+        except Forbidden as e:
+            last = e
+            continue
+        tenancy.set_org(o.id)
+        return cfg
+    raise last or Forbidden("assinatura do Slack ausente ou vencida")
 
 
 # ------------------------------------------------------------------ configuração (empresa e pessoa)
 def org_cfg(db) -> dict:
-    o = db.get(Organization, 1)
+    o = db.get(Organization, current_org())
     return {**DEFAULTS, **((o.notify if o else None) or {})}
 
 
@@ -136,7 +156,7 @@ def admin_view(db, acc: Access) -> dict:
 def set_admin(db, acc: Access, changes: dict) -> dict:
     if not acc.p.is_admin:
         raise Forbidden("só o admin configura os canais de decisão da empresa")
-    o = db.get(Organization, 1)
+    o = db.get(Organization, current_org())
     cfg = dict((o.notify if o else None) or {})
     for k, (lo, hi) in LIMITS.items():
         if changes.get(k) is not None:
@@ -559,8 +579,7 @@ SLACK_DECISION = {"approve": "approve", "reject": "reject", "edit": "approve_edi
 
 def slack_interaction(db, raw: bytes, headers: dict) -> dict | None:
     """Clique num botão ou envio de um modal no Slack. Devolve o corpo da resposta (ou None = 200 vazio)."""
-    cfg = org_cfg(db)
-    _verify_slack(cfg, raw, headers)
+    cfg = verify_slack_any(db, raw, headers)
     form = urllib.parse.parse_qs(raw.decode())
     payload = json.loads((form.get("payload") or ["{}"])[0])
     kind = payload.get("type")
@@ -634,8 +653,14 @@ def _page(lang: str, rid, body: str) -> str:
     return PAGE.format(lang="en" if lang == "en" else "pt-BR", rid=rid, body=body)
 
 
+def _link_org(rid: int):
+    from .. import tenancy
+    tenancy.set_org(tenancy.org_of(HumanRequest, rid))  # o link assinado age na empresa do pedido
+
+
 def link_page(db, token: str, d: str = "") -> str:
     rid, uid = verify(token)
+    _link_org(rid)
     r = db.get(HumanRequest, rid)
     if not r:
         raise PlatformError("pedido não existe")
@@ -670,6 +695,7 @@ def link_page(db, token: str, d: str = "") -> str:
 
 def link_post(db, token: str, form: dict) -> str:
     rid, uid = verify(token)
+    _link_org(rid)
     decision = (form.get("decision") or "").strip()
     if decision not in ("approve", "approve_edited", "reject", "answer"):
         raise PlatformError("decisão inválida")

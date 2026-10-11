@@ -41,6 +41,7 @@ class Principal:
     user_id: int | None = None
     org_role: str | None = None  # admin | auditor | member — só quando age como usuário
     via: str = "key"  # key | session | admin-token | oauth
+    org_id: int | None = None  # a empresa de quem chama (None = o token admin, que escolhe pelo X-Hangar-Org)
 
     @property
     def is_admin(self) -> bool:
@@ -180,7 +181,7 @@ def revoke_user_sessions(db: Session, user_id: int):
 def _user_principal(u: User, via: str, name: str | None = None) -> Principal | None:
     if not u or not u.active:
         return None
-    return Principal(name or u.email, {"user"}, user_id=u.id, org_role=u.org_role, via=via)
+    return Principal(name or u.email, {"user"}, user_id=u.id, org_role=u.org_role, via=via, org_id=u.org_id or 1)
 
 
 # Cache curto: evita um SELECT por request no gateway. Revogação/mudança de papel limpa o cache.
@@ -235,7 +236,7 @@ def authenticate(db: Session, token: str) -> Principal | None:
                 principal = _user_principal(owner, "key", f"{owner.email} (key:{row.name})")
             else:
                 principal = Principal(f"key:{row.name}", set(row.scopes or []), list(row.agents or []), row.client,
-                                      user_id=row.user_id)
+                                      user_id=row.user_id, org_id=row.org_id or 1)
             if principal is not None:
                 row.last_used_at = now()
                 db.commit()

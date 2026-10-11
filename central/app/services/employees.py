@@ -25,6 +25,7 @@ from ..models import (
     User,
     now,
 )
+from ..tenancy import current_org
 from . import employee_gate as gatemod
 from . import employee_quality as qualitymod
 from . import employee_tasks as tasksmod
@@ -750,7 +751,7 @@ def _weekday(v) -> int:
 
 
 def daily_reports(db: Session, at=None) -> int:
-    org = db.get(Organization, 1)
+    org = db.get(Organization, current_org())
     tz = zone(org.timezone if org else "UTC")
     local = (at or now()).astimezone(tz)
     today, sent = local.date().isoformat(), 0

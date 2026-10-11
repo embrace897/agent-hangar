@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from .. import config, deploy
+from .. import config, deploy, tenancy
 from ..db import SessionLocal
 from ..models import Agent, Employee, EmployeeTask, HumanRequest, TaskCheckpoint, TaskEvent, TeamMember, User, now
 from . import employee_gate as gatemod
@@ -637,19 +637,25 @@ _last_budget_sweep = 0.0
 def tick() -> list[int]:
     """Reserva tarefas na fila (de Digital employees em experiência ou ativos) para esta réplica executar."""
     claimed = []
-    with SessionLocal() as db:
-        sweep(db)
-        from . import notify
-        notify.sweep(db)  # alerta antes de expirar, resumo diário e prazos de tarefa
-        from .employee_work import fire_routines
-        fire_routines(db)
-        from .employee_teamwork import poll_inboxes
-        poll_inboxes(db)  # caixa de e-mail como canal de entrada
-        global _last_budget_sweep
-        if time.monotonic() - _last_budget_sweep > 60:  # avisos e paradas de orçamento, mesmo sem chamada nova
-            _last_budget_sweep = time.monotonic()
-            from .budgets import sweep as budget_sweep
-            budget_sweep(db)
+    global _last_budget_sweep
+    budgets_now = time.monotonic() - _last_budget_sweep > 60  # avisos e paradas de orçamento, mesmo sem chamada nova
+    if budgets_now:
+        _last_budget_sweep = time.monotonic()
+    for org_id in tenancy.active_orgs():  # cada empresa com a própria sessão e o próprio contexto (Slack, fuso, avisos)
+        with tenancy.using(org_id), SessionLocal() as db:
+            sweep(db)
+            from . import notify
+            notify.sweep(db)  # alerta antes de expirar, resumo diário e prazos de tarefa
+            from .employee_work import fire_routines
+            fire_routines(db)
+            from .employee_teamwork import poll_inboxes
+            poll_inboxes(db)  # caixa de e-mail como canal de entrada
+            if budgets_now:
+                from .budgets import sweep as budget_sweep
+                budget_sweep(db)
+            from .employees import daily_reports
+            daily_reports(db)
+    with SessionLocal() as db:  # a fila é uma só: reserva entre todas as empresas
         rows = db.execute(select(EmployeeTask.id, EmployeeTask.probation, Employee.status)
                           .join(Employee, Employee.id == EmployeeTask.employee_id)
                           .where(EmployeeTask.status == "new", Employee.status.in_(("probation", "active")),
@@ -663,12 +669,16 @@ def tick() -> list[int]:
             db.commit()
             if res.rowcount == 1:
                 claimed.append(tid)
-        from .employees import daily_reports
-        daily_reports(db)
     return claimed
 
 
 def run_task(task_id: int) -> EmployeeTask | None:
+    """Uma rodada da tarefa, dentro da empresa dela."""
+    with tenancy.using(tenancy.org_of(EmployeeTask, task_id)):
+        return _run_task(task_id)
+
+
+def _run_task(task_id: int) -> EmployeeTask | None:
     """Uma rodada da tarefa: chama o agente a partir do último checkpoint."""
     with SessionLocal() as db:
         task = db.get(EmployeeTask, task_id)

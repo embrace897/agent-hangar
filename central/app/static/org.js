@@ -23,7 +23,7 @@ async function boot() {
 }
 
 function renderSide() {
-  const ok = need => !need || (need === 'admin' && ME.is_admin) || (need === 'auditor' && ME.is_auditor) || (need === 'builder' && (ME.can_create_agents || ME.is_admin));
+  const ok = need => !need || (need === 'admin' && ME.is_admin) || (need === 'auditor' && ME.is_auditor) || (need === 'builder' && (ME.can_create_agents || ME.is_admin)) || (need === 'instance' && ME.instance_admin);
   document.querySelectorAll('nav a').forEach(a => { a.hidden = !ok(a.dataset.need); });
   const badge = $('#appr-badge'); if (badge) { badge.textContent = ME.pending || ''; badge.hidden = !ME.pending; }
   const dec = $('#dec-badge'); if (dec) { dec.textContent = ME.decisions || ''; dec.hidden = !ME.decisions; }
@@ -31,7 +31,11 @@ function renderSide() {
   const role = ME.is_admin ? 'Admin' : ME.is_auditor ? 'Auditor' : (ME.teams[0] ? `${ROLE_LABEL[ME.teams[0].role]} · ${ME.teams[0].name}` : 'Membro');
   $('#whoami').innerHTML = `<div class="who">${u && u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" referrerpolicy="no-referrer">` : `<span class="av">${esc((u ? (u.name || u.email) : 'A')[0].toUpperCase())}</span>`}
     <div><div class="small"><b>${esc(u ? (u.name || u.email) : 'Sessão de emergência')}</b></div><div class="mute small">${esc(role)}</div>
-    ${u && u.has_password ? '<a href="#" id="pw-change" class="small">Trocar senha</a>' : ''}</div></div>`;
+    ${u && u.has_password ? '<a href="#" id="pw-change" class="small">Trocar senha</a>' : ''}</div></div>
+    ${ME.instance_admin && (ME.orgs || []).length > 1 ? `<label class="small org-switch">Empresa<select id="org-switch">${ME.orgs.map(o =>
+      `<option value="${o.id}" ${o.id === ME.org.id ? 'selected' : ''} data-noi18n>${esc(o.name)}</option>`).join('')}</select></label>` : ''}`;
+  const sw = $('#org-switch');  // quem administra a instalação age dentro da empresa escolhida (cookie lido pelo servidor)
+  if (sw) sw.onchange = () => { document.cookie = `hangar_org=${sw.value}; path=/; SameSite=Lax`; location.hash = '#/'; location.reload(); };
   const pc = $('#pw-change');
   if (pc) pc.onclick = async e => {
     e.preventDefault();

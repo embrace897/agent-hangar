@@ -1,4 +1,5 @@
 """Registro e versionamento de agentes: criar, desenhar (merge patch), substituir spec, rollback, apply."""
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import deploy
@@ -11,8 +12,10 @@ from ..models import (
     PromotionRequest,
     Schedule,
     ScheduleRun,
+    Team,
     UsageEvent,
 )
+from ..tenancy import current_org, unscoped
 from .common import PlatformError, audit, find_agent, get_agent, slugify, spec_of
 
 META_KEYS = ("name", "objective", "final_output", "owner")
@@ -23,18 +26,22 @@ def create_agent(db: Session, name: str, objective: str, final_output: str, kind
                  visibility: str | None = None) -> Agent:
     if not (name and objective and final_output):
         raise PlatformError("name, objective e final_output são obrigatórios")
+    def taken(s: str) -> bool:  # slug é único na instalação (nome do container): confere em todas as empresas
+        return db.scalar(unscoped(select(Agent.id).where(Agent.slug == s))) is not None
     if slug:
         slug = slugify(slug)
-        if find_agent(db, slug):
+        if taken(slug):
             raise PlatformError(f"slug '{slug}' já existe")
     else:
         base, i = slugify(name), 2
         slug = base
-        while find_agent(db, slug):
+        while taken(slug):
             slug, i = f"{base}-{i}", i + 1
+    if not team_id:  # o time padrão da empresa (o primeiro criado nela)
+        team_id = db.scalar(select(Team.id).order_by(Team.id))
     if visibility and visibility not in ("private", "org", "open"):
         raise PlatformError("visibility deve ser private, org ou open")
-    org = db.get(Organization, 1)
+    org = db.get(Organization, current_org())
     a = Agent(slug=slug, name=name, objective=objective, final_output=final_output, kind=kind or "single",
               owner=owner or "", status="draft", current_version=1, team_id=team_id or 1,
               visibility=visibility or (org.default_visibility if org else "org"))

@@ -316,7 +316,9 @@ def login_identity(db: Session, provider: str, ident: Identity, c: dict) -> User
     u = u or user_by_email(db, ident.email)  # pré-cadastro, SCIM ou outro provedor com o mesmo e-mail verificado
     created = u is None
     if created:
-        u = User(email=ident.email, name=ident.name or ident.email.split("@")[0], active=True, org_role="member")
+        from .services.orgs import org_for_email
+        u = User(email=ident.email, name=ident.name or ident.email.split("@")[0], active=True, org_role="member",
+                 org_id=org_for_email(db, ident.email))  # a empresa dona do domínio (multiempresa)
         db.add(u)
     if not u.active:
         raise AuthError("usuário desativado — fale com um administrador")

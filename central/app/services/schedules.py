@@ -22,6 +22,7 @@ from .. import config
 from ..cron import Cron, CronError, zone
 from ..db import SessionLocal
 from ..models import Agent, Organization, Schedule, ScheduleRun, now
+from ..tenancy import current_org
 from .access import Access
 from .common import PlatformError, audit, get_agent, iso
 
@@ -36,7 +37,7 @@ def _aware(dt):
 
 
 def org_timezone(db: Session) -> str:
-    o = db.get(Organization, 1)
+    o = db.get(Organization, current_org())
     return (o.timezone if o else None) or "UTC"
 
 
@@ -224,6 +225,13 @@ def _notify(s: Schedule, a: Agent, r: ScheduleRun) -> str:
 
 
 def execute(schedule_id: int, trigger: str = "schedule") -> ScheduleRun:
+    """Roda um agendamento agora, dentro da empresa dele."""
+    from .. import tenancy
+    with tenancy.using(tenancy.org_of(Schedule, schedule_id)):
+        return _execute(schedule_id, trigger)
+
+
+def _execute(schedule_id: int, trigger: str = "schedule") -> ScheduleRun:
     """Roda um agendamento agora (numa sessão própria) e grava o resultado no histórico."""
     from .invoke import chat
     from .org import budget_blocked

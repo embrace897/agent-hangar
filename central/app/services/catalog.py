@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from .. import config, crypto
 from ..models import Agent, LlmConnection, McpServer, Skill
+from ..tenancy import current_org
 from .common import PlatformError, audit, iso, spec_of
 
 PROTOCOLS = ("openai", "anthropic", "deepseek")
@@ -166,7 +167,7 @@ def code_allowed(db: Session, spec: dict, env: str) -> tuple[bool, str]:
     Com a política da empresa em "approved", só se a conexão de LLM efetiva estiver aprovada para código."""
     from ..models import Organization
 
-    org = db.get(Organization, 1)
+    org = db.get(Organization, current_org())
     if not org or (org.code_policy or "any") != "approved":
         return True, ""
     llm = spec.get("llm") or {}

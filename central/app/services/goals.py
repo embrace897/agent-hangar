@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Agent, Employee, EmployeeTask, Goal, Project, Team, User, now
+from ..tenancy import unscoped
 from .access import RANK, Access, Forbidden, find_team
 from .common import PlatformError, audit, iso, slugify
 
@@ -227,7 +228,7 @@ def create_project(db: Session, acc: Access, name: str, team: str, description: 
         raise PlatformError("o projeto precisa de um nome")
     base = slugify(slug or name)
     s, n = base, 2
-    while db.scalar(select(Project.id).where(Project.slug == s)):
+    while db.scalar(unscoped(select(Project.id).where(Project.slug == s))):  # slug único na instalação
         s, n = f"{base}-{n}", n + 1
     if goal_id:
         g = db.get(Goal, int(goal_id))

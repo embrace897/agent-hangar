@@ -553,3 +553,35 @@ async function secretsPage() {
     if (n) n.onclick = ev => act(ev.target, () => api(`/secrets/proposals/${li.dataset.id}/decide`, { method: 'POST', body: { approve: false } }).then(secretsPage));
   });
 }
+
+/* ---------- empresas (multiempresa: quem administra a instalação) ---------- */
+async function orgsPage() {
+  const list = await api('/orgs');
+  main.innerHTML = `<h1>Empresas</h1><div class="sub">Cada empresa tem as próprias pessoas, times, agentes, Digital employees, plugins, segredos e auditoria — ninguém de uma vê nada da outra. Para agir dentro de uma empresa, escolha-a no seletor da barra lateral.</div>
+  <div class="card"><table class="small"><tr><th>Empresa</th><th>Domínios (SSO)</th><th>Pessoas</th><th>Times</th><th>Agentes</th><th>Digital employees</th><th>Status</th><th></th></tr>
+  ${list.map(o => `<tr data-id="${o.id}" data-status="${esc(o.status)}"><td><b data-noi18n>${esc(o.name)}</b><div class="mute" data-noi18n>${esc(o.slug)}${o.id === ME.org.id ? ` · ${window.t('você está aqui')}` : ''}</div></td>
+    <td><input class="og-doms" value="${esc((o.domains || []).join(', '))}" placeholder="ex.: acme.com" data-noi18n></td>
+    <td>${o.users}</td><td>${o.teams}</td><td>${o.agents}</td><td>${o.employees}</td>
+    <td><span class="pill ${o.status === 'suspended' ? 'bad' : 'ok'}">${esc(window.t(o.status === 'suspended' ? 'suspensa' : 'ativa'))}</span></td>
+    <td class="row" style="gap:4px"><button class="ghost small og-save">Salvar domínios</button>${o.id === 1 ? '' : `<button class="ghost small ${o.status === 'suspended' ? '' : 'danger'} og-status">${o.status === 'suspended' ? 'Reativar' : 'Suspender'}</button>`}</td></tr>`).join('')}</table></div>
+  <div class="card mt"><h2>Nova empresa</h2><div class="mute small">Nasce com um time “Geral” e a primeira pessoa admin. Ela entra pelo SSO (as pessoas dos domínios informados entram nesta empresa) ou com usuário e senha locais, se informados.</div>
+    <div class="grid g2 mt"><label>Nome<input id="og-name"></label><label>Slug (opcional)<input id="og-slug" data-noi18n></label>
+      <label>E-mail da pessoa admin<input id="og-email" type="email" data-noi18n></label><label>Nome da pessoa admin<input id="og-aname"></label>
+      <label>Usuário local (opcional)<input id="og-user" autocomplete="off" data-noi18n></label><label>Senha local (opcional)<input id="og-pw" type="password" autocomplete="new-password"></label>
+      <label>Domínios de e-mail (separados por vírgula)<input id="og-doms" placeholder="ex.: acme.com" data-noi18n></label></div>
+    <div class="row mt"><button id="og-go">Criar empresa</button></div></div>`;
+  const doms = v => v.split(',').map(x => x.trim()).filter(Boolean);
+  const reload = async () => { ME = await api('/me'); renderSide(); return orgsPage(); };
+  $('#og-go').onclick = ev => act(ev.target, () => api('/orgs', { method: 'POST', body: { name: $('#og-name').value.trim(), slug: $('#og-slug').value.trim(),
+    admin_email: $('#og-email').value.trim(), admin_name: $('#og-aname').value.trim(), admin_username: $('#og-user').value.trim(),
+    admin_password: $('#og-pw').value, domains: doms($('#og-doms').value) } }).then(reload), 'Empresa criada');
+  main.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id, st = $('.og-status', tr);
+    $('.og-save', tr).onclick = ev => act(ev.target, () => api('/orgs/' + id, { method: 'PATCH', body: { domains: doms($('.og-doms', tr).value) } }).then(orgsPage), 'Domínios salvos');
+    if (st) st.onclick = ev => {
+      const suspend = tr.dataset.status !== 'suspended';
+      if (suspend && !confirm(window.t('Suspender esta empresa? As pessoas dela deixam de entrar até você reativar.'))) return;
+      act(ev.target, () => api('/orgs/' + id, { method: 'PATCH', body: { status: suspend ? 'suspended' : 'active' } }).then(orgsPage));
+    };
+  });
+}

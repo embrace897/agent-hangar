@@ -50,6 +50,8 @@ def caller_agent(request: Request, db) -> Agent:
     a = svc.find_agent(db, slug)
     if not a:
         raise HTTPException(401, "agente desconhecido")
+    from .. import tenancy
+    tenancy.set_org(a.org_id or 1)  # o resto da chamada age dentro da empresa do agente
     return a
 
 

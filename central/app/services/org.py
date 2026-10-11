@@ -19,6 +19,7 @@ from ..models import (
     User,
     now,
 )
+from ..tenancy import current_org, unscoped
 from .access import (
     ORG_ROLES,
     RANK,
@@ -40,7 +41,7 @@ def _month_start() -> datetime:
 
 # ------------------------------------------------------------------ empresa
 def org_dict(db: Session) -> dict:
-    o = db.get(Organization, 1)
+    o = db.get(Organization, current_org())
     return {"id": o.id, "name": o.name, "default_visibility": o.default_visibility, "timezone": o.timezone,
             "code_policy": o.code_policy or "any"}
 
@@ -49,7 +50,7 @@ def update_org(db: Session, acc: Access, name: str | None, default_visibility: s
                timezone: str | None = None, code_policy: str | None = None) -> dict:
     if not acc.p.is_admin:
         raise Forbidden("Só admins alteram a empresa")
-    o = db.get(Organization, 1)
+    o = db.get(Organization, current_org())
     if name:
         o.name = name[:200]
     if default_visibility:
@@ -137,7 +138,7 @@ def create_team(db: Session, acc: Access, name: str, slug: str = "", description
     slug = slugify(slug or name)
     if slug in RESERVED_TEAM_SLUGS:
         raise PlatformError(f"'{slug}' é um nome reservado; escolha outro")
-    if db.scalar(select(Team).where(Team.slug == slug)):
+    if db.scalar(unscoped(select(Team.id).where(Team.slug == slug))):  # slug único na instalação
         raise PlatformError(f"já existe um time '{slug}'")
     owner = None
     if maintainer:  # valida antes de criar: um e-mail ou usuário inválido não deixa time pela metade
@@ -211,6 +212,8 @@ def ensure_user(db: Session, email: str, name: str = "") -> User:
         raise PlatformError(f"e-mail inválido: '{email}'")
     u = user_by_email(db, email)
     if not u:
+        if db.scalar(unscoped(select(User.id).where(User.email == email))):  # e-mail único na instalação
+            raise PlatformError(f"'{email}' é uma pessoa de outra empresa")
         u = User(email=email, name=name or email.split("@")[0])
         db.add(u)
         db.commit()
@@ -281,7 +284,7 @@ def _check_username(db: Session, username: str, user_id: int | None = None) -> s
     username = (username or "").strip().lower()
     if not USERNAME.match(username):
         raise PlatformError("usuário: 3 a 80 caracteres, letras minúsculas, números, ponto, _ ou -")
-    other = db.scalar(select(User).where(User.username == username))
+    other = db.scalar(unscoped(select(User).where(User.username == username)))  # único na instalação
     if other and other.id != user_id:
         raise PlatformError(f"o usuário '{username}' já existe")
     return username
@@ -406,6 +409,10 @@ def me(db: Session, acc: Access) -> dict:
     p = acc.p
     out = {"name": p.name, "via": p.via, "is_admin": p.is_admin, "is_auditor": p.is_auditor, "user": None,
            "teams": [], "org": org_dict(db), "pending": len(pending_for(db, acc))}
+    from .orgs import is_instance_admin
+    if is_instance_admin(acc):  # quem administra a instalação escolhe a empresa no portal (X-Hangar-Org)
+        out["instance_admin"] = True
+        out["orgs"] = [{"id": o.id, "name": o.name, "slug": o.slug or ""} for o in db.scalars(select(Organization).order_by(Organization.id))]
     from .employee_tasks import pending_for as decisions_for
     out["decisions"] = sum(1 for d in decisions_for(db, acc) if d["kind"] != "notice")
     if p.is_user:

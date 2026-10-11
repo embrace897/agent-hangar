@@ -108,6 +108,16 @@ class ExportBody(BaseModel):
     description: str = ""
 
 
+class OrgBody(BaseModel):
+    name: str = ""
+    slug: str = ""
+    admin_email: str = ""
+    admin_name: str = ""
+    admin_username: str = ""
+    admin_password: str = ""
+    domains: list[str] = Field(default_factory=list)
+
+
 class MarkBody(BaseModel):
     keys: list[str]
     read: bool | None = None
@@ -348,6 +358,23 @@ def package_preview(body: PackageBody, request: Request, db=Depends(db_dep)):
 @router.post("/packages/install")
 def package_install(body: PackageBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.packages.install(db, acc(request, db), _pkg(body), body.team, body.manager))
+
+
+# ------------------------------------------------------------------ empresas (quem administra a instalação)
+@router.get("/orgs")
+def orgs(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.orgs.list_orgs(db, acc(request, db)))
+
+
+@router.post("/orgs")
+def org_create(body: OrgBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.orgs.create(db, acc(request, db), body.name, body.slug, body.admin_email, body.admin_name,
+                                         body.admin_username, body.admin_password, body.domains))
+
+
+@router.patch("/orgs/{org_id}")
+def org_update(org_id: int, body: dict, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.orgs.update(db, acc(request, db), org_id, body))
 
 
 # ------------------------------------------------------------------ cofre de segredos

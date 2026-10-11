@@ -1380,6 +1380,9 @@ def receive(db, install_id: int, trigger: str, raw: bytes, headers: dict, query_
     from ..models import Employee
     from . import employee_tasks as tasksmod
     i = db.get(PluginInstall, install_id)
+    if i is not None:
+        from .. import tenancy
+        tenancy.set_org(i.org_id or 1)  # o webhook age na empresa da instalação
     p = db.get(Plugin, i.plugin_id) if i else None
     if i is None or p is None or not i.enabled or (not i.stage and not live(p)):
         raise Forbidden("gatilho desconhecido")

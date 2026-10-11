@@ -114,8 +114,7 @@ def create_from_chat(db, u: User, text: str, source: str, origin: dict) -> dict:
 
 # ------------------------------------------------------------------ Slack
 def slack_event(db, raw: bytes, headers: dict) -> dict | None:
-    cfg = notify.org_cfg(db)
-    notify._verify_slack(cfg, raw, headers)
+    notify.verify_slack_any(db, raw, headers)  # acha a empresa pela assinatura
     body = json.loads(raw or b"{}")
     if body.get("type") == "url_verification":
         return {"challenge": body.get("challenge", "")}
@@ -157,17 +156,28 @@ def _slack_task(db, ev: dict):
 
 # ------------------------------------------------------------------ Teams (webhook de saída do canal)
 def teams_message(db, raw: bytes, headers: dict) -> dict:
-    cfg = notify.org_cfg(db)
-    secret = notify._secret(cfg, "teams_outgoing_secret")
+    from sqlalchemy import select as _select
+
+    from .. import tenancy
+    from ..models import Organization
     got = headers.get("authorization", "")
-    if not secret or not got.startswith("HMAC "):
+    if not got.startswith("HMAC "):
         raise Forbidden("assinatura do Teams ausente")
-    try:
-        want = base64.b64encode(hmac.new(base64.b64decode(secret), raw, hashlib.sha256).digest()).decode()
-    except ValueError:
-        raise Forbidden("segredo do Teams inválido (base64)") from None
-    if not hmac.compare_digest(got[5:].strip(), want):
+    org = None
+    for o in db.scalars(_select(Organization).order_by(Organization.id)):  # a assinatura diz de que empresa é
+        secret = notify._secret({**(o.notify or {})}, "teams_outgoing_secret")
+        if not secret:
+            continue
+        try:
+            want = base64.b64encode(hmac.new(base64.b64decode(secret), raw, hashlib.sha256).digest()).decode()
+        except ValueError:
+            continue
+        if hmac.compare_digest(got[5:].strip(), want):
+            org = o.id
+            break
+    if org is None:
         raise Forbidden("assinatura do Teams inválida")
+    tenancy.set_org(org)
     body = json.loads(raw or b"{}")
     text = re.sub(r"<at>.*?</at>", "", body.get("text") or "", flags=re.S)
     text = html.unescape(re.sub(r"<[^>]+>", " ", text)).replace("\xa0", " ").strip()
