@@ -139,6 +139,7 @@ def slack_manifest() -> str:
 
 
 def admin_view(db, acc: Access) -> dict:
+    from . import chat_channels
     if not acc.p.is_admin:
         raise Forbidden("só o admin configura os canais de decisão da empresa")
     cfg = org_cfg(db)
@@ -150,10 +151,12 @@ def admin_view(db, acc: Access) -> dict:
             "email": {"configured": email_ready(), "host": config.SMTP_HOST, "from": config.SMTP_FROM},
             "teams": {"how": "personal", "outgoing": bool(cfg.get("teams_outgoing_secret")),
                       "outgoing_url": f"{config.PUBLIC_BASE_URL}/hooks/teams/messages"},
+            **chat_channels.admin_view(cfg),
             **{k: cfg[k] for k in DEFAULTS}}
 
 
 def set_admin(db, acc: Access, changes: dict) -> dict:
+    from . import chat_channels
     if not acc.p.is_admin:
         raise Forbidden("só o admin configura os canais de decisão da empresa")
     o = db.get(Organization, current_org())
@@ -182,6 +185,7 @@ def set_admin(db, acc: Access, changes: dict) -> dict:
                 raise PlatformError("o token de segurança do Teams é o texto em base64 que o Teams mostra ao criar o "
                                     "webhook de saída") from None
         cfg["teams_outgoing_secret"] = crypto.encrypt(v) if v else ""
+    chat_channels.configure(cfg, changes, o.id)  # Telegram e Discord
     if changes.get("slack_bot_token"):
         try:
             who = _slack(cfg, "auth.test", {}, form=True)
@@ -202,11 +206,14 @@ def _me(db, acc: Access) -> User:
 
 
 def my_view(db, acc: Access) -> dict:
+    from . import chat_channels
     u = _me(db, acc)
     cfg, p = org_cfg(db), prefs(u)
     return {"channel": p["channel"], "digest": bool(p["digest"]), "teams_webhook": bool(p.get("teams_webhook")),
             "available": available(cfg, p), "route": route(cfg, u), "digest_hour": cfg["digest_hour"],
-            "slack_ready": slack_ready(cfg), "email_ready": email_ready(), "email": u.email}
+            "slack_ready": slack_ready(cfg), "email_ready": email_ready(), "email": u.email,
+            "chat": {**{f"{k}_ready": bool(cfg.get(f"{k}_bot_token")) for k in ("telegram", "discord")},
+                     "linked": chat_channels.linked(u), "telegram_bot": cfg.get("telegram_bot", "")}}
 
 
 def set_mine(db, acc: Access, changes: dict) -> dict:

@@ -18,6 +18,10 @@ class OrgNotifyBody(BaseModel):
     slack_bot_token: str | None = None
     slack_signing_secret: str | None = None
     teams_outgoing_secret: str | None = None
+    telegram_bot_token: str | None = None
+    discord_app_id: str | None = None
+    discord_public_key: str | None = None
+    discord_bot_token: str | None = None
     digest_hour: int | None = None
     expiry_warn_min: int | None = None
     overdue_escalate_min: int | None = None
@@ -88,6 +92,44 @@ async def teams_messages(request: Request, db=Depends(db_dep)):
     headers = {k.lower(): v for k, v in request.headers.items()}
     try:
         return JSONResponse(await run_in_threadpool(svc.chat_tasks.teams_message, db, raw, headers))
+    except svc.access.Forbidden as e:
+        raise HTTPException(401, str(e)) from None
+
+
+# ------------------------------------------------------------------ Telegram e Discord (cada um com a própria assinatura)
+class ChatLinkBody(BaseModel):
+    channel: str = "telegram"  # telegram | discord
+
+
+@router.post("/me/notifications/chat-link")
+def chat_link(body: ChatLinkBody, request: Request, db=Depends(db_dep)):
+    """Código de uso único para ligar a sua conta do Telegram ou do Discord (vale 15 minutos)."""
+    return guard(lambda: svc.chat_channels.link_code(db, acc(request, db), body.channel))
+
+
+@router.delete("/me/notifications/chat-link/{channel}")
+def chat_unlink(channel: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.chat_channels.unlink(db, acc(request, db), channel))
+
+
+@hooks.post("/telegram/{org_id}")
+async def telegram(org_id: int, request: Request, db=Depends(db_dep)):
+    raw = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    try:
+        await run_in_threadpool(svc.chat_channels.telegram_update, db, org_id, raw, headers)
+    except svc.access.Forbidden as e:
+        raise HTTPException(401, str(e)) from None
+    return Response(status_code=200)
+
+
+@hooks.post("/discord/{org_id}")
+async def discord(org_id: int, request: Request, db=Depends(db_dep)):
+    """Interactions endpoint do Discord: o comando /hangar vira tarefa; a resposta vai na hora."""
+    raw = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    try:
+        return JSONResponse(await run_in_threadpool(svc.chat_channels.discord_interaction, db, org_id, raw, headers))
     except svc.access.Forbidden as e:
         raise HTTPException(401, str(e)) from None
 

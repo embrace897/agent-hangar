@@ -827,7 +827,8 @@ async function ntMine(box) {
     <div class="mute small mt"><span>Disponível:</span> <b>${n.available.length ? n.available.map(c => NT_CHANNEL[c]).join(', ') : 'nenhum canal ainda'}</b>
       ${n.slack_ready ? '' : '<div>O Slack depende do admin ligar o app da empresa.</div>'}${n.email_ready ? '' : '<div>O e-mail depende do SMTP da instalação.</div>'}</div>
     <div class="row mt"><button id="nt-save">Salvar</button><button class="ghost" id="nt-test" ${n.route ? '' : 'disabled'}>Enviar um teste</button>
-      ${n.teams_webhook ? '<button class="ghost" id="nt-teams-off">Remover webhook do Teams</button>' : ''}</div></details>`;
+      ${n.teams_webhook ? '<button class="ghost" id="nt-teams-off">Remover webhook do Teams</button>' : ''}</div>
+    ${chatLinks(n.chat || {})}</details>`;
   const save = body => api('/me/notifications', { method: 'PUT', body }).then(() => ntMine(box));
   $('#nt-save').onclick = ev => {
     const body = { channel: $('#nt-ch').value, digest: $('#nt-digest').checked };
@@ -838,6 +839,21 @@ async function ntMine(box) {
   $('#nt-test').onclick = ev => act(ev.target, () => api('/me/notifications/test', { method: 'POST' }).then(r => toast(`Teste enviado por ${NT_CHANNEL[r.via] || r.via}`)));
   const off = $('#nt-teams-off');
   if (off) off.onclick = ev => act(ev.target, () => save({ teams_webhook: '' }), 'Webhook removido');
+  box.querySelectorAll('.cl-link').forEach(btn => btn.onclick = ev => act(ev.target, async () => {
+    const r = await api('/me/notifications/chat-link', { method: 'POST', body: { channel: btn.dataset.ch } });
+    $('#cl-out').innerHTML = `<div class="card warn-card mt"><span>Mande isto para o bot (vale 15 minutos):</span> ${copyable(r.how)}
+      ${r.url ? `<div class="mt"><a href="${esc(r.url)}" target="_blank" rel="noopener">${window.t('Abrir o Telegram')}</a></div>` : ''}</div>`;
+  }));
+  box.querySelectorAll('.cl-off').forEach(btn => btn.onclick = ev => act(ev.target, () => api(`/me/notifications/chat-link/${btn.dataset.ch}`, { method: 'DELETE' }).then(() => ntMine(box)), 'Conta desligada'));
+}
+
+/* Telegram e Discord: pedir trabalho pelo chat. Cada pessoa liga a conta com um código de uso único. */
+function chatLinks(c) {
+  const rows = [['telegram', 'Telegram'], ['discord', 'Discord']].filter(([k]) => c[`${k}_ready`]);
+  if (!rows.length) return '';
+  return `<h3 class="mt">Pedir trabalho pelo chat</h3><div class="mute small">Ligue a sua conta para pedir tarefas aos Digital employees por mensagem; o resultado volta na conversa.</div>
+    ${rows.map(([k, label]) => `<div class="row small mt" style="gap:8px"><b>${label}</b>${(c.linked || {})[k] ? `<span class="pill ok">ligado</span><button class="ghost small cl-off" data-ch="${k}">Desligar</button>`
+      : `<button class="ghost small cl-link" data-ch="${k}">${window.t('Conectar')} ${label}</button>`}</div>`).join('')}<div id="cl-out"></div>`;
 }
 
 /* ---------- console do admin: força de trabalho digital ---------- */
@@ -918,6 +934,21 @@ async function wfNotify(t) {
       <div class="small mt">${copyable(n.teams.outgoing_url || '')}</div>
       <div class="row mt" style="gap:6px"><input id="ns-teams" type="password" autocomplete="off" placeholder="${n.teams.outgoing ? 'cadastrado — cole outro para trocar' : 'token de segurança (base64)'}" style="flex:1">
         <button class="ghost" id="ns-teams-save">Salvar</button>${n.teams.outgoing ? '<button class="ghost danger" id="ns-teams-off">Desligar</button>' : ''}</div></div></div>
+  <div class="grid g2 mt"><div class="card"><h2>Telegram ${n.telegram.configured ? `<span class="pill ok"><span>ligado</span>${n.telegram.bot ? ` · <span data-noi18n>@${esc(n.telegram.bot)}</span>` : ''}</span>` : '<span class="pill">desligado</span>'}</h2>
+      <div class="mute small">Crie o bot com o BotFather e cole o token: a plataforma registra o webhook (com um segredo próprio). Cada pessoa liga a conta dela uma vez em Decisões;
+        depois, “Nome do funcionário, pedido” numa conversa com o bot (ou /hangar num grupo) vira tarefa, e o resultado volta na conversa.</div>
+      ${n.telegram.webhook_error ? `<div class="pill warn mt" data-noi18n>${esc(n.telegram.webhook_error)}</div><div class="mute small">O Telegram só chama URLs públicas com HTTPS (PUBLIC_BASE_URL).</div>` : ''}
+      <div class="row mt" style="gap:6px"><input id="ns-tg" type="password" autocomplete="off" placeholder="${n.telegram.configured ? 'cadastrado — cole outro para trocar' : '123456:ABC…'}" style="flex:1">
+        <button class="ghost" id="ns-tg-save">Salvar</button>${n.telegram.configured ? '<button class="ghost danger" id="ns-tg-off">Desligar</button>' : ''}</div></div>
+    <div class="card"><h2>Discord ${n.discord.configured ? '<span class="pill ok">ligado</span>' : '<span class="pill">desligado</span>'}</h2>
+      <div class="mute small">No Developer Portal do Discord, crie a aplicação com um bot, cole aqui o id, a chave pública e o token do bot, e ponha a URL abaixo em “Interactions Endpoint URL”.
+        A plataforma registra o comando /hangar; cada chamada é conferida pela assinatura do Discord.</div>
+      <div class="small mt">${copyable(n.discord.interactions_url || '')}</div>
+      ${n.discord.command_error ? `<div class="pill warn mt" data-noi18n>${esc(n.discord.command_error)}</div>` : ''}
+      <div class="grid g2 mt"><label>Application ID<input id="ns-dc-app" data-noi18n value="${esc(n.discord.app_id || '')}"></label>
+        <label>Public key<input id="ns-dc-key" data-noi18n autocomplete="off" placeholder="${n.discord.configured ? 'cadastrada — cole outra para trocar' : ''}"></label>
+        <label>Bot token<input id="ns-dc-tok" type="password" autocomplete="off" placeholder="${n.discord.configured ? 'cadastrado — cole outro para trocar' : ''}"></label></div>
+      <div class="row mt"><button class="ghost" id="ns-dc-save">Salvar</button>${n.discord.configured ? '<button class="ghost danger" id="ns-dc-off">Desligar</button>' : ''}</div></div></div>
   <div class="card mt"><h2>Prazos e resumo</h2><div class="grid g2">
     <label>Resumo diário das pendências (hora, fuso da empresa; -1 desliga)<input id="ns-hour" type="number" min="-1" max="23" value="${n.digest_hour}"></label>
     <label>Avisar antes de uma decisão expirar (min; 0 desliga)<input id="ns-warn" type="number" min="0" max="1440" value="${n.expiry_warn_min}"></label>
@@ -939,6 +970,18 @@ async function wfNotify(t) {
     : toast('Cole o token de segurança do Teams', true);
   const toff = $('#ns-teams-off');
   if (toff) toff.onclick = ev => act(ev.target, () => put({ teams_outgoing_secret: '' }), 'Teams desligado');
+  $('#ns-tg-save').onclick = ev => $('#ns-tg').value.trim() ? act(ev.target, () => put({ telegram_bot_token: $('#ns-tg').value.trim() }), 'Telegram salvo')
+    : toast(window.t('Cole o token do bot do Telegram'), true);
+  const tgoff = $('#ns-tg-off');
+  if (tgoff) tgoff.onclick = ev => act(ev.target, () => put({ telegram_bot_token: '' }), 'Telegram desligado');
+  $('#ns-dc-save').onclick = ev => {
+    const body = { discord_app_id: $('#ns-dc-app').value.trim() }, k = $('#ns-dc-key').value.trim(), tok = $('#ns-dc-tok').value.trim();
+    if (k) body.discord_public_key = k;
+    if (tok) body.discord_bot_token = tok;
+    act(ev.target, () => put(body), 'Discord salvo');
+  };
+  const dcoff = $('#ns-dc-off');
+  if (dcoff) dcoff.onclick = ev => act(ev.target, () => put({ discord_bot_token: '', discord_public_key: '' }), 'Discord desligado');
   $('#ns-times').onclick = ev => act(ev.target, () => put({ digest_hour: Number($('#ns-hour').value), expiry_warn_min: Number($('#ns-warn').value),
     due_soon_min: Number($('#ns-soon').value), overdue_escalate_min: Number($('#ns-esc').value) }), 'Prazos salvos');
 }

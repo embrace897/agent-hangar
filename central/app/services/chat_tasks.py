@@ -198,7 +198,7 @@ def teams_message(db, raw: bytes, headers: dict) -> dict:
 # ------------------------------------------------------------------ o resultado volta para quem pediu
 def task_finished(db, task: EmployeeTask):
     o = task.origin or {}
-    if task.source not in ("slack", "teams") or not o or task.status not in ("done", "failed"):
+    if task.source not in ("slack", "teams", "telegram", "discord") or not o or task.status not in ("done", "failed"):
         return
     notify._bg(_deliver_result, task.id)
 
@@ -214,6 +214,9 @@ def _deliver_result(db, task_id: int):
     head = t["done" if task.status == "done" else "failed"].format(id=task.id, name=a.name)
     text = (task.result if task.status == "done" else task.error) or ""
     cfg = notify.org_cfg(db)
+    from . import chat_channels
+    if chat_channels.deliver(db, cfg, task.origin or {}, head, text, url, t["open"]):  # Telegram ou Discord
+        return
     s = (task.origin or {}).get("slack")
     if s:
         _slack_post(cfg, s["channel"], s["ts"], f"{head}\n{text[:3200]}\n<{url}|{t['open']}>")
