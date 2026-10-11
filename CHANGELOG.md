@@ -50,9 +50,22 @@ All notable changes to this project are documented here. The format follows
   and repeated human work worth automating.
 - **Golden tasks and regression:** every change to the role re-runs the golden tasks without acting for real; if the
   scores drop, the manager keeps the change or restores the previous version.
+- **Pilot with a real model:** `tests/e2e/pilot_llm.py` runs the analyst cases in plain language against an LLM
+  connection (`LLM_CONNECTION=…`) and reports which tools the model chose; it answers the employee's questions like a
+  manager would.
 
 ### Fixed
 - A task blocked by dependencies that had never run lost its own request when it was unblocked.
+- Probation stage tests sent only the task's body to the model, dropping the question when it was in the title.
+- Platform tools that call an LLM or the Data Studio could take longer than the runtime's 30 s gate wait: the model
+  heard "not executed" while the central finished the action. Platform tools now wait up to `GATE_TIMEOUT_PLATFORM`
+  (600 s).
+- Decision memos accept the recommendation as the model writes it ("C", "b)", a prefix of the option's name); the
+  critical reviewer's message says it is not an authority block.
+- `propose_document_change` accepts a single `find`/`replace`, a JSON-encoded `edits`, and explains with an example
+  what is missing.
+- Knowledge sources can be removed (`DELETE /api/knowledge/sources/{name}` and a button), with the documents copied
+  from them.
 
 ## [0.25.0] — 2026-10-11
 

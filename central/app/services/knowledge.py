@@ -19,7 +19,7 @@ import unicodedata
 from datetime import date, datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 
 from .. import crypto
 from ..models import (
@@ -239,6 +239,22 @@ def sync_now(db, acc: Access, name: str) -> dict:
     out = sync(db, s)
     audit(db, acc.p.name, "knowledge.sync", s.name, f"{out['docs']} doc(s)")
     return out
+
+
+def delete_source(db, acc: Access, name: str) -> dict:
+    """Remove a fonte e o que foi copiado dela (documentos e trechos); o original, se for externo, não é tocado."""
+    s = _get(db, name)
+    if not _can_manage(acc, s):
+        raise Forbidden("só quem mantém a fonte a remove")
+    docs = db.scalars(select(KnowledgeDoc).where(KnowledgeDoc.source_id == s.id)).all()
+    ids = [d.id for d in docs]
+    if ids:
+        db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.doc_id.in_(ids)))
+        db.execute(delete(KnowledgeDoc).where(KnowledgeDoc.id.in_(ids)))
+    db.delete(s)
+    db.commit()
+    audit(db, acc.p.name, "knowledge.delete", name, f"{len(ids)} doc(s)")
+    return {"deleted": name, "docs": len(ids)}
 
 
 def _check_url(url: str) -> str:

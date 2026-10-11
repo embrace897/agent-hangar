@@ -249,3 +249,23 @@ def test_golden_tasks_regression_after_a_job_change(client, env, rt, monkeypatch
     with SessionLocal() as db:
         assert db.get(RegressionRun, cur.id).status == "reverted"
         assert db.query(RegressionRun).filter_by(employee_id=e.id, status="running").count() == 0  # restaurar não roda de novo
+
+
+def test_probation_stage_tests_carry_title_and_body(client, env):
+    """O teste em stage da experiência manda o título e o pedido, como uma tarefa de verdade (a pergunta pode estar no título)."""
+    slug = hire(client, env, probation_tasks=[{"title": "Quanto é 2 + 2?", "body": "Responda só o número.", "expected": "4"},
+                                              {"title": "Tarefa 1", "body": "faça a tarefa 1", "expected": "resultado 1"},
+                                              {"title": "Tarefa 2", "body": "", "expected": "resultado 2"}])
+    from app.models import AgentVersion
+    with SessionLocal() as db:
+        spec = db.query(AgentVersion).filter_by(agent_id=_agent(db, slug).id).order_by(AgentVersion.id.desc()).first().spec
+    cases = {t["name"]: t["input"] for t in spec["tests"] if t["name"].startswith("experiência")}
+    assert cases["experiência 1"] == "Quanto é 2 + 2?\n\nResponda só o número." and cases["experiência 3"] == "Tarefa 2"
+
+
+def test_memo_recommendation_matches_the_option_as_the_model_writes_it():
+    names = ["A) Renovar com 10% de desconto", "B) Deixar o contrato acabar", "C) Renovar negociando a margem"]
+    m = decision_memos._match_option
+    assert m("C", names) == names[2] and m("b)", names) == names[1] and m("(a)", names) == names[0]
+    assert m("C) Renovar negociando a margem", names) == names[2] and m("b) deixar o contrato", names) == names[1]
+    assert m("Renovar", names) is None and m("", names) is None and m("D", names) is None

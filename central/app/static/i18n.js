@@ -1009,6 +1009,8 @@
     'Autenticação': 'Authentication',
     'Ações': 'Actions',
     'Segredos': 'Secrets',
+    "Remover esta fonte e os documentos copiados dela? O original não é tocado.": "Remove this source and the documents copied from it? The original is not touched.",
+    "Fonte removida": "Source removed",
     "Memorandos": "Memos",
     "com resultado": "with outcome",
     "acerto quando seguido": "hit rate when followed",

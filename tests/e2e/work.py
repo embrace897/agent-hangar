@@ -246,6 +246,7 @@ def phase_g(dev, mgr, mgr_email, team, slug):
     import json
     # base de conhecimento: o funcionário busca com o acesso de quem pediu e cita a fonte
     src = ok(mgr.put("/api/knowledge/sources", json={"name": f"pol_{RUN}", "kind": "upload", "teams": [team]}))["name"]
+    LEFTOVERS.append(("DELETE", f"/api/knowledge/sources/{src}"))
     ok(mgr.post(f"/api/knowledge/sources/{src}/documents", json={"title": f"Reembolso {RUN}",
                                                                  "text": "Hospedagem nacional até R$ 400 por noite."}))
     tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Limite", "body": 'use search_knowledge {"query": "hospedagem nacional"}'}))["id"]

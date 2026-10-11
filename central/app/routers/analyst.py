@@ -481,6 +481,11 @@ def k_source_save(body: SourceBody, request: Request, db=Depends(db_dep)):
                                                    body.teams, body.config, body.review_days, body.classification))
 
 
+@router.delete("/knowledge/sources/{name}")
+def k_source_delete(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.delete_source(db, acc(request, db), name))
+
+
 @router.post("/knowledge/sources/{name}/sync")
 def k_sync(name: str, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.knowledge.sync_now(db, acc(request, db), name))

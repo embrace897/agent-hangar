@@ -296,6 +296,7 @@ or go back to the previous version of the role.
 | GET / POST / DELETE | `/api/meetings`, `/api/meetings/{id}` | Meetings / create (`schedule: true` books it in the company calendar) / remove |
 | POST | `/api/meetings/{id}/transcript` · `/api/meetings-token` | Send the transcript · token for `/hooks/meetings/<company>` |
 | GET / PUT | `/api/knowledge/sources` | Sources / create or change (`name, kind, acl_mode, teams, config, review_days, classification`) |
+| DELETE | `/api/knowledge/sources/{name}` | Remove the source and the documents copied from it (the original isn't touched) |
 | POST | `/api/knowledge/sources/{name}/sync` · `/documents` | Sync now · upload a document (`title, text` or `file_name, content_base64`) |
 | GET | `/api/knowledge/search?q=` · `/gaps` · `/stale` | Search with your access · unanswered questions · outdated documents |
 | GET / PUT | `/api/procedures` | Browser procedures (and whether the browser is up) / create or change |

@@ -218,7 +218,9 @@ def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
     if level not in LEVELS:
         raise PlatformError(f"autonomy_level: {', '.join(LEVELS)}")
     from .composer import compose
-    tests = [{"name": f"experiência {i + 1}", "input": (t.get("body") or t.get("title")), "judge": t["expected"]}
+    # como numa tarefa de verdade: o título e o pedido (só o pedido perdia a pergunta quando ela estava no título)
+    tests = [{"name": f"experiência {i + 1}", "input": "\n\n".join(x for x in (t.get("title"), t.get("body")) if x),
+              "judge": t["expected"]}
              for i, t in enumerate(f["probation_tasks"])]
     out = compose(db, acc, f.get("name") or f["title"], f["mission"],
                   "Cada tarefa concluída, com o resultado." if pt else "Each task completed, with its result.",

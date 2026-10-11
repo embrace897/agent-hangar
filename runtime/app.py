@@ -38,6 +38,7 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 # nas chamadas a sub-agentes e ao dashboard; a central confere se o destino é permitido para este agente.
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
 INTERNAL_BASE_URL = os.environ.get("INTERNAL_BASE_URL", "http://central:8080").rstrip("/")
+GATE_TIMEOUT_PLATFORM = float(os.environ.get("GATE_TIMEOUT_PLATFORM", "600"))
 INTERNAL_HEADERS = {"Authorization": f"Bearer {INTERNAL_TOKEN}", "X-Agent-Slug": SLUG, "X-Agent-Env": ENV,
                     "X-Agent-Env-Token": os.environ.get("INTERNAL_ENV_TOKEN", "")}
 LLM = SPEC.get("llm", {})
@@ -78,8 +79,11 @@ async def _gate(tool: "Tool", args: dict, rationale: str = "", kind: str = "tool
     task = TASK.get()
     body = {"task_id": int(task) if task.isdigit() else None, "tool": tool.name, "ref": tool.ref, "args": args,
             "rationale": (rationale or "")[:4000], "kind": kind}
+    # ferramentas da plataforma rodam na central e podem chamar um LLM ou o Data Studio: esperar só 30 s fazia o
+    # modelo ouvir "não executada" enquanto a central terminava a ação
+    timeout = GATE_TIMEOUT_PLATFORM if kind == "platform" else 30
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
+        async with httpx.AsyncClient(timeout=timeout) as c:
             r = await c.post(f"{INTERNAL_BASE_URL}/internal/gate", json=body, headers=INTERNAL_HEADERS)
         if r.status_code >= 400:
             return {"status": "denied", "message": f"gate respondeu {r.status_code}: ação não executada"}

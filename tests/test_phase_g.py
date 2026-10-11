@@ -366,3 +366,34 @@ def test_document_change_partial_approval_and_docx_redline(client, env, rt):
         assert "<w:del " in xml and "<w:ins " in xml and "IGP-M" in xml and "aprovado por" in xml
         assert docx_lite.paragraphs(f.data)[0] == "Cláusula 1: vigência de 12 meses."
     _ = json, KnowledgeGap
+
+
+def test_document_change_accepts_a_single_find_replace_and_explains_what_is_missing(client, env, rt):
+    """Achados do piloto com LLM de verdade: o modelo manda uma troca solta (find/replace) ou esquece o que muda."""
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    tid = assign(client, env, slug, "revisar a política")
+    with SessionLocal() as db:
+        task_files.store(db, db.get(EmployeeTask, tid), "politica.txt", b"Prazo: 30 dias.\n\nForo: SP.", "input", "x", "text/plain")
+        db.commit()
+    g = _gate(slug, tid, "propose_document_change", {"document": "file:politica.txt", "summary": "prazo"})
+    assert g["status"] == "allowed" and "find" in g["result"] and "replace" in g["result"]
+    g = _gate(slug, tid, "propose_document_change", {"document": "file:politica.txt", "summary": "prazo",
+                                                     "find": "30 dias", "replace": "45 dias"})
+    assert g["status"] == "waiting" and open_request(client, env, tid)["payload"]["hunks"][0]["after"] == ["Prazo: 45 dias."]
+
+
+def test_knowledge_source_can_be_removed_by_who_maintains_it(client, env):
+    src = client.put("/api/knowledge/sources", headers=env["h"]["mgr"], json={
+        "name": f"rem_{env['n']}", "kind": "upload", "teams": [env["team"]]}).json()["name"]
+    client.post(f"/api/knowledge/sources/{src}/documents", headers=env["h"]["mgr"], json={"title": "Doc", "text": "conteúdo único zq9"})
+    from app.models import Team
+    with SessionLocal() as db:
+        who = knowledge.principals(db, None, [db.query(Team).filter_by(slug=env["team"]).one().id])
+        assert knowledge.search(db, "zq9", who, 5)
+    assert client.delete(f"/api/knowledge/sources/{src}", headers=env["h"]["req"]).status_code == 403
+    r = client.delete(f"/api/knowledge/sources/{src}", headers=env["h"]["mgr"])
+    assert r.status_code == 200 and r.json()["docs"] == 1
+    assert all(s["name"] != src for s in client.get("/api/knowledge/sources", headers=ADMIN).json())
+    with SessionLocal() as db:
+        assert not knowledge.search(db, "zq9", who, 5)

@@ -556,7 +556,8 @@ async function knowledgePage() {
       ${sources.map(s => `<tr data-n="${esc(s.name)}"><td><b data-noi18n>${esc(s.title)}</b><div class="mute" data-noi18n>${esc(s.name)}</div></td><td>${esc(window.t(KS_KIND[s.kind] || s.kind))}</td>
         <td>${esc(window.t({ inherit: 'herda do original', team: 'times da fonte', org: 'empresa toda' }[s.acl_mode]))}</td><td>${s.docs}${s.stale ? ` <span class="pill warn">${s.stale} ${window.t('vencidos')}</span>` : ''}</td>
         <td>${s.last_sync_at ? ago(s.last_sync_at) : '—'}${s.last_error ? ` <span class="pill bad" data-noi18n>${esc(s.last_error)}</span>` : ''}</td>
-        <td>${s.can_manage ? (s.kind === 'upload' ? '<button class="ghost small ks-up">Enviar documento</button>' : '<button class="ghost small ks-sync">Sincronizar</button>') : ''}</td></tr>`).join('')}</table>`
+        <td>${s.can_manage ? (s.kind === 'upload' ? '<button class="ghost small ks-up">Enviar documento</button>' : '<button class="ghost small ks-sync">Sincronizar</button>') +
+          ' <button class="ghost small danger ks-del">Remover</button>' : ''}</td></tr>`).join('')}</table>`
       : '<div class="mute small">Nenhuma fonte ainda.</div>'}<div id="ks-up-box"></div></div>
     <div class="card mt"><h2>Nova fonte</h2><div class="grid g2"><label>Nome<input id="ks-name" data-noi18n></label>
       <label>Tipo<select id="ks-kind">${Object.entries(KS_KIND).map(([k, v]) => `<option value="${k}">${window.t(v)}</option>`).join('')}</select></label>
@@ -577,7 +578,9 @@ async function knowledgePage() {
     act(ev.target, () => api('/knowledge/sources', { method: 'PUT', body: { name: $('#ks-name').value.trim(), kind: $('#ks-kind').value, acl_mode: $('#ks-acl').value,
       teams: [...$('#ks-teams').selectedOptions].map(o => o.value), review_days: Number($('#ks-rev').value), classification: $('#ks-cls').value, config: cfg } }).then(knowledgePage), 'Fonte criada'); };
   main.querySelectorAll('tr[data-n]').forEach(tr => {
-    const n = tr.dataset.n, sy = $('.ks-sync', tr), up = $('.ks-up', tr);
+    const n = tr.dataset.n, sy = $('.ks-sync', tr), up = $('.ks-up', tr), del = $('.ks-del', tr);
+    if (del) del.onclick = ev => confirm(window.t('Remover esta fonte e os documentos copiados dela? O original não é tocado.'))
+      && act(ev.target, () => api(`/knowledge/sources/${n}`, { method: 'DELETE' }).then(knowledgePage), 'Fonte removida');
     if (sy) sy.onclick = ev => act(ev.target, () => api(`/knowledge/sources/${n}/sync`, { method: 'POST' }).then(r => { toast(`${r.docs} ${window.t('documento(s)')}`); return knowledgePage(); }));
     if (up) up.onclick = () => { $('#ks-up-box').innerHTML = `<div class="card mt"><h3>Enviar documento</h3><label>Título<input id="kd-title"></label>
       <label class="mt">Texto<textarea id="kd-text" rows="4"></textarea></label><label class="mt">ou arquivo (DOCX, TXT, MD, HTML; PDF com o Data Studio)<input id="kd-file" type="file"></label>

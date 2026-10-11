@@ -8,6 +8,7 @@ documento mudou entre a proposta e a aprovação, nada é aplicado (peça uma pr
 """
 import difflib
 import hashlib
+import json
 import re
 
 import httpx
@@ -58,16 +59,27 @@ def _current(db, task, ref: str) -> tuple[list[str], dict]:
 
 
 @tool("propose_document_change", "Propõe uma alteração num documento (arquivo da tarefa: file:<nome>; documento da base "
-      "de conhecimento: kb:<id>). Mande o texto novo inteiro (new_text) ou trocas exatas (edits: [{find, replace}]). "
-      "Uma pessoa vê o diff, aceita tudo, parte ou ajusta; só então é aplicado. Você nunca edita direto.",
-      {"properties": {"document": {"type": "string"}, "new_text": {"type": "string"},
+      "de conhecimento: kb:<id>) com O QUE muda: uma troca (find = trecho exato atual, replace = trecho novo), várias "
+      "(edits: [{find, replace}]) ou o texto novo inteiro (new_text). Uma pessoa vê o diff, aceita tudo, parte ou "
+      "ajusta; só então é aplicado. Você nunca edita direto.",
+      {"properties": {"document": {"type": "string", "description": "file:<nome> ou kb:<id>"},
+                      "find": {"type": "string", "description": "trecho exato do texto atual a trocar"},
+                      "replace": {"type": "string", "description": "o trecho novo"},
                       "edits": {"type": "array", "items": {"type": "object", "properties": {
                           "find": {"type": "string"}, "replace": {"type": "string"}}, "required": ["find", "replace"]}},
+                      "new_text": {"type": "string", "description": "o documento novo inteiro"},
                       "summary": {"type": "string", "description": "o que muda e por quê"}},
        "required": ["document", "summary"]}, "documents")
 def propose_document_change(ctx: Ctx, args: dict):
     ref = str(args.get("document") or "").strip()
     old, origin = _current(ctx.db, ctx.task, ref)
+    if args.get("find") and not args.get("edits") and not args.get("new_text"):  # uma troca só, sem a lista
+        args = {**args, "edits": [{"find": args["find"], "replace": args.get("replace") or ""}]}
+    if isinstance(args.get("edits"), str):  # alguns modelos mandam a lista como texto JSON
+        try:
+            args = {**args, "edits": json.loads(args["edits"])}
+        except ValueError:
+            raise PlatformError("edits precisa ser uma lista: [{\"find\": \"trecho atual\", \"replace\": \"trecho novo\"}]") from None
     if args.get("new_text"):
         new = _split(str(args["new_text"]))
     elif args.get("edits"):
@@ -80,7 +92,9 @@ def propose_document_change(ctx: Ctx, args: dict):
             text = text.replace(find, str(e.get("replace") or ""))
         new = _split(text)
     else:
-        raise PlatformError("mande new_text ou edits")
+        raise PlatformError("falta o que muda: mande find (o trecho exato de hoje) e replace (o trecho novo) — ex.: "
+                            "{\"document\": \"file:politica.txt\", \"find\": \"30 dias\", \"replace\": \"45 dias\", "
+                            "\"summary\": \"…\"} — ou edits: [{find, replace}] para várias trocas, ou new_text com o documento inteiro")
     if len("\n\n".join(new)) > MAX:
         raise PlatformError("documento grande demais para uma proposta")
     hunks = []

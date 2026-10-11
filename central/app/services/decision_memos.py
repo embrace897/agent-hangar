@@ -10,6 +10,7 @@ fontes — não uma resposta solta.
   funcionário — qualidade medida pelo resultado real, não só pelo texto.
 """
 import json
+import re
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -31,6 +32,21 @@ def _num(v) -> float:
         return float(v)
     except (TypeError, ValueError):
         raise PlatformError(f"nota inválida: {v!r}") from None
+
+
+def _match_option(rec: str, names: list[str]) -> str | None:
+    """A recomendação como o modelo escreveu ("C", "c)", "Renovar com desconto", o nome inteiro) → o nome da opção."""
+    r = rec.strip().lower()
+    if not r:
+        return None
+    for test in (lambda n: n.lower() == r,
+                 lambda n: re.match(r"^\(?([a-z0-9])[\).:\-]?$", r) is not None
+                 and re.match(rf"^\(?{re.escape(r.strip('().:- ')[0])}[\).:\-\s]", n.lower()) is not None,
+                 lambda n: n.lower().startswith(r) or r.startswith(n.lower())):
+        hits = [n for n in names if test(n)]
+        if len(hits) == 1:
+            return hits[0]
+    return None
 
 
 def totals(options: list[dict], criteria: list[dict], scores: dict) -> dict[str, float]:
@@ -123,9 +139,9 @@ def submit_decision_memo(ctx: Ctx, args: dict):
             v = _num((scores.get(o["name"]) or {}).get(c["name"], 0))
             if not 0 <= v <= 10:
                 raise PlatformError("notas de 0 a 10")
-    rec = str(args.get("recommendation") or "")
-    if rec not in [o["name"] for o in options]:
-        raise PlatformError("a recomendação precisa ser uma das opções")
+    rec = _match_option(str(args.get("recommendation") or ""), [o["name"] for o in options])
+    if rec is None:
+        raise PlatformError("a recomendação precisa ser o nome de uma das opções: " + " | ".join(o["name"] for o in options))
     prev = ctx.db.scalar(select(DecisionMemo).where(DecisionMemo.task_id == ctx.task.id).order_by(DecisionMemo.id.desc()))
     m = DecisionMemo(task_id=ctx.task.id, employee_id=ctx.e.id, question=str(args.get("question") or "")[:4000], options=options,
                      criteria=criteria, scores=scores, recommendation=rec, confidence=max(0.0, min(_num(args.get("confidence", 0.5)), 1.0)),
@@ -141,7 +157,8 @@ def submit_decision_memo(ctx: Ctx, args: dict):
     tasksmod.event(ctx.db, ctx.task, "memo", {"id": m.id, "recommendation": rec, "critic": (m.critic or {}).get("severity")})
     ctx.db.commit()
     if m.critic and m.critic["severity"] == "high" and m.revision == 0:
-        return ("REVISOR CRÍTICO: furos graves no memorando — " + " ".join(m.critic["notes"]) +
+        return ("REVISOR CRÍTICO (não é bloqueio de alçada; o memorando foi registrado como rascunho): furos graves — " +
+                " ".join(m.critic["notes"]) +
                 " Revise (notas, recomendação ou justificativa) e mande o memorando de novo com submit_decision_memo.")
     return {"memo": m.id, "totals": m.totals, "critic": m.critic,
             "instruction": "Responda com a recomendação, a nota ponderada de cada opção, os riscos e as fontes."}
