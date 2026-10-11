@@ -47,6 +47,16 @@ hangar restore <file.dump>               # restores (saves the current state fir
 hangar upgrade --version 0.12.0          # Docker: backup, new images, start, doctor (docs/backup.md)
 ```
 
+`hangar test-drive` runs the whole path against your installation, with the test model (no LLM, no cost): a team, a
+Digital employee, its probation, the admission, one task and the result, with the portal links. It deletes what it
+created at the end; `--keep` leaves it there to look at, `--manager <e-mail>` picks the manager (default: you, or a
+test person with the admin token).
+
+```bash
+hangar test-drive            # ✓ team · ✓ hired · ✓ probation · ✓ admitted · ✓ task done → links
+hangar test-drive --keep     # keep the team and the Digital employee to open them in the portal
+```
+
 See [install.md](install.md).
 
 ## Agents in CI

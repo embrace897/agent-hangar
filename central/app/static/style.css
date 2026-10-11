@@ -309,3 +309,16 @@ details.inline summary{cursor:pointer}
 .org>ul{border-left:0;padding-left:0}
 .org li{margin:8px 0}
 .org-node{display:inline-block;border:1px solid var(--line);border-radius:var(--r-lg);padding:6px 12px;background:var(--panel)}
+/* ---------- primeiros passos, avisos, favoritos ---------- */
+#ux-ann{display:grid;gap:8px;margin-bottom:14px}.ux-ann{padding:10px 14px}.ux-onb{margin-bottom:14px}
+.ux-star{font-size:18px;line-height:1;padding:2px 8px;vertical-align:middle;color:var(--mute)}.ux-star.on{color:#C99A06}
+.row.wrap{flex-wrap:wrap}
+/* telas pequenas: tabela larga e abas rolam dentro do próprio quadro, nunca a página inteira */
+@media(max-width:860px){
+  .card table,main>table{display:block;overflow-x:auto;max-width:100%}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}.tabs a{white-space:nowrap}
+  main pre,main code.inline{max-width:100%;overflow-x:auto;word-break:break-word}
+  .row.between{flex-wrap:wrap;gap:8px}
+}
+.grid>*{min-width:0}
+@media(max-width:860px){.g2,.g3,.g4{grid-template-columns:minmax(0,1fr)}}

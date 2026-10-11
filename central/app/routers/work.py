@@ -419,3 +419,45 @@ def inbox_mark(body: MarkBody, request: Request, db=Depends(db_dep)):
 @router.get("/search")
 def search(request: Request, q: str = "", kinds: str = "", limit: int = 30, db=Depends(db_dep)):
     return guard(lambda: svc.inbox.search(db, acc(request, db), q, kinds, limit))
+
+
+# ------------------------------------------------------------------ primeiros passos, avisos e ao vivo
+@router.get("/onboarding")
+def onboarding(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.ux.onboarding(db, acc(request, db)))
+
+
+class HideBody(BaseModel):
+    hidden: bool = True
+
+
+@router.put("/onboarding")
+def onboarding_hide(body: HideBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.ux.hide_onboarding(db, acc(request, db), body.hidden))
+
+
+@router.get("/announcements")
+def announcements(request: Request, all: bool = False, db=Depends(db_dep)):  # noqa: A002
+    return guard(lambda: svc.ux.announcements(db, acc(request, db), all))
+
+
+class AnnouncementBody(BaseModel):
+    text: str = ""
+    level: str = "info"  # info | warn
+    days: int | None = None  # validade em dias (vazio = até alguém remover)
+
+
+@router.post("/announcements")
+def announce(body: AnnouncementBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.ux.announce(db, acc(request, db), body.text, body.level, body.days))
+
+
+@router.delete("/announcements/{ann_id}")
+def unannounce(ann_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.ux.unannounce(db, acc(request, db), ann_id))
+
+
+@router.get("/live")
+def live(request: Request, since: int = 0, limit: int = 60, db=Depends(db_dep)):
+    """O que os Digital employees estão fazendo agora (eventos desde `since` e as tarefas em andamento)."""
+    return guard(lambda: svc.ux.live(db, acc(request, db), since, limit))

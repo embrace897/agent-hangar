@@ -1028,3 +1028,14 @@ class SecretProposal(OrgScoped, Base):
     decided_by: Mapped[str] = mapped_column(String(254), default="")
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Announcement(OrgScoped, Base):
+    """Aviso da empresa para todo mundo (faixa no topo do portal e do console), com validade opcional."""
+    __tablename__ = "announcements"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    level: Mapped[str] = mapped_column(String(8), default="info")  # info | warn
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

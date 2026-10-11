@@ -1006,6 +1006,8 @@ async function route() {
     else if (r === 'packages') await packagesPage();
     else if (r === 'secrets') await secretsPage();
     else if (r === 'orgs') await orgsPage();
+    else if (r === 'live') await livePage();
+    else if (r === 'announcements') await announcementsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
     else if (r === 'workforce') await workforcePage(a);
@@ -1013,6 +1015,7 @@ async function route() {
     else if (r === 'teams' && a) await teamDetail(a);
     else await ({ '': USER_MODE ? homePage : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, users: usersPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
+    uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos
   } catch (e) { if (!(e instanceof AuthError)) main.innerHTML = `<div class="card"><h2>Erro</h2>${esc(e.message)}</div>`; }
 }
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/login')) showLogin(); else route(); });
@@ -1023,7 +1026,7 @@ const NO_REFRESH = ['new', 'playground', 'spec', 'access', 'schedules', 'memory'
 const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisions', 'probation', 'reports'].includes(p[3])) || (p[1] === 'workforce' && ['catalog', 'floor', 'notify'].includes(p[2]));
 setInterval(() => {
   const parts = location.hash.split('/');
-  if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins'].includes(parts[1])) return;
+  if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs'].includes(parts[1])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

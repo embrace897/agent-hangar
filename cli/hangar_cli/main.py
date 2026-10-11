@@ -53,6 +53,9 @@ class Api:
     def put(self, path, body):
         return self._check(self.c.put("/api" + path, json=body))
 
+    def patch(self, path, body):
+        return self._check(self.c.patch("/api" + path, json=body))
+
     def delete(self, path):
         return self._check(self.c.delete("/api" + path))
 
@@ -541,12 +544,34 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--namespace")
     s.add_argument("--release", default="agent-hangar")
     s.add_argument("--yes", action="store_true", help="não perguntar")
+    s = add(sub, "test-drive", cmd_test_drive, "o caminho inteiro (time, Digital employee, experiência, tarefa) contra "
+                                                "a sua instalação, com o modelo de teste")
+    s.add_argument("--manager", help="e-mail da gestora (padrão: você; com o token admin, uma pessoa de teste)")
+    s.add_argument("--keep", action="store_true", help="não apagar o que foi criado")
+    s.add_argument("--timeout", type=int, default=300, help="segundos de espera por etapa")
     s = add(sub, "upgrade", cmd_upgrade, "atualiza a instalação Docker: backup, nova versão, sobe e confere")
     s.add_argument("--version", help="versão das imagens publicadas (ex.: 0.12.0)")
     s.add_argument("--dir", default=".")
     s.add_argument("--namespace", help="Kubernetes: mostra o passo a passo do upgrade com Helm")
     s.add_argument("--yes", action="store_true")
     return p
+
+
+def cmd_test_drive(a):
+    from .testdrive import Drive
+    d = Drive(api())
+    try:
+        res = d.run(a.manager, a.timeout)
+        if getattr(a, "json", False):
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+    except (TimeoutError, RuntimeError) as e:
+        raise CliError(str(e)) from None
+    finally:
+        if a.keep and d.made:
+            print(f"mantido (--keep): {d.made}")
+        elif d.made:
+            d.cleanup()
+            print("limpo: o que o test-drive criou foi apagado (use --keep para olhar no portal)")
 
 
 def cmd_setup(a):

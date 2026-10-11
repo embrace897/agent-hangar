@@ -11,6 +11,7 @@ hangar ship doc-qa                       # test in stage, promote to prod if gre
 hangar chat doc-qa "What is the hotel limit?"
 hangar jobs run code-fixer "Fix the failing test" --follow
 hangar keys create librechat --scope invoke --agent doc-qa
+hangar test-drive                        # the whole path (team, Digital employee, task) with the test model
 ```
 
 Credentials come from `HANGAR_URL` / `HANGAR_TOKEN` or from `~/.config/hangar/config.json` (written by `hangar login`,

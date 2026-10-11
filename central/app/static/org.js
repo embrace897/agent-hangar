@@ -34,6 +34,7 @@ function renderSide() {
     ${u && u.has_password ? '<a href="#" id="pw-change" class="small">Trocar senha</a>' : ''}</div></div>
     ${ME.instance_admin && (ME.orgs || []).length > 1 ? `<label class="small org-switch">Empresa<select id="org-switch">${ME.orgs.map(o =>
       `<option value="${o.id}" ${o.id === ME.org.id ? 'selected' : ''} data-noi18n>${esc(o.name)}</option>`).join('')}</select></label>` : ''}`;
+  uxSide();  // favoritos e avisos
   const sw = $('#org-switch');  // quem administra a instalação age dentro da empresa escolhida (cookie lido pelo servidor)
   if (sw) sw.onchange = () => { document.cookie = `hangar_org=${sw.value}; path=/; SameSite=Lax`; location.hash = '#/'; location.reload(); };
   const pc = $('#pw-change');
