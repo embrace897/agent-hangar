@@ -1010,6 +1010,16 @@ async function route() {
     else if (r === 'extraction') await extractionPage();
     else if (r === 'calculators' && a) await calculatorPage(decodeURIComponent(a));
     else if (r === 'calculators') await calculatorsPage();
+    else if (r === 'work' && a) await workItemPage(a);
+    else if (r === 'work') await myWorkPage();
+    else if (r === 'queues' && a) await queuePage(decodeURIComponent(a));
+    else if (r === 'queues') await queuesPage();
+    else if (r === 'playbooks' && a) await playbookPage(decodeURIComponent(a));
+    else if (r === 'playbooks') await playbooksPage();
+    else if (r === 'runs' && a) await runPage(a);
+    else if (r === 'meetings' && a) await meetingPage(a);
+    else if (r === 'meetings') await meetingsPage();
+    else if (r === 'message-templates') await templatesMsgPage();
     else if (r === 'announcements') await announcementsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
@@ -1029,7 +1039,8 @@ const NO_REFRESH = ['new', 'playground', 'spec', 'access', 'schedules', 'memory'
 const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisions', 'probation', 'reports'].includes(p[3])) || (p[1] === 'workforce' && ['catalog', 'floor', 'notify'].includes(p[2]));
 setInterval(() => {
   const parts = location.hash.split('/');
-  if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs'].includes(parts[1])) return;
+  if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs', 'extraction', 'calculators', 'playbooks', 'message-templates',
+    'meetings', 'queues', 'work'].includes(parts[1])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

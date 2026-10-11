@@ -22,6 +22,15 @@ class OrgNotifyBody(BaseModel):
     discord_app_id: str | None = None
     discord_public_key: str | None = None
     discord_bot_token: str | None = None
+    whatsapp_phone_id: str | None = None
+    whatsapp_token: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_verify_token: str | None = None
+    calendar_provider: str | None = None
+    ms_tenant: str | None = None
+    ms_client_id: str | None = None
+    ms_client_secret: str | None = None
+    google_sa: str | None = None
     digest_hour: int | None = None
     expiry_warn_min: int | None = None
     overdue_escalate_min: int | None = None

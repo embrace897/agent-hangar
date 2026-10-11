@@ -235,6 +235,7 @@ app.include_router(admin.router)
 app.include_router(employees.router)
 app.include_router(work.router)  # metas, projetos, conversa da tarefa, orçamentos, caixa de entrada e busca
 app.include_router(analyst.router)  # o dia a dia do analista: dados, documentos, números, processos…
+app.include_router(analyst.hooks)  # entrada da fila, WhatsApp e transcrições: cada um com o próprio token
 app.include_router(employees.hooks)
 app.include_router(notify.router)
 app.include_router(plugins.router)

@@ -18,6 +18,19 @@ from .conftest import ADMIN
 from .test_employees import assign, env, hire, make_active, open_request, rt, task, work  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def _close_leftover_tasks():
+    """O que o teste deixou aberto (respostas que acordam tarefas, briefings, ações de reunião) não pode ocupar a fila
+    do executor nos testes seguintes."""
+    with SessionLocal() as db:
+        start = db.query(EmployeeTask.id).order_by(EmployeeTask.id.desc()).limit(1).scalar() or 0
+    yield
+    with SessionLocal() as db:
+        for t in db.query(EmployeeTask).filter(EmployeeTask.id > start, EmployeeTask.status.notin_(tasksmod.TERMINAL)):
+            t.status = "cancelled"
+        db.commit()
+
+
 def _task_with_file(client, env, slug, body, name, data: bytes, ctype="text/plain"):
     tid = assign(client, env, slug, body)
     with SessionLocal() as db:

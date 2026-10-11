@@ -866,11 +866,11 @@ function chatLinks(c) {
 
 /* ---------- console do admin: força de trabalho digital ---------- */
 async function workforcePage(tab = 'overview') {
-  const tabs = { overview: 'Visão geral', catalog: 'Catálogo de ações', floor: 'Piso da empresa', notify: 'Canais de decisão', brand: 'Entregáveis' };
+  const tabs = { overview: 'Visão geral', catalog: 'Catálogo de ações', floor: 'Piso da empresa', notify: 'Canais de decisão', brand: 'Entregáveis', calendar: 'Calendário' };
   const key = tabs[tab] ? tab : 'overview';
   main.innerHTML = `<h1>Digital employees</h1><div class="sub">A força de trabalho digital da empresa: quem está trabalhando, o que espera decisão, como cada ferramenta é classificada e a alçada mínima que vale para todos.</div>
   <div class="tabs">${Object.entries(tabs).map(([k, v]) => `<a href="#/workforce/${k}" class="${k === key ? 'on' : ''}">${v}</a>`).join('')}</div><div id="tab"></div>`;
-  await ({ overview: wfOverview, catalog: wfCatalog, floor: wfFloor, notify: wfNotify, brand: wfBrand })[key]($('#tab'));
+  await ({ overview: wfOverview, catalog: wfCatalog, floor: wfFloor, notify: wfNotify, brand: wfBrand, calendar: wfCalendar })[key]($('#tab'));
 }
 
 async function wfOverview(t) {
@@ -992,6 +992,7 @@ async function wfNotify(t) {
   if (dcoff) dcoff.onclick = ev => act(ev.target, () => put({ discord_bot_token: '', discord_public_key: '' }), 'Discord desligado');
   $('#ns-times').onclick = ev => act(ev.target, () => put({ digest_hour: Number($('#ns-hour').value), expiry_warn_min: Number($('#ns-warn').value),
     due_soon_min: Number($('#ns-soon').value), overdue_escalate_min: Number($('#ns-esc').value) }), 'Prazos salvos');
+  notifyExtras(t, n, put);  // WhatsApp, agenda da empresa e transcrições (analyst.js)
 }
 
 async function wfFloor(t) {

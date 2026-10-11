@@ -20,7 +20,7 @@ from . import employee_tasks as tasksmod
 from .access import Access
 from .common import PlatformError, audit, iso
 
-HOLDABLE = ("new", "blocked", "waiting_task", "waiting_budget")
+HOLDABLE = ("new", "blocked", "waiting_task", "waiting_budget", "waiting_external")
 EXTRA_RUNS = 3
 
 
@@ -238,6 +238,12 @@ def diagnosis(db: Session, t: EmployeeTask) -> dict | None:
         return {"state": "dependency", "cause": ("dependência sem concluir: " + ", ".join(f"#{d.id} ({d.status})" for d in pend))
                 if pend else "dependências", "owner": t.requester if failed else "", "actions": ["dependencies"],
                 "failed_deps": [d.id for d in failed]}
+    if t.status == "waiting_external":
+        from ..models import ExternalThread
+        th = db.scalar(select(ExternalThread).where(ExternalThread.task_id == t.id, ExternalThread.status == "waiting")
+                       .order_by(ExternalThread.id.desc()))
+        return {"state": "external", "cause": f"esperando a resposta de {th.contact_name or th.contact}" if th else
+                "esperando a resposta de alguém de fora", "owner": "", "actions": ["continue"]}
     if t.status == "on_hold":
         return {"state": "hold", "cause": "pausada", "owner": manager, "actions": ["resume"]}
     if t.status == "new" and t.not_before and tasksmod._aware(t.not_before) > now():

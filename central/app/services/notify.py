@@ -38,7 +38,7 @@ log = logging.getLogger("hangar.notify")
 CHANNELS = ("auto", "slack", "teams", "email", "off")
 DEFAULTS = {"digest_hour": 9, "expiry_warn_min": 60, "overdue_escalate_min": 120, "due_soon_min": 60}
 LIMITS = {"digest_hour": (-1, 23), "expiry_warn_min": (0, 1440), "overdue_escalate_min": (5, 10080), "due_soon_min": (0, 1440)}
-OPEN_TASK = ("new", "in_progress", "waiting_human", "waiting_budget", "blocked", "in_review", "on_hold")
+OPEN_TASK = ("new", "in_progress", "waiting_human", "waiting_budget", "waiting_external", "blocked", "in_review", "on_hold")
 HTTP = lambda: httpx.Client(timeout=15)  # noqa: E731  (os testes trocam)
 
 
@@ -139,7 +139,7 @@ def slack_manifest() -> str:
 
 
 def admin_view(db, acc: Access) -> dict:
-    from . import chat_channels
+    from . import calendar_api, chat_channels, correspondence
     if not acc.p.is_admin:
         raise Forbidden("só o admin configura os canais de decisão da empresa")
     cfg = org_cfg(db)
@@ -152,6 +152,7 @@ def admin_view(db, acc: Access) -> dict:
             "teams": {"how": "personal", "outgoing": bool(cfg.get("teams_outgoing_secret")),
                       "outgoing_url": f"{config.PUBLIC_BASE_URL}/hooks/teams/messages"},
             **chat_channels.admin_view(cfg),
+            **correspondence.admin_view(cfg), **calendar_api.admin_view(cfg),
             **{k: cfg[k] for k in DEFAULTS}}
 
 
@@ -186,6 +187,9 @@ def set_admin(db, acc: Access, changes: dict) -> dict:
                                     "webhook de saída") from None
         cfg["teams_outgoing_secret"] = crypto.encrypt(v) if v else ""
     chat_channels.configure(cfg, changes, o.id)  # Telegram e Discord
+    from . import calendar_api, correspondence
+    correspondence.configure(cfg, changes)  # WhatsApp
+    calendar_api.configure(cfg, changes)  # agenda da empresa (Microsoft 365 ou Google)
     if changes.get("slack_bot_token"):
         try:
             who = _slack(cfg, "auth.test", {}, form=True)
@@ -213,6 +217,7 @@ def my_view(db, acc: Access) -> dict:
             "available": available(cfg, p), "route": route(cfg, u), "digest_hour": cfg["digest_hour"],
             "slack_ready": slack_ready(cfg), "email_ready": email_ready(), "email": u.email,
             "chat": {**{f"{k}_ready": bool(cfg.get(f"{k}_bot_token")) for k in ("telegram", "discord")},
+                     "whatsapp_ready": bool(cfg.get("whatsapp_phone_id") and cfg.get("whatsapp_token")),
                      "linked": chat_channels.linked(u), "telegram_bot": cfg.get("telegram_bot", "")}}
 
 

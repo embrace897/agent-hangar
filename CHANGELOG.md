@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format follows
 - **Certified calculators:** formulas in a safe Decimal language, test cases, four-eyes certification, a calculation
   record for every run and optional human review of tasks that use them.
 
+- **Business calendar:** national holidays built in, company holidays, working hours; business-day schedules
+  (`@bd 1 09:00`, `@bdaily 08:30`) for routines and playbooks.
+- **Playbooks:** recurring processes with steps for people and Digital employees, dependencies, business-day
+  deadlines, evidence, scheduled runs, a run board and where each step usually runs late.
+- **Team queues and work for people:** categories by keyword, SLA, routing to the least busy Digital employee or to
+  people (take the next one), hand-off from an employee to a person with a draft, evidence and four-eyes approval,
+  automatic / assisted / human metrics, webhook intake.
+- **Conversations with people outside the company:** e-mail and WhatsApp threads on the task, approved message
+  templates, waiting for the reply, automatic reminders, promises turned into deadlines, signed WhatsApp webhook.
+- **Calendar and meetings:** free times and invites through Microsoft 365 or Google Workspace, briefings before
+  meetings, minutes from transcripts, actions turned into work and followed up at the next meeting of the series.
+
 ### Fixed
 - A task blocked by dependencies that had never run lost its own request when it was unblocked.
 

@@ -197,6 +197,50 @@ def phase_e(dev, mgr, team, slug):
         print("   (Data Studio desligado: análise não testada)", flush=True)
 
 
+def phase_f(dev, mgr, mgr_email, team, slug):
+    import json
+    # fila: "nota" vai para o Digital employee; o resto, para as pessoas (que pegam a próxima)
+    q = ok(mgr.put("/api/queues", json={"name": f"Backoffice {RUN}", "team": team, "categories": [
+        {"name": "Nota", "keywords": ["nota"], "sla_hours": 4, "route": {"type": "employee", "refs": [slug]}},
+        {"name": "Geral", "keywords": [], "sla_hours": 24, "route": {"type": "people"}}], "default_category": "Geral"}))["slug"]
+    LEFTOVERS.append(("DELETE", f"/api/queues/{q}"))
+    a = ok(dev.post(f"/api/queues/{q}/items", json={"title": "Lançar a nota 991", "body": "nota do fornecedor"}))
+    b = ok(dev.post(f"/api/queues/{q}/items", json={"title": "Ajustar um cadastro"}))
+    item = wf.wait(lambda: (lambda i: i if i["status"] == "done" else None)(ok(dev.get(f"/api/work-items/{a['id']}"))))
+    got = ok(mgr.post(f"/api/queues/{q}/next"))
+    ok(mgr.post(f"/api/work-items/{got['id']}", json={"action": "done", "note": "feito"}))
+    stats = next(x for x in ok(mgr.get("/api/queues")) if x["slug"] == q)["stats"]
+    check("fila: o Digital employee resolve, a pessoa pega a próxima", item is not None and got["id"] == b["id"]
+          and stats["automatic"] == 1 and stats["human"] == 1, stats)
+    # playbook: Digital employee → pessoa → Digital employee, com prazos em dias úteis
+    steps = [{"key": "extrair", "title": "Extrair", "assignee": {"type": "employee", "ref": slug}, "due": {"business_days": 1}},
+             {"key": "conferir", "title": "Conferir", "assignee": {"type": "person", "ref": mgr_email}, "depends_on": ["extrair"],
+              "due": {"from": "extrair", "business_days": 1}},
+             {"key": "relatorio", "title": "Relatório", "assignee": {"type": "employee", "ref": slug}, "depends_on": ["conferir"],
+              "due": {"from": "conferir", "business_days": 1}}]
+    pb = ok(dev.put("/api/playbooks", json={"name": f"fech_{RUN}", "team": team, "title": "Fechamento", "steps": steps}))
+    run = ok(dev.post(f"/api/playbooks/{pb['name']}/runs", json={}))
+    conf = next(s for s in run["steps"] if s["key"] == "conferir")["id"]
+    ready = wf.wait(lambda: (lambda i: i if i["status"] in ("in_progress", "open") else None)(ok(mgr.get(f"/api/work-items/{conf}"))))
+    ok(mgr.post(f"/api/work-items/{conf}", json={"action": "done", "note": "conferido"}))
+    final = wf.wait(lambda: (lambda r: r if r["status"] == "done" else None)(ok(mgr.get(f"/api/playbook-runs/{run['id']}"))))
+    check("playbook: etapas em ordem, da pessoa e dos Digital employees", ready is not None and final is not None
+          and "ETAPA PRÉVIA" in ready["body"], (ready and ready["status"], final and final["status"]))
+    LEFTOVERS.append(("DELETE", f"/api/playbooks/{pb['name']}"))
+    # reunião: a transcrição vira tarefa de ata; as ações viram item da pessoa e tarefa do funcionário
+    m = ok(mgr.post("/api/meetings", json={"title": f"Comitê {RUN}", "team": team, "employee": slug, "series": f"comite-{RUN}",
+                                           "attendees": [mgr_email]}))
+    LEFTOVERS.append(("DELETE", f"/api/meetings/{m['id']}"))
+    m = ok(mgr.post(f"/api/meetings/{m['id']}/transcript", json={"text": "Ana: revisar o preço. Bot: rascunhar o aditivo."}))
+    wf.until(dev, m["minutes_task"], ("done", "failed"))
+    rec = {"meeting_id": m["id"], "summary": "Revisar preço e rascunhar o aditivo.", "decisions": ["renovar"],
+           "actions": [{"title": "Revisar preço", "owner": mgr_email}, {"title": "Rascunhar o aditivo", "owner": slug}]}
+    ok(mgr.post(f"/api/tasks/{m['minutes_task']}/messages", json={"body": "use record_minutes " + json.dumps(rec)}))
+    d = wf.wait(lambda: (lambda x: x if x["status"] == "minutes" else None)(ok(mgr.get(f"/api/meetings/{m['id']}"))))
+    check("reunião: ata e ações viram trabalho", d is not None and {a["kind"] for a in d["actions"]} == {"item", "task"},
+          d and d["actions"])
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -209,6 +253,7 @@ def main():
     phase_c(dev, mgr, mgr_email, team, slug)
     phase_d(dev, mgr, slug)
     phase_e(dev, mgr, team, slug)
+    phase_f(dev, mgr, mgr_email, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

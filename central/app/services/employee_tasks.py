@@ -665,6 +665,11 @@ def tick() -> list[int]:
                 budget_sweep(db)
             from .employees import daily_reports
             daily_reports(db)
+            from . import correspondence, meetings, playbooks, work_queues
+            work_queues.sweep(db)  # SLA estourado
+            playbooks.sweep(db)  # execuções agendadas (@bd 1 08:00…)
+            correspondence.sweep(db)  # lembretes sem resposta e promessas vencidas
+            meetings.sweep(db)  # briefings antes das reuniões
     with SessionLocal() as db:  # a fila é uma só: reserva entre todas as empresas
         rows = db.execute(select(EmployeeTask.id, EmployeeTask.probation, Employee.status)
                           .join(Employee, Employee.id == EmployeeTask.employee_id)
@@ -767,9 +772,17 @@ def _run_task(task_id: int) -> EmployeeTask | None:
             open_req = db.scalar(select(HumanRequest.id).where(HumanRequest.task_id == task.id, HumanRequest.status == "open",
                                                                HumanRequest.kind.in_(BLOCKING)))
             child = db.get(EmployeeTask, task.waiting_on) if task.waiting_on else None
+            from . import correspondence
             task.status = ("waiting_human" if open_req else
                            "waiting_task" if child is not None and child.status not in TERMINAL else
+                           "waiting_external" if correspondence.waiting(db, task) else
                            "new")  # decidido (ou a repassada terminou) enquanto a rodada terminava: segue
+            db.commit()
+            return task
+        from . import correspondence
+        if correspondence.waiting(db, task) and not task_thread.pending(db, task):  # espera a resposta de fora
+            task.status = "waiting_external"
+            event(db, task, "note", {"waiting": "resposta de fora"})
             db.commit()
             return task
         if task_thread.pending(db, task):  # chegou mensagem durante a rodada: mais uma rodada antes de encerrar
@@ -803,6 +816,9 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
     employee_quality.task_finished(db, task)  # a amostra vai para o juiz de qualidade
     from . import task_flow
     task_flow.task_finished(db, task)  # as tarefas que dependiam desta andam (ou travam, se falhou)
+    from . import playbooks, work_queues
+    work_queues.task_finished(db, task)  # o item da fila acompanha (ou vai para as pessoas, se falhou)
+    playbooks.task_finished(db, task)  # a próxima etapa do processo começa
     if task.probation:
         from .employees import probation_progress
         probation_progress(db, db.get(Employee, task.employee_id))

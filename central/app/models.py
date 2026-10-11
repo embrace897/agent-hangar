@@ -238,6 +238,7 @@ class Organization(Base):
     domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails desses domínios entram nesta empresa (SSO)
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended
     brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # identidade visual dos entregáveis: theme, accent, footer
+    calendar: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # dias úteis, expediente e feriados da empresa
 
 
 class Team(Base):
@@ -1114,3 +1115,188 @@ class CalcRun(OrgScoped, Base):
     trace: Mapped[list] = mapped_column(JSON, default=list)  # [{name, expr, value}]
     by: Mapped[str] = mapped_column(String(254), default="")
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# ------------------------------------------------------------------ fase F: processos, filas, gente de fora e reuniões
+class WorkQueue(OrgScoped, Base):
+    """Fila do time: a entrada única de pedidos, com categorias (palavras-chave, SLA e para onde vão: um Digital
+    employee — o menos ocupado de uma lista — ou as pessoas do time)."""
+    __tablename__ = "work_queues"
+    __table_args__ = (UniqueConstraint("org_id", "slug", name="uq_workqueue_org_slug"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    categories: Mapped[list] = mapped_column(JSON, default=list)  # [{name, keywords, sla_hours, route: {type, refs}, priority}]
+    default_category: Mapped[str] = mapped_column(String(80), default="")
+    intake_token_hash: Mapped[str] = mapped_column(String(64), default="")
+    intake_token_hint: Mapped[str] = mapped_column(String(12), default="")
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkItem(OrgScoped, Base):
+    """Um pedido para pessoas (ou que passou por um Digital employee): da fila, de um playbook, de uma reunião, ou o
+    trabalho que o funcionário preparou e devolveu para um analista terminar."""
+    __tablename__ = "work_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    queue_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String(80), default="")
+    priority: Mapped[int] = mapped_column(Integer, default=2)
+    # waiting (depende de outra etapa) | open (fila das pessoas) | in_progress | employee (com um Digital employee)
+    # | done | cancelled
+    status: Mapped[str] = mapped_column(String(12), default="open", index=True)
+    assignee_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    employee_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    prepared: Mapped[str] = mapped_column(Text, default="")  # o que o Digital employee deixou pronto
+    handled_by: Mapped[str] = mapped_column(String(12), default="")  # employee | assisted | human
+    source: Mapped[str] = mapped_column(String(20), default="portal")  # portal | webhook | employee | playbook | meeting
+    source_ref: Mapped[str] = mapped_column(String(120), default="")
+    requester: Mapped[str] = mapped_column(String(254), default="")
+    requester_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sla_breached: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence: Mapped[str] = mapped_column(String(10), default="none")  # none | file | approval
+    result: Mapped[str] = mapped_column(Text, default="")
+    approved_by: Mapped[str] = mapped_column(String(254), default="")
+    playbook_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    step_key: Mapped[str] = mapped_column(String(80), default="")
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkItemFile(OrgScoped, Base):
+    __tablename__ = "work_item_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("work_items.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    data: Mapped[bytes] = mapped_column(LargeBinary, default=b"")
+    uploaded_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Playbook(OrgScoped, Base):
+    """Processo recorrente com etapas (de pessoas ou de Digital employees), dependências, prazos em dias úteis contados
+    de um marco, evidência exigida e, opcionalmente, uma agenda (ex.: @bd 1 08:00 abre o fechamento de cada mês)."""
+    __tablename__ = "playbooks"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_playbook_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    steps: Mapped[list] = mapped_column(JSON, default=list)  # [{key, title, body, assignee, due, depends_on, evidence, criteria}]
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(10), default="active")  # active | archived
+    schedule: Mapped[str] = mapped_column(String(60), default="")
+    run_title: Mapped[str] = mapped_column(String(200), default="")  # ex.: "Fechamento {mes}/{ano}"
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PlaybookRun(OrgScoped, Base):
+    __tablename__ = "playbook_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    playbook_id: Mapped[int] = mapped_column(Integer, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    title: Mapped[str] = mapped_column(String(300))
+    anchor: Mapped[str] = mapped_column(String(10))  # AAAA-MM-DD: o marco dos prazos
+    status: Mapped[str] = mapped_column(String(10), default="running")  # running | done | cancelled
+    steps: Mapped[dict] = mapped_column(JSON, default=dict)  # {key: {kind, id, due, title, owner}}
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MessageTemplate(OrgScoped, Base):
+    """Modelo de mensagem para fora (e-mail ou WhatsApp), aprovado uma vez por quem responde pelo time."""
+    __tablename__ = "message_templates"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_messagetemplate_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    channel: Mapped[str] = mapped_column(String(10), default="any")  # any | email | whatsapp
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    wa_template: Mapped[str] = mapped_column(String(120), default="")  # modelo aprovado no WhatsApp (fora da janela de 24 h)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | approved | archived
+    approved_by: Mapped[str] = mapped_column(String(254), default="")
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ExternalThread(OrgScoped, Base):
+    """Conversa de uma tarefa com alguém de fora: acompanhada, com lembrete automático sem resposta e as promessas
+    da outra parte virando prazo."""
+    __tablename__ = "external_threads"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    channel: Mapped[str] = mapped_column(String(10), default="email")  # email | whatsapp
+    contact_name: Mapped[str] = mapped_column(String(200), default="")
+    contact: Mapped[str] = mapped_column(String(254), index=True)  # e-mail ou telefone (só dígitos)
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    token: Mapped[str] = mapped_column(String(16), index=True)  # [#H-xxxx] no assunto: a resposta acha a conversa
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | waiting | replied | no_reply | closed
+    wait_reply: Mapped[bool] = mapped_column(Boolean, default=False)  # a tarefa espera a resposta
+    follow_up_days: Mapped[int] = mapped_column(Integer, default=0)  # lembrete após N dias úteis sem resposta (0 = não)
+    max_follow_ups: Mapped[int] = mapped_column(Integer, default=2)
+    follow_ups_sent: Mapped[int] = mapped_column(Integer, default=0)
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    pending_request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    promises: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{text, due, done}]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ExternalMessage(OrgScoped, Base):
+    __tablename__ = "external_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("external_threads.id", ondelete="CASCADE"), index=True)
+    direction: Mapped[str] = mapped_column(String(4))  # out | in
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    template: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(10), default="sent")  # sent | failed | received
+    error: Mapped[str] = mapped_column(String(300), default="")
+    external_id: Mapped[str] = mapped_column(String(200), default="")
+    by: Mapped[str] = mapped_column(String(254), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Meeting(OrgScoped, Base):
+    """Reunião marcada pela agenda da empresa (ou só registrada), com a transcrição, a ata escrita por um Digital
+    employee e as ações que viram tarefas, cobradas na reunião seguinte da mesma série."""
+    __tablename__ = "meetings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(300))
+    series: Mapped[str] = mapped_column(String(120), default="", index=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    organizer: Mapped[str] = mapped_column(String(254), default="")
+    attendees: Mapped[list] = mapped_column(JSON, default=list)
+    agenda: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # quem escreve a ata e prepara o briefing
+    prep_hours: Mapped[int] = mapped_column(Integer, default=0)  # briefing N horas antes (0 = não)
+    prep_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider: Mapped[str] = mapped_column(String(12), default="")  # microsoft | google | (vazio: só registrada)
+    external_id: Mapped[str] = mapped_column(String(300), default="")
+    transcript: Mapped[str] = mapped_column(Text, default="")
+    minutes: Mapped[str] = mapped_column(Text, default="")
+    decisions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    minutes_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="scheduled")  # scheduled | held | minutes
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

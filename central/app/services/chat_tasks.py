@@ -198,7 +198,7 @@ def teams_message(db, raw: bytes, headers: dict) -> dict:
 # ------------------------------------------------------------------ o resultado volta para quem pediu
 def task_finished(db, task: EmployeeTask):
     o = task.origin or {}
-    if task.source not in ("slack", "teams", "telegram", "discord") or not o or task.status not in ("done", "failed"):
+    if task.source not in ("slack", "teams", "telegram", "discord", "whatsapp") or not o or task.status not in ("done", "failed"):
         return
     notify._bg(_deliver_result, task.id)
 

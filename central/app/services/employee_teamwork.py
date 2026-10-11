@@ -435,6 +435,13 @@ def poll_inbox(db, employee_id: int) -> dict:
             msg = email.message_from_bytes(raw, policy=email.policy.default)
             sender = parseaddr(str(msg.get("From") or ""))[1].strip().lower()
             key = f"mail:{str(msg.get('Message-ID') or '').strip()[:180]}" if msg.get("Message-ID") else ""
+            from . import correspondence
+            th = correspondence.match_email(db, str(msg.get("Subject") or ""), sender)
+            if th is not None:  # resposta a uma conversa de uma tarefa ([#H-xxxx] no assunto)
+                m.store(mid, "+FLAGS", "\\Seen")
+                correspondence.receive(db, th, _text(msg)[0], str(msg.get("Subject") or ""), key)
+                out["replies"] = out.get("replies", 0) + 1
+                continue
             who = _allowed(db, ib, sender) if sender else None
             m.store(mid, "+FLAGS", "\\Seen")
             if who is None:

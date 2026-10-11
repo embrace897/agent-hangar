@@ -92,11 +92,13 @@ def configure(cfg: dict, changes: dict, org_id: int):
 
 # ------------------------------------------------------------------ ligar a conta da pessoa
 def link_code(db, acc: Access, channel: str) -> dict:
-    if channel not in ("telegram", "discord"):
-        raise PlatformError("channel: telegram | discord")
+    if channel not in ("telegram", "discord", "whatsapp"):
+        raise PlatformError("channel: telegram | discord | whatsapp")
     u = notify._me(db, acc)
     cfg = notify.org_cfg(db)
-    if channel == "telegram" and not cfg.get("telegram_bot_token") or channel == "discord" and not cfg.get("discord_bot_token"):
+    ready = {"telegram": bool(cfg.get("telegram_bot_token")), "discord": bool(cfg.get("discord_bot_token")),
+             "whatsapp": bool(cfg.get("whatsapp_phone_id") and cfg.get("whatsapp_token"))}
+    if not ready[channel]:
         raise PlatformError(f"o {channel.title()} ainda não está ligado na empresa: peça ao admin")
     code = secrets.token_hex(4).upper()
     shared.put(f"chatlink:{code}", {"user": u.id, "org": u.org_id or 1, "channel": channel}, LINK_TTL)
@@ -106,8 +108,10 @@ def link_code(db, acc: Access, channel: str) -> dict:
         out["how"] = f"/start {code}"
         if bot:
             out["url"] = f"https://t.me/{bot}?start={code}"
-    else:
+    elif channel == "discord":
         out["how"] = f"/hangar text: link {code}"
+    else:
+        out["how"] = f"link {code}"
     return out
 
 
@@ -152,7 +156,7 @@ def person(db, channel: str, chat_user: str) -> User | None:
 
 def linked(u: User) -> dict:
     p = u.notify or {}
-    return {"telegram": bool(p.get("telegram_id")), "discord": bool(p.get("discord_id"))}
+    return {"telegram": bool(p.get("telegram_id")), "discord": bool(p.get("discord_id")), "whatsapp": bool(p.get("whatsapp_id"))}
 
 
 # ------------------------------------------------------------------ Telegram
@@ -280,6 +284,9 @@ def discord_interaction(db, org_id: int, raw: bytes, headers: dict) -> dict:
 
 # ------------------------------------------------------------------ o resultado volta para a conversa
 def deliver(db, cfg: dict, origin: dict, head: str, text: str, url: str, label: str) -> bool:
+    from . import correspondence
+    if correspondence.deliver_result(db, cfg, origin, head, text, url):
+        return True
     if origin.get("telegram"):
         o = origin["telegram"]
         _telegram(cfg, "sendMessage", {"chat_id": o["chat"], "text": f"{head}\n{text[:3500]}\n{url}",

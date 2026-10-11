@@ -34,7 +34,11 @@ def _tz(db: Session) -> str:
 
 
 def _cron(expr: str, tz: str) -> str:
+    from . import bizcal
     try:
+        if bizcal.parse(expr) is not None:  # agenda por dia útil (@bd N HH:MM, @bdaily HH:MM)
+            zone(tz)
+            return " ".join(expr.split())
         c = Cron(expr)
         if c.min_interval_minutes(tz) < config.SCHEDULE_MIN_INTERVAL_MIN:
             raise PlatformError(f"intervalo mínimo entre disparos: {config.SCHEDULE_MIN_INTERVAL_MIN} minutos")
@@ -46,8 +50,9 @@ def _cron(expr: str, tz: str) -> str:
 
 def routine_dict(r: EmployeeRoutine) -> dict:
     nxt = tasksmod._aware(r.next_run_at)
+    from . import bizcal
     try:
-        when = Cron(r.cron).describe()
+        when = bizcal.describe(r.cron)
     except CronError:
         when = r.cron
     return {"id": r.id, "title": r.title, "body": r.body, "cron": r.cron, "timezone": r.timezone, "when": when,
@@ -83,7 +88,8 @@ def set_routine(db: Session, acc: Access, slug: str, title: str = "", body: str 
         r.cron = _cron(cron, r.timezone)
     r.priority = max(1, min(int(priority or 2), 3))
     r.enabled = bool(enabled)
-    r.next_run_at = Cron(r.cron).next_after(now(), r.timezone) if r.enabled else None
+    from . import bizcal
+    r.next_run_at = bizcal.next_after(db, r.cron, now(), r.timezone) if r.enabled else None
     if "schedule" not in (e.channels or []):  # o canal "schedule" passa a valer para este funcionário
         e.channels = [*(e.channels or []), "schedule"]
     db.add(r)
@@ -145,7 +151,8 @@ def fire_routines(db: Session, at=None) -> list[int]:
         Employee.status == "active")).all()
     for rid, old in due:
         r = db.get(EmployeeRoutine, rid)
-        nxt = Cron(r.cron).next_after(at, r.timezone)
+        from . import bizcal
+        nxt = bizcal.next_after(db, r.cron, at, r.timezone)
         res = db.execute(update(EmployeeRoutine).where(EmployeeRoutine.id == rid, EmployeeRoutine.next_run_at == old)
                          .values(next_run_at=nxt))
         db.commit()

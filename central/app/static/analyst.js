@@ -25,6 +25,7 @@ async function platformToolsCard(box, e) {
 async function taskExtras(x, id) {
   const box = document.createElement('div');
   main.append(box);
+  taskConversations(id, box);  // conversas com gente de fora (fase F)
   const ex = await api(`/tasks/${id}/extractions`).catch(() => []);
   if (ex.length) box.insertAdjacentHTML('beforeend', `<div class="card mt"><h2>Campos extraídos</h2>
     ${ex.map(x2 => `<div class="mt"><b data-noi18n>${esc(x2.file)}</b> <span class="mute small">v${x2.file_version} · ${esc(x2.schema)}</span>
@@ -206,4 +207,318 @@ async function wfBrand(t) {
     <div class="row mt"><button id="br-save">Salvar</button></div></div>`;
   $('#br-save').onclick = ev => act(ev.target, () => api('/brand', { method: 'PUT', body: { theme: $('#br-theme').value, accent: $('#br-accent').value,
     footer: $('#br-footer').value } }).then(() => wfBrand(t)), 'Identidade salva');
+}
+
+/* ================================================================== fase F: processos, filas, gente de fora, reuniões */
+const WI_STATUS = { waiting: ['esperando etapa anterior', ''], open: ['na fila', 'warn'], in_progress: ['em andamento', 'info'],
+  employee: ['com o Digital employee', 'info'], review: ['aguardando aprovação', 'warn'], done: ['concluído', 'ok'], cancelled: ['cancelado', ''] };
+const wiPill = s => { const [t, c] = WI_STATUS[s] || [s, '']; return `<span class="pill ${c}">${esc(window.t(t))}</span>`; };
+const HANDLED = { employee: 'automático', assisted: 'assistido', human: 'humano' };
+const dtLocal = v => v ? new Date(v).toLocaleString(window.LOCALE || 'pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+function itemRow(i) {
+  return `<tr><td><a href="#/work/${i.id}"><b data-noi18n>#${i.id} ${esc(i.title)}</b></a><div class="mute small" data-noi18n>${esc(i.queue_name || '')}${i.category ? ' · ' + esc(i.category) : ''}</div></td>
+    <td>${wiPill(i.status)}${i.sla_breached ? ' <span class="pill bad">SLA</span>' : ''}${i.late ? ` <span class="pill bad">${window.t('atrasado')}</span>` : ''}</td>
+    <td data-noi18n>${esc(i.assignee || '—')}</td><td class="small">${i.sla_due_at ? dtLocal(i.sla_due_at) : i.due_at ? dtLocal(i.due_at) : '—'}</td></tr>`;
+}
+const itemsTable = list => list.length ? `<table class="small"><tr><th>Item</th><th>Status</th><th>Com</th><th>Prazo</th></tr>${list.map(itemRow).join('')}</table>`
+  : '<div class="mute small">Nada aqui.</div>';
+
+async function myWorkPage() {
+  const [mine, open] = await Promise.all([api('/work-items?mine=true&status=open'), api('/work-items?status=open')]);
+  const unassigned = open.filter(i => i.status === 'open' && !i.assignee);
+  main.innerHTML = `<h1>Meu trabalho</h1><div class="sub">Os itens com você — de filas, playbooks, reuniões ou o que um Digital employee preparou para você terminar.</div>
+    <div class="card"><h2>Comigo (${mine.length})</h2>${itemsTable(mine)}</div>
+    <div class="card mt"><h2>Nos meus times, sem dono (${unassigned.length})</h2>${itemsTable(unassigned)}</div>`;
+}
+
+async function workItemPage(id) {
+  const i = await api('/work-items/' + id);
+  const can = ['open', 'in_progress', 'review', 'waiting'].includes(i.status);
+  main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
+    <h1 data-noi18n>#${i.id} ${esc(i.title)}</h1>
+    <div class="sub">${wiPill(i.status)} ${i.queue ? `<a href="#/queues/${esc(i.queue)}" data-noi18n>${esc(i.queue_name)}</a>` : ''} ${i.category ? `· <span data-noi18n>${esc(i.category)}</span>` : ''}
+      ${i.handled_by ? `· <span class="chip">${esc(window.t(HANDLED[i.handled_by] || i.handled_by))}</span>` : ''}
+      ${i.employee_task ? ` · <a href="#/tasks/${i.employee_task}">${window.t('tarefa do Digital employee')} #${i.employee_task}</a>` : ''}
+      ${i.playbook_run ? ` · <a href="#/runs/${i.playbook_run}">${window.t('execução do playbook')}</a>` : ''}</div>
+    <div class="grid g2"><div class="card"><h2>Pedido</h2><dl class="kv"><dt>Com</dt><dd data-noi18n>${esc(i.assignee || '—')}</dd>
+        <dt>Pedido por</dt><dd data-noi18n>${esc(i.requester || '—')}</dd><dt>Prazo</dt><dd>${dtLocal(i.due_at)}</dd>
+        <dt>SLA</dt><dd>${dtLocal(i.sla_due_at)}${i.sla_breached ? ' <span class="pill bad">estourado</span>' : ''}</dd>
+        <dt>Evidência</dt><dd>${esc(window.t({ none: 'nenhuma', file: 'arquivo', approval: 'aprovação de outra pessoa' }[i.evidence] || i.evidence))}</dd></dl>
+        <div class="md mt" data-noi18n>${mdLite(i.body || '')}</div></div>
+      <div class="card">${i.prepared ? `<h2>O que o Digital employee deixou pronto</h2><div class="md" data-noi18n>${mdLite(i.prepared)}</div>` : '<h2>Resultado</h2>'}
+        ${i.result ? `<h3 class="mt">Resultado</h3><div class="md" data-noi18n>${mdLite(i.result)}</div>` : ''}
+        ${i.approved_by ? `<div class="small mt">${window.t('Aprovado por')} <span data-noi18n>${esc(i.approved_by)}</span></div>` : ''}</div></div>
+    <div class="card mt"><h2>Arquivos (${i.files.length})</h2>${i.files.map(f => `<div class="li small"><a href="/api/work-item-files/${f.id}" data-noi18n>${esc(f.name)}</a>
+        <span class="mute" data-noi18n>${esc(f.by)} · ${ago(f.at)}</span></div>`).join('') || '<div class="mute small">Nenhum.</div>'}
+      ${can ? '<div class="row mt" style="gap:6px"><input type="file" id="wi-file"><button class="ghost" id="wi-up">Anexar</button></div>' : ''}</div>
+    ${can ? `<div class="card mt"><h2>Ação</h2><textarea id="wi-note" rows="3" placeholder="Resultado ou observação"></textarea>
+      <div class="row mt" style="gap:6px">${i.status === 'open' ? '<button class="wi-a" data-a="start">Pegar</button>' : ''}
+        ${['open', 'in_progress'].includes(i.status) ? '<button class="wi-a" data-a="done">Concluir</button><button class="ghost wi-a" data-a="release">Devolver para a fila</button>' : ''}
+        ${i.status === 'review' ? '<button class="wi-a" data-a="approve">Aprovar</button><button class="ghost wi-a" data-a="reject">Pedir ajuste</button>' : ''}
+        <input id="wi-to" placeholder="e-mail para atribuir" style="max-width:240px" data-noi18n><button class="ghost wi-a" data-a="assign">Atribuir</button>
+        <button class="ghost danger wi-a" data-a="cancel">Cancelar</button></div></div>`
+      : (['done', 'cancelled'].includes(i.status) ? '<div class="row mt"><button class="ghost wi-a" data-a="reopen">Reabrir</button></div>' : '')}`;
+  main.querySelectorAll('.wi-a').forEach(b => b.onclick = ev => act(ev.target, () => api('/work-items/' + id, { method: 'POST',
+    body: { action: b.dataset.a, note: ($('#wi-note') || {}).value || '', assignee: ($('#wi-to') || {}).value || '' } }).then(() => workItemPage(id)), 'Feito'));
+  const up = $('#wi-up');
+  if (up) up.onclick = ev => { const f = $('#wi-file').files[0]; if (!f) return toast(window.t('Escolha um arquivo'), true);
+    act(ev.target, async () => { const r = await fetch(`/api/work-items/${id}/files?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f,
+      credentials: 'same-origin', headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-CSRF-Token': cookieVal('hangar_csrf') } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText); return workItemPage(id); }, 'Arquivo anexado'); };
+}
+
+/* ---------- filas ---------- */
+const catToLine = c => [c.name, (c.keywords || []).join(','), c.sla_hours == null ? '' : c.sla_hours,
+  c.route.type === 'employee' ? 'employee:' + c.route.refs.join(',') : 'people'].join(' | ');
+function lineToCat(l) {
+  const [name, kw, sla, dest] = l.split('|').map(x => (x || '').trim());
+  const route = (dest || 'people').startsWith('employee:') ? { type: 'employee', refs: dest.slice(9).split(',').map(x => x.trim()).filter(Boolean) } : { type: 'people' };
+  return { name, keywords: (kw || '').split(',').map(x => x.trim()).filter(Boolean), sla_hours: sla ? Number(sla) : null, route };
+}
+
+async function queuesPage() {
+  const [qs, teams] = await Promise.all([api('/queues'), api('/teams').catch(() => [])]);
+  const mt = teams.filter(t => ME.is_admin || t.my_role === 'maintainer');
+  main.innerHTML = `<h1>Filas</h1><div class="sub">A entrada única de pedidos de cada time: categoria por palavras-chave, SLA e destino — um Digital employee (o menos ocupado da lista) ou as pessoas, que pegam a próxima.</div>
+    <div class="grid g3">${qs.map(q => `<a class="card" href="#/queues/${esc(q.slug)}" style="text-decoration:none"><h2 data-noi18n>${esc(q.name)}</h2>
+      <div class="mute small" data-noi18n>${esc(q.team_name)}</div><div class="row mt" style="gap:6px;flex-wrap:wrap">
+      <span class="pill warn">${q.stats.open} ${window.t('abertos')}</span>${q.stats.breached ? `<span class="pill bad">${q.stats.breached} SLA</span>` : ''}
+      <span class="pill">${q.stats.done_30d} ${window.t('em 30 dias')}</span></div>
+      <div class="small mt">${window.t('automático')} ${q.stats.automatic} · ${window.t('assistido')} ${q.stats.assisted} · ${window.t('humano')} ${q.stats.human}</div></a>`).join('')
+      || '<div class="card mute small">Nenhuma fila ainda.</div>'}</div>
+    ${mt.length ? `<div class="card mt"><h2>Nova fila</h2><div class="grid g2"><label>Nome<input id="q-name"></label>
+      <label>Time<select id="q-team">${mt.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label></div>
+      <label class="mt">Categorias — uma por linha: nome | palavras-chave | SLA em horas | destino (people ou employee:slug1,slug2)
+        <textarea id="q-cats" rows="4" class="code" data-noi18n placeholder="Nota fiscal | nota,nf,boleto | 8 | employee:analista-fiscal&#10;Cadastro | cadastro,alteração | 24 | people"></textarea></label>
+      <div class="row mt"><button id="q-save">Criar fila</button></div></div>` : ''}`;
+  const save = $('#q-save');
+  if (save) save.onclick = ev => act(ev.target, () => api('/queues', { method: 'PUT', body: { name: $('#q-name').value.trim(), team: $('#q-team').value,
+    categories: lines($('#q-cats').value).map(lineToCat) } }).then(q => { location.hash = '#/queues/' + q.slug; }), 'Fila criada');
+}
+
+async function queuePage(slug) {
+  const [q, items] = await Promise.all([api('/queues').then(l => l.find(x => x.slug === slug)), api(`/work-items?queue=${encodeURIComponent(slug)}`)]);
+  if (!q) throw new Error(window.t('fila não encontrada'));
+  const col = (title, st) => { const l = items.filter(i => st.includes(i.status)); return `<div class="card"><h3>${window.t(title)} (${l.length})</h3>
+    ${l.slice(0, 30).map(i => `<a class="li small" href="#/work/${i.id}" style="display:block" data-noi18n><b>#${i.id}</b> ${esc(i.title)}
+      <div class="mute">${esc(i.category || '')}${i.assignee ? ' · ' + esc(i.assignee) : ''}${i.sla_breached ? ' · SLA!' : ''}</div></a>`).join('') || '<div class="mute small">—</div>'}</div>`; };
+  main.innerHTML = `<a href="#/queues" class="mute small">← Filas</a><div class="row between"><h1 data-noi18n>${esc(q.name)}</h1>
+    <div class="row" style="gap:6px"><button id="q-next">Pegar a próxima</button></div></div>
+    <div class="sub"><span data-noi18n>${esc(q.team_name)}</span> · ${q.stats.open} ${window.t('abertos')} · ${q.stats.breached} ${window.t('com SLA estourado')} ·
+      ${window.t('tempo médio')}: ${q.stats.avg_hours == null ? '—' : q.stats.avg_hours + ' h'}</div>
+    <div class="grid g4">${col('Na fila', ['open'])}${col('Em andamento', ['in_progress', 'review'])}${col('Com o Digital employee', ['employee'])}${col('Concluídos', ['done'])}</div>
+    <div class="grid g2 mt"><div class="card"><h2>Novo pedido</h2><label>Título<input id="qi-title"></label>
+      <label class="mt">Detalhes<textarea id="qi-body" rows="3"></textarea></label><div class="row mt"><button id="qi-go">Enviar</button></div></div>
+      <div class="card"><h2>Categorias</h2><table class="small"><tr><th>Categoria</th><th>Palavras-chave</th><th>SLA</th><th>Destino</th></tr>
+        ${q.categories.map(c => `<tr><td data-noi18n>${esc(c.name)}</td><td data-noi18n>${esc((c.keywords || []).join(', '))}</td><td>${c.sla_hours == null ? '—' : c.sla_hours + ' h'}</td>
+          <td data-noi18n>${c.route.type === 'employee' ? esc(c.route.refs.join(', ')) : window.t('pessoas do time')}</td></tr>`).join('')}</table>
+        ${q.can_manage ? `<label class="mt">Editar — uma por linha: nome | palavras-chave | SLA | destino<textarea id="qc-edit" rows="4" class="code" data-noi18n>${esc(q.categories.map(catToLine).join('\n'))}</textarea></label>
+          <div class="row mt" style="gap:6px"><button class="ghost" id="qc-save">Salvar categorias</button><button class="ghost" id="q-tok">${q.intake.enabled ? 'Trocar o token de entrada' : 'Ligar a entrada por webhook'}</button></div>
+          <div class="small mt">Webhook: <code class="inline" data-noi18n>POST ${esc(location.origin + q.intake.url)}</code>${q.intake.enabled ? ` · token …${esc(q.intake.hint)}` : ''}</div><div id="q-tok-out"></div>` : ''}</div></div>`;
+  $('#q-next').onclick = ev => act(ev.target, () => api(`/queues/${slug}/next`, { method: 'POST' }).then(i => { location.hash = '#/work/' + i.id; }));
+  $('#qi-go').onclick = ev => act(ev.target, () => api(`/queues/${slug}/items`, { method: 'POST', body: { title: $('#qi-title').value.trim(), body: $('#qi-body').value } })
+    .then(() => queuePage(slug)), 'Pedido enviado');
+  const cs = $('#qc-save');
+  if (cs) cs.onclick = ev => act(ev.target, () => api('/queues', { method: 'PUT', body: { name: q.name, team: q.team, slug, categories: lines($('#qc-edit').value).map(lineToCat) } })
+    .then(() => queuePage(slug)), 'Categorias salvas');
+  const tk = $('#q-tok');
+  if (tk) tk.onclick = ev => act(ev.target, async () => { const r = await api(`/queues/${slug}/intake-token`, { method: 'POST', body: { enabled: true } });
+    $('#q-tok-out').innerHTML = `<div class="card warn-card mt"><b>${window.t('Copie agora: o token não aparece de novo.')}</b><div class="mt">${copyable(r.token)}</div></div>`; });
+}
+
+/* ---------- playbooks ---------- */
+const stepToLine = s => [s.key, s.title, `${s.assignee.type}:${s.assignee.ref}`, (s.depends_on || []).join(','),
+  `${s.due.from}+${s.due.business_days}`, s.evidence, s.criteria || ''].join(' | ');
+function lineToStep(l) {
+  const [key, title, who, deps, due, evidence, criteria] = l.split('|').map(x => (x || '').trim());
+  const [type, ...ref] = (who || '').split(':');
+  const [from, n] = (due || 'start+0').split('+');
+  return { key, title, assignee: { type, ref: ref.join(':') }, depends_on: (deps || '').split(',').map(x => x.trim()).filter(Boolean),
+    due: { from: from || 'start', business_days: Number(n || 0) }, evidence: evidence || 'none', criteria };
+}
+
+async function playbooksPage() {
+  const [list, teams] = await Promise.all([api('/playbooks'), api('/teams').catch(() => [])]);
+  main.innerHTML = `<div class="row between"><div><h1>Playbooks</h1><div class="sub">Processos recorrentes — fechamento, folha, onboarding de cliente, auditoria — com etapas de pessoas e de
+    Digital employees, dependências, prazos em dias úteis e evidência. Cada execução cria as tarefas e acompanha o atraso.</div></div><a href="#/playbooks/_novo"><button>+ Novo playbook</button></a></div>
+    <div class="card">${list.length ? `<table class="small"><tr><th>Playbook</th><th>Etapas</th><th>Agenda</th><th>Última execução</th></tr>
+      ${list.map(p => `<tr><td><a href="#/playbooks/${esc(p.name)}"><b data-noi18n>${esc(p.title)}</b></a><div class="mute" data-noi18n>${esc(p.team || '')}</div></td>
+        <td>${p.steps.length}</td><td>${esc(p.schedule_text || '—')}${p.next_run_at ? `<div class="mute">${window.t('próxima')}: ${dtLocal(p.next_run_at)}</div>` : ''}</td>
+        <td>${p.runs[0] ? `<a href="#/runs/${p.runs[0].id}" data-noi18n>${esc(p.runs[0].title)}</a> <span class="pill">${esc(window.t(p.runs[0].status))}</span>` : '—'}</td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum playbook ainda.</div>'}</div>`;
+  void teams;
+}
+
+async function playbookPage(name) {
+  const isNew = name === '_novo';
+  const [p, teams] = await Promise.all([isNew ? Promise.resolve(null) : api('/playbooks/' + encodeURIComponent(name)), api('/teams').catch(() => [])]);
+  const x = p || { name: '', title: '', description: '', team: '', steps: [], schedule: '', run_title: '', runs: [], history: [], can_edit: true };
+  main.innerHTML = `<a href="#/playbooks" class="mute small">← Playbooks</a><h1>${isNew ? 'Novo playbook' : `<span data-noi18n>${esc(x.title)}</span>`}</h1>
+    <div class="grid g2"><div class="card"><h2>Definição</h2>
+      <div class="grid g2"><label>Nome<input id="pb-name" value="${esc(x.name)}" ${isNew ? '' : 'disabled'} data-noi18n placeholder="ex.: fechamento_contabil"></label>
+        <label>Time<select id="pb-team" ${isNew ? '' : 'disabled'}>${teams.map(t => `<option value="${esc(t.slug)}" ${t.slug === x.team ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label></div>
+      <label class="mt">Título<input id="pb-title" value="${esc(x.title)}"></label>
+      <label class="mt">Etapas — uma por linha: chave | título | quem (employee:slug, person:e-mail, queue:fila) | depende de | prazo (start+N ou etapa+N dias úteis) | evidência (none, file, approval) | critério de pronto
+        <textarea id="pb-steps" rows="7" class="code" data-noi18n placeholder="extrair | Extrair os saldos | employee:analista-contabil |  | start+1 | none | planilha com os saldos&#10;conferir | Conferir | person:ana@acme.com | extrair | extrair+1 | file |">${esc(x.steps.map(stepToLine).join('\n'))}</textarea></label>
+      <div class="grid g2 mt"><label>Agenda (opcional)<input id="pb-sched" value="${esc(x.schedule)}" placeholder="@bd 1 08:00 · @bdaily 09:00 · 0 9 * * 1" data-noi18n></label>
+        <label>Título de cada execução<input id="pb-rt" value="${esc(x.run_title)}" placeholder="Fechamento {mes}/{ano}" data-noi18n></label></div>
+      ${x.can_edit ? '<div class="row mt"><button id="pb-save">Salvar</button></div>' : ''}</div>
+    ${p ? `<div class="card"><h2>Executar</h2><div class="grid g2"><label>Marco (dia zero)<input id="pb-anchor" type="date"></label><label>Título<input id="pb-rtitle" placeholder="${esc(window.t('padrão do playbook'))}"></label></div>
+      <div class="row mt"><button id="pb-run">Abrir uma execução</button></div>
+      <h3 class="mt">Execuções</h3>${x.runs.map(r => `<div class="li small"><a href="#/runs/${r.id}" data-noi18n>${esc(r.title)}</a> <span class="pill">${esc(window.t(r.status))}</span></div>`).join('') || '<div class="mute small">—</div>'}
+      <h3 class="mt">Onde costuma atrasar</h3><table class="small"><tr><th>Etapa</th><th>Atrasou</th></tr>${x.history.map(h => `<tr><td data-noi18n>${esc(h.title)}</td><td>${h.late}/${h.runs}</td></tr>`).join('')}</table></div>` : ''}</div>`;
+  const save = $('#pb-save');
+  if (save) save.onclick = ev => act(ev.target, async () => {
+    const r = await api('/playbooks', { method: 'PUT', body: { name: $('#pb-name').value.trim(), team: $('#pb-team').value, title: $('#pb-title').value.trim(),
+      steps: lines($('#pb-steps').value).map(lineToStep), schedule: $('#pb-sched').value.trim(), run_title: $('#pb-rt').value.trim() } });
+    location.hash = '#/playbooks/' + r.name; return route(); }, 'Playbook salvo');
+  const run = $('#pb-run');
+  if (run) run.onclick = ev => act(ev.target, () => api(`/playbooks/${p.name}/runs`, { method: 'POST', body: { anchor: $('#pb-anchor').value, title: $('#pb-rtitle').value.trim() } })
+    .then(r => { location.hash = '#/runs/' + r.id; }), 'Execução aberta');
+}
+
+async function runPage(id) {
+  const r = await api('/playbook-runs/' + id);
+  const ST = { waiting: 'esperando', open: 'a fazer', in_progress: 'em andamento', done: 'concluída', failed: 'falhou', cancelled: 'cancelada' };
+  main.innerHTML = `<a href="#/playbooks/${esc(r.playbook)}" class="mute small">← <span data-noi18n>${esc(r.playbook_title)}</span></a>
+    <h1 data-noi18n>${esc(r.title)}</h1><div class="sub">${r.done}/${r.steps.length} ${window.t('etapas concluídas')} · ${r.late ? `<span class="pill bad">${r.late} ${window.t('com atraso')}</span>` : `<span class="pill ok">${window.t('no prazo')}</span>`}
+      · ${window.t('marco')} ${esc(r.anchor)}</div>
+    <div class="card"><table class="small"><tr><th>Etapa</th><th>Com</th><th>Depende de</th><th>Prazo</th><th>Status</th></tr>
+      ${r.steps.map(s => `<tr><td><a href="${esc(s.link)}" data-noi18n><b>${esc(s.title)}</b></a>${s.evidence !== 'none' ? ` <span class="chip">${esc(window.t(s.evidence === 'file' ? 'evidência: arquivo' : 'evidência: aprovação'))}</span>` : ''}</td>
+        <td data-noi18n>${esc(s.owner || '—')}</td><td data-noi18n>${esc(s.depends_on.join(', ') || '—')}</td><td>${dtLocal(s.due)}</td>
+        <td><span class="pill ${s.status === 'done' ? 'ok' : s.status === 'failed' ? 'bad' : s.status === 'waiting' ? '' : 'info'}">${esc(window.t(ST[s.status] || s.status))}</span>${s.late ? ` <span class="pill bad">${window.t('atrasada')}</span>` : ''}</td></tr>`).join('')}</table></div>`;
+}
+
+/* ---------- modelos de mensagem ---------- */
+async function templatesMsgPage() {
+  const [list, teams] = await Promise.all([api('/message-templates'), api('/teams').catch(() => [])]);
+  main.innerHTML = `<h1>Modelos de mensagem</h1><div class="sub">Textos para gente de fora (e-mail ou WhatsApp), com variáveis {{assim}}. Aprovados uma vez por quem mantém o time,
+    podem sair só com aviso — se a alçada do funcionário (e o piso da empresa) permitirem; texto livre continua pedindo aprovação.</div>
+    <div class="card">${list.length ? `<table class="small"><tr><th>Modelo</th><th>Canal</th><th>Variáveis</th><th>Status</th><th></th></tr>
+      ${list.map(m => `<tr data-n="${esc(m.name)}"><td><b data-noi18n>${esc(m.name)}</b><div class="mute one-line" data-noi18n style="max-width:420px">${esc(m.subject ? m.subject + ' — ' : '')}${esc(m.body)}</div></td>
+        <td>${esc(m.channel)}</td><td data-noi18n>${esc(m.vars.join(', '))}</td>
+        <td>${m.status === 'approved' ? `<span class="pill ok">${window.t('aprovado')}</span> <span class="mute" data-noi18n>${esc(m.approved_by)}</span>` : `<span class="pill warn">${window.t('rascunho')}</span>`}</td>
+        <td class="row" style="gap:4px"><button class="ghost small mt-edit">Editar</button>${m.status !== 'approved' ? '<button class="ghost small mt-ok">Aprovar</button>' : ''}</td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum modelo ainda.</div>'}</div>
+    <div class="card mt"><h2 id="mt-h">Novo modelo</h2><div class="grid g2"><label>Nome<input id="mt-name" data-noi18n placeholder="ex.: cobranca_documento"></label>
+      <label>Canal<select id="mt-ch"><option value="any">e-mail ou WhatsApp</option><option value="email">e-mail</option><option value="whatsapp">WhatsApp</option></select></label>
+      <label>Time<select id="mt-team">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label>
+      <label>Modelo aprovado no WhatsApp (para fora da janela de 24 h)<input id="mt-wa" data-noi18n></label></div>
+      <label class="mt">Assunto (e-mail)<input id="mt-subject" data-noi18n placeholder="Documento pendente: {{doc}}"></label>
+      <label class="mt">Texto<textarea id="mt-body" rows="4" data-noi18n placeholder="Olá {{nome}}, ainda precisamos do {{doc}} para seguir."></textarea></label>
+      <div class="row mt"><button id="mt-save">Salvar (volta a rascunho se o texto mudar)</button></div></div>`;
+  main.querySelectorAll('tr[data-n]').forEach(tr => {
+    const m = list.find(x => x.name === tr.dataset.n);
+    $('.mt-edit', tr).onclick = () => { $('#mt-h').textContent = window.t('Editar modelo'); $('#mt-name').value = m.name; $('#mt-ch').value = m.channel;
+      $('#mt-wa').value = m.wa_template; $('#mt-subject').value = m.subject; $('#mt-body').value = m.body; $('#mt-name').scrollIntoView(); };
+    const okb = $('.mt-ok', tr);
+    if (okb) okb.onclick = ev => act(ev.target, () => api(`/message-templates/${m.name}/approve`, { method: 'POST' }).then(templatesMsgPage), 'Modelo aprovado');
+  });
+  $('#mt-save').onclick = ev => act(ev.target, () => api('/message-templates', { method: 'PUT', body: { name: $('#mt-name').value.trim(), channel: $('#mt-ch').value,
+    team: $('#mt-team').value, wa_template: $('#mt-wa').value.trim(), subject: $('#mt-subject').value, body: $('#mt-body').value } }).then(templatesMsgPage), 'Modelo salvo');
+}
+
+/* ---------- reuniões ---------- */
+async function meetingsPage() {
+  const [list, teams, emps] = await Promise.all([api('/meetings'), api('/teams').catch(() => []), api('/employees').catch(() => [])]);
+  main.innerHTML = `<h1>Reuniões</h1><div class="sub">Marque pela agenda da empresa, receba o briefing antes, transforme a transcrição em ata e as ações em tarefas — cobradas na reunião seguinte da série.</div>
+    <div class="card">${list.length ? `<table class="small"><tr><th>Reunião</th><th>Quando</th><th>Status</th></tr>${list.map(m => `<tr><td><a href="#/meetings/${m.id}"><b data-noi18n>${esc(m.title)}</b></a>
+      <div class="mute" data-noi18n>${esc(m.series || '')}</div></td><td>${dtLocal(m.starts_at)}</td><td><span class="pill">${esc(window.t({ scheduled: 'marcada', held: 'aconteceu', minutes: 'com ata' }[m.status] || m.status))}</span></td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhuma reunião ainda.</div>'}</div>
+    <div class="card mt"><h2>Nova reunião</h2><div class="grid g2"><label>Título<input id="mg-title"></label><label>Início (fuso da empresa)<input id="mg-start" type="datetime-local"></label>
+      <label>Duração (min)<input id="mg-dur" type="number" value="30"></label><label>Série (para cobrar as ações na próxima)<input id="mg-series" data-noi18n placeholder="ex.: comite-semanal"></label>
+      <label>Participantes (e-mails, separados por vírgula)<input id="mg-att" data-noi18n></label>
+      <label>Time<select id="mg-team"><option value="">—</option>${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label>
+      <label>Digital employee da ata e do briefing<select id="mg-emp"><option value="">—</option>${emps.filter(e => ['active', 'probation'].includes(e.status)).map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('')}</select></label>
+      <label>Briefing (horas antes; 0 = não)<input id="mg-prep" type="number" value="0" min="0" max="72"></label></div>
+      <label class="mt">Pauta<textarea id="mg-agenda" rows="2"></textarea></label>
+      <label class="row small mt" style="gap:6px"><input type="checkbox" id="mg-sched"> <span>Marcar na agenda da empresa e convidar</span></label>
+      <div class="row mt"><button id="mg-go">Criar</button></div></div>`;
+  $('#mg-go').onclick = ev => act(ev.target, () => api('/meetings', { method: 'POST', body: { title: $('#mg-title').value.trim(), starts_at: $('#mg-start').value.replace('T', ' '),
+    duration_min: Number($('#mg-dur').value), series: $('#mg-series').value.trim(), attendees: $('#mg-att').value.split(',').map(x => x.trim()).filter(Boolean),
+    team: $('#mg-team').value, employee: $('#mg-emp').value, prep_hours: Number($('#mg-prep').value), agenda: $('#mg-agenda').value, schedule: $('#mg-sched').checked } })
+    .then(m => { location.hash = '#/meetings/' + m.id; }), 'Reunião criada');
+}
+
+async function meetingPage(id) {
+  const m = await api('/meetings/' + id);
+  main.innerHTML = `<a href="#/meetings" class="mute small">← Reuniões</a><h1 data-noi18n>${esc(m.title)}</h1>
+    <div class="sub">${dtLocal(m.starts_at)} · <span data-noi18n>${esc((m.attendees || []).join(', ') || '—')}</span>${m.provider ? ` · ${window.t('na agenda')} (${esc(m.provider)})` : ''}
+      ${m.prep_task ? ` · <a href="#/tasks/${m.prep_task}">${window.t('briefing')}</a>` : ''}${m.minutes_task ? ` · <a href="#/tasks/${m.minutes_task}">${window.t('tarefa da ata')}</a>` : ''}</div>
+    ${m.previous_open.length ? `<div class="card warn-card"><h2>Pendências da reunião anterior</h2>${m.previous_open.map(a => `<div class="li small"><a href="${esc(a.link)}" data-noi18n>${esc(a.title)}</a>
+      <span class="mute" data-noi18n>${esc(a.owner)} · ${esc(a.status)}</span></div>`).join('')}</div>` : ''}
+    <div class="grid g2 mt"><div class="card"><h2>Ata</h2>${m.minutes ? `<div class="md" data-noi18n>${mdLite(m.minutes)}</div>
+      ${(m.decisions || []).length ? `<h3 class="mt">Decisões</h3><ul class="small" data-noi18n>${m.decisions.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}`
+      : `<div class="mute small">${m.transcript ? window.t('A ata está sendo escrita.') : window.t('Cole a transcrição para o Digital employee escrever a ata.')}</div>`}
+      ${m.transcript ? '' : `<label class="mt">Transcrição<textarea id="mg-tr" rows="6"></textarea></label><div class="row mt"><button id="mg-tr-go" ${m.employee ? '' : 'disabled'}>Enviar a transcrição</button></div>
+        ${m.employee ? '' : `<div class="mute small">${window.t('Escolha um Digital employee na reunião para escrever a ata.')}</div>`}`}</div>
+      <div class="card"><h2>Ações (${m.actions.length})</h2>${m.actions.map(a => `<div class="li small"><a href="${esc(a.link)}" data-noi18n>${esc(a.title)}</a>
+        <span class="mute" data-noi18n>${esc(a.owner)} · ${esc(a.status)}${a.due ? ' · ' + dtLocal(a.due) : ''}</span></div>`).join('') || '<div class="mute small">—</div>'}</div></div>`;
+  const go = $('#mg-tr-go');
+  if (go) go.onclick = ev => act(ev.target, () => api(`/meetings/${id}/transcript`, { method: 'POST', body: { text: $('#mg-tr').value } }).then(() => meetingPage(id)), 'Transcrição enviada');
+}
+
+/* ---------- conversas da tarefa (página da tarefa) ---------- */
+async function taskConversations(id, box) {
+  const list = await api(`/tasks/${id}/conversations`).catch(() => []);
+  if (!list.length) return;
+  const TS = { open: 'aberta', waiting: 'aguardando resposta', replied: 'respondida', no_reply: 'sem resposta', closed: 'encerrada' };
+  box.insertAdjacentHTML('beforeend', `<div class="card mt"><h2>Conversas com gente de fora</h2>${list.map(c => `<div class="mt"><b data-noi18n>${esc(c.contact_name || c.contact)}</b>
+    <span class="mute small" data-noi18n>${esc(c.channel)} · ${esc(c.contact)}</span> <span class="pill ${c.status === 'waiting' ? 'warn' : c.status === 'no_reply' ? 'bad' : 'ok'}">${esc(window.t(TS[c.status] || c.status))}</span>
+    ${c.next_follow_up_at ? `<span class="small mute">${window.t('próximo lembrete')}: ${dtLocal(c.next_follow_up_at)} (${c.follow_ups_sent}/${c.max_follow_ups})</span>` : ''}
+    ${(c.promises || []).length ? `<div class="small mt">${window.t('Prometeu')}: ${c.promises.map(p => `<span class="chip" data-noi18n>${esc(p.text)} → ${esc(p.due)}</span>`).join(' ')}</div>` : ''}
+    ${c.messages.map(m => `<div class="li small ${m.direction === 'in' ? 'ok-card' : ''}"><b>${m.direction === 'in' ? '←' : '→'}</b> <span class="mute">${ago(m.at)}</span>
+      ${m.template ? `<span class="chip" data-noi18n>${esc(m.template)}</span>` : ''}${m.status === 'failed' ? ` <span class="pill bad" data-noi18n>${esc(m.error)}</span>` : ''}
+      <div data-noi18n style="white-space:pre-wrap">${esc(m.body.slice(0, 1200))}</div></div>`).join('')}</div>`).join('')}</div>`);
+}
+
+/* ---------- console: calendário, WhatsApp, agenda e transcrições ---------- */
+async function wfCalendar(t) {
+  const c = await api('/calendar');
+  const DAYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+  t.innerHTML = `<div class="card"><h2>Calendário da empresa</h2><div class="mute small">Dias úteis e feriados valem para prazos de playbooks (“D+3 úteis”), rotinas no
+    “1º dia útil do mês” (@bd 1 09:00) e horários de reunião. Os feriados nacionais já vêm; acrescente os estaduais e municipais.</div>
+    <div class="row mt" style="gap:10px;flex-wrap:wrap">${DAYS.map((d, i) => `<label class="row small" style="gap:4px"><input type="checkbox" class="cl-d" value="${i}" ${c.workdays.includes(i) ? 'checked' : ''}> ${window.t(d)}</label>`).join('')}</div>
+    <div class="grid g2 mt"><label>Início do expediente<input id="cl-start" type="time" value="${esc(c.start)}"></label><label>Fim do expediente<input id="cl-end" type="time" value="${esc(c.end)}"></label></div>
+    <label class="mt">Feriados da empresa (estaduais, municipais, pontes) — um por linha: AAAA-MM-DD nome<textarea id="cl-hol" rows="4" class="code" data-noi18n>${esc(c.extra.map(h => `${h.date} ${h.name}`).join('\n'))}</textarea></label>
+    <label class="mt">Feriados nacionais em que a empresa trabalha — datas separadas por vírgula<input id="cl-rem" value="${esc(c.removed.join(', '))}" data-noi18n></label>
+    <div class="row mt"><button id="cl-save">Salvar</button></div>
+    <h3 class="mt">Feriados (${c.holidays.length})</h3><div class="small" data-noi18n>${c.holidays.map(h => `${esc(h.date)} ${esc(h.name)}${h.national ? '' : ' *'}`).join(' · ')}</div></div>`;
+  $('#cl-save').onclick = ev => act(ev.target, () => api('/calendar', { method: 'PUT', body: {
+    workdays: [...t.querySelectorAll('.cl-d')].filter(x => x.checked).map(x => Number(x.value)), start: $('#cl-start').value, end: $('#cl-end').value,
+    holidays: lines($('#cl-hol').value).map(l => ({ date: l.slice(0, 10), name: l.slice(11).trim() || 'Feriado' })),
+    removed: $('#cl-rem').value.split(',').map(x => x.trim()).filter(Boolean) } }).then(() => wfCalendar(t)), 'Calendário salvo');
+}
+
+function notifyExtras(t, n, put) {
+  const w = n.whatsapp || {}, c = n.calendar || {};
+  t.insertAdjacentHTML('beforeend', `<div class="grid g2 mt"><div class="card"><h2>WhatsApp ${w.configured ? '<span class="pill ok">ligado</span>' : '<span class="pill">desligado</span>'}</h2>
+      <div class="mute small">WhatsApp Business (Cloud API): conversas com gente de fora acompanhadas pela tarefa e pedidos de trabalho das pessoas da empresa. No app da Meta, use a URL abaixo
+        como webhook, com o token de verificação daqui; cada chamada é conferida pela assinatura do app.</div>
+      <div class="small mt">${copyable(w.webhook_url || '')}</div>
+      <div class="grid g2 mt"><label>ID do número<input id="wa-phone" value="${esc(w.phone_id || '')}" data-noi18n></label>
+        <label>Token de verificação do webhook<input id="wa-verify" autocomplete="off" placeholder="${w.verify_token ? window.t('cadastrado — cole outro para trocar') : ''}"></label>
+        <label>Token de acesso<input id="wa-token" type="password" autocomplete="off" placeholder="${w.configured ? window.t('cadastrado — cole outro para trocar') : ''}"></label>
+        <label>Segredo do app<input id="wa-secret" type="password" autocomplete="off" placeholder="${w.app_secret ? window.t('cadastrado — cole outro para trocar') : ''}"></label></div>
+      <div class="row mt"><button class="ghost" id="wa-save">Salvar</button></div></div>
+    <div class="card"><h2>Agenda da empresa ${c.provider ? `<span class="pill ok">${esc(c.provider)}</span>` : '<span class="pill">desligada</span>'}</h2>
+      <div class="mute small">Os Digital employees acham horários livres e mandam convites pela agenda da empresa — Microsoft 365 (aplicativo do tenant com permissão de calendário)
+        ou Google Workspace (conta de serviço com delegação no domínio). Ninguém precisa conectar a própria agenda.</div>
+      <label class="mt">Provedor<select id="cal-p"><option value="">—</option><option value="microsoft" ${c.chosen === 'microsoft' ? 'selected' : ''}>Microsoft 365</option>
+        <option value="google" ${c.chosen === 'google' ? 'selected' : ''}>Google Workspace</option></select></label>
+      <div class="grid g2 mt"><label>Tenant ID (Microsoft)<input id="cal-tenant" value="${esc(c.ms_tenant || '')}" data-noi18n></label><label>Client ID<input id="cal-client" value="${esc(c.ms_client_id || '')}" data-noi18n></label>
+        <label>Client secret<input id="cal-secret" type="password" autocomplete="off" placeholder="${c.ms_client_secret ? window.t('cadastrado — cole outro para trocar') : ''}"></label></div>
+      <label class="mt">Conta de serviço do Google (JSON)${c.google_sa ? ` — <span data-noi18n>${esc(c.google_sa)}</span>` : ''}<textarea id="cal-sa" rows="2" class="code" placeholder="{&quot;client_email&quot;: …}"></textarea></label>
+      <div class="row mt" style="gap:6px"><button class="ghost" id="cal-save">Salvar</button><button class="ghost" id="mt-token">Token das transcrições</button></div><div id="mt-token-out"></div></div></div>`);
+  const val = id => $(id).value.trim();
+  $('#wa-save').onclick = ev => { const b = { whatsapp_phone_id: val('#wa-phone') };
+    if (val('#wa-verify')) b.whatsapp_verify_token = val('#wa-verify'); if (val('#wa-token')) b.whatsapp_token = val('#wa-token'); if (val('#wa-secret')) b.whatsapp_app_secret = val('#wa-secret');
+    act(ev.target, () => put(b), 'WhatsApp salvo'); };
+  $('#cal-save').onclick = ev => { const b = { calendar_provider: $('#cal-p').value, ms_tenant: val('#cal-tenant'), ms_client_id: val('#cal-client') };
+    if (val('#cal-secret')) b.ms_client_secret = val('#cal-secret'); if (val('#cal-sa')) b.google_sa = val('#cal-sa');
+    act(ev.target, () => put(b), 'Agenda salva'); };
+  $('#mt-token').onclick = ev => act(ev.target, async () => { const r = await api('/meetings-token', { method: 'POST' });
+    $('#mt-token-out').innerHTML = `<div class="card warn-card mt"><b>${window.t('Copie agora: o token não aparece de novo.')}</b><div class="mt">${copyable(r.token)}</div>
+      <div class="small mt"><code class="inline" data-noi18n>POST ${esc(r.url)} {"meeting_id": …, "transcript": "…"}</code></div></div>`; });
 }

@@ -49,6 +49,11 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Data analysis over the task's files and formatted deliverables (PPTX, DOCX, dashboards) with the company's branding | Automatic (Data Studio); Console → Digital employees → Deliverables | [analyst.md](analyst.md#data-analysis-and-formatted-deliverables) |
 | Document extraction with confidence, source snippet and field check; batches | Build → Document extraction; Decisions | [analyst.md](analyst.md#document-extraction-with-field-review) |
 | Certified calculators with test cases, four eyes and calculation record | Build → Calculators | [analyst.md](analyst.md#certified-calculators) |
+| Business calendar and business-day schedules | Console → Digital employees → Calendar | [analyst.md](analyst.md#business-calendar) |
+| Playbooks: recurring processes with people and employees, deadlines, evidence, run board | Digital employees → Playbooks | [analyst.md](analyst.md#playbooks) |
+| Team queues, SLA, take the next one, hand-off to a person, My work | Digital employees → Queues, My work | [analyst.md](analyst.md#team-queues-and-work-for-people) |
+| Conversations with people outside (e-mail, WhatsApp), approved templates, reminders, promises | Task page; Build → Message templates | [analyst.md](analyst.md#conversations-with-people-outside-the-company) |
+| Company calendar, invites, briefings, minutes and actions | Digital employees → Meetings | [analyst.md](analyst.md#calendar-and-meetings) |
 
 ## Planning and money
 

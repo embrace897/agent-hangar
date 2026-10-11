@@ -64,6 +64,80 @@ Numbers that must be right — provisions, taxes, commissions, penalties, adjust
   `memoria-de-calculo-<name>.json` and in the calculator's history. A calculator can require **human review** of any
   task that used it.
 
+## Business calendar
+
+The company's working days, hours and holidays (*Console → Digital employees → Calendar*). Brazil's national holidays
+— including Carnival, Good Friday and Corpus Christi — come built in; add state and city holidays, or mark national
+ones the company works. Playbook deadlines count business days, and routines and playbooks accept business-day
+schedules on top of cron:
+
+- `@bd 1 09:00` — the 1st business day of each month at 9:00; `@bd -1 17:00` — the last one.
+- `@bdaily 08:30` — every business day.
+
+## Playbooks
+
+A **playbook** (*Digital employees → Playbooks*) is a recurring process — month-end closing, payroll, customer
+onboarding, audit — as steps. Each step has an owner (a Digital employee, a person, or a team queue), the steps it
+depends on, a deadline in business days counted from the start or from another step (`extrair+2`), done criteria and
+the **evidence** it needs (`file`: can't be completed without an attachment; `approval`: someone else approves).
+
+Each **run** (opened by hand with an anchor date, or by the playbook's schedule, e.g. `@bd 1 08:00` with the title
+`Closing {mes}/{ano}`) creates the tasks and items. A step starts only when the steps it depends on are done, and it
+receives what they delivered. The run board shows owner, deadline, status and lateness per step; the playbook page
+shows **where it usually runs late** across the last runs.
+
+## Team queues and work for people
+
+A **queue** (*Digital employees → Queues*) is a team's single entry point: portal, webhook
+(`POST /hooks/queues/<slug>` with the queue's token) or anything that calls the API. Each request gets a **category**
+(keywords), an **SLA** and a **destination**: a Digital employee — the least busy of a list — or the team's people.
+
+- People see the queue as a board and **take the next one** (breached SLA first, then priority).
+- A Digital employee can finish the item alone, or prepare what it can and **hand it to a person**
+  (`hand_to_person {summary, draft, assignee}`): the item goes to the team (or straight to someone) with the draft.
+- Items can require **evidence** (a file, or approval by a maintainer other than whoever did it).
+- *My work* lists what is with you, from queues, playbooks and meetings.
+- The queue shows how much was **automatic, assisted and human**, the average time and breached SLAs (flagged on the
+  item and in the audit log).
+
+## Conversations with people outside the company
+
+`send_external_message` writes to a customer, supplier or candidate by **e-mail** (SMTP of the installation, with
+`Reply-To` set to the employee's mailbox) or **WhatsApp**, and the task keeps the conversation.
+
+- **Approved templates** (*Build → Message templates*), with `{{variables}}`, are written by the team's developers and
+  approved by a maintainer — someone other than the author. Every outbound message goes through the authority as
+  `send_external`, with `template` filled in when it came from an approved template, so a rule like *send_external
+  → notify when `template != ""`* lets those go out with just a notice while free text keeps asking for approval.
+  The company floor applies on top: by default it asks for approval on `send_external`, so lowering it is an
+  explicit admin decision.
+- **Waiting for the reply:** with `wait_reply`, the task waits in `waiting_external` (shown in *Why it stopped*) and
+  resumes when the reply arrives — by e-mail, matched by the `[#H-xxxx]` code in the subject, or by WhatsApp.
+- **Reminders:** `follow_up_days` sends a reminder after N business days without a reply (also through the
+  authority), up to `max_follow_ups`; after that the task wakes up with *no reply*.
+- **Promises:** "I'll send it by Friday", "paid by 20/10" in a reply become deadlines on the conversation; when one
+  passes, the task wakes up to follow up.
+- **WhatsApp Business (Cloud API):** the admin pastes the phone number ID, access token, app secret and a verify
+  token in *Decision channels*; the webhook (`/hooks/whatsapp/<company>`) checks the app signature on every call.
+  Outside the 24-hour window since the person's last message, only a template approved in WhatsApp itself can be
+  sent. People in the company can also ask for work over WhatsApp after linking their number (`link CODE`).
+
+## Calendar and meetings
+
+With the **company calendar** set up once by the admin — Microsoft 365 (a tenant app with calendar permission:
+tenant ID, client ID and secret) or Google Workspace (a service account with domain-wide delegation) — Digital
+employees find times when everyone is free, within business days and hours (`find_meeting_times`), and send invites
+(`schedule_meeting`; an invite to people outside the company is `send_external` for the authority).
+
+**Meetings** (*Digital employees → Meetings*) record attendees, agenda and series:
+
+- **Briefing:** `prep_hours` before the start, the chosen Digital employee prepares the pack (goal, agenda, numbers,
+  open questions and what was left open at the previous meeting of the series).
+- **Minutes:** paste the transcript (or have Teams, Meet or Zoom post it to `/hooks/meetings/<company>` with the
+  company's transcripts token) and the employee writes the minutes and records decisions and actions
+  (`record_minutes`). Each action becomes work with a deadline — an item for a person, or a task for a Digital
+  employee — and the next meeting of the series lists the ones still open.
+
 ## API
 
 | Method | Path | Description |
@@ -77,3 +151,17 @@ Numbers that must be right — provisions, taxes, commissions, penalties, adjust
 | GET / PUT | `/api/calculators`, `/api/calculators/{name}` | List / detail with runs; create or change |
 | POST | `/api/calculators/{name}/test` | Run the cases, or `{inputs}` to simulate |
 | POST | `/api/calculators/{name}/certify` · `/deprecate` | Certify (four eyes) · stop using |
+| GET / PUT | `/api/calendar` | Business days, hours and holidays |
+| GET / PUT / DELETE | `/api/queues`, `/api/queues/{slug}` | Queues (with stats) / create or change (`name, team, categories, default_category`) / remove |
+| POST | `/api/queues/{slug}/items` · `/next` · `/intake-token` | New request · take the next one · webhook token |
+| GET | `/api/work-items` | `?queue=&status=open&mine=true` |
+| GET / POST | `/api/work-items/{id}` | Detail / `{action: assign, start, done, approve, reject, reopen, cancel, release, note, assignee}` |
+| POST | `/api/work-items/{id}/files?name=` | Attach (body = file) |
+| GET / PUT / DELETE | `/api/playbooks`, `/api/playbooks/{name}` | Playbooks / create or change (`name, team, steps, schedule, run_title`) / archive |
+| POST | `/api/playbooks/{name}/runs` | `{anchor, title}`: open a run |
+| GET | `/api/playbook-runs/{id}` | The run board |
+| GET / PUT | `/api/message-templates` | Templates / create or change (back to draft when the text changes) |
+| POST | `/api/message-templates/{name}/approve` | Approve (a maintainer, not the author) |
+| GET | `/api/tasks/{id}/conversations` | The task's conversations with messages and promises |
+| GET / POST / DELETE | `/api/meetings`, `/api/meetings/{id}` | Meetings / create (`schedule: true` books it in the company calendar) / remove |
+| POST | `/api/meetings/{id}/transcript` · `/api/meetings-token` | Send the transcript · token for `/hooks/meetings/<company>` |
