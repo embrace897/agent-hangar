@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-10-11
+
 ### Added
 - **Goals and projects** ([docs/work.md](docs/work.md)): company and team goals as a tree; projects per team with
   instructions, a goal and a default Digital employee. A task in a project gets the project, its instructions and the
