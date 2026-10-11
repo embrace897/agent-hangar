@@ -8,9 +8,17 @@ FROM ${PYTHON_IMAGE}
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 MPLBACKEND=Agg
 # LibreOffice (headless) renderiza PPTX/DOCX/XLSX em imagens para preview_file; Carlito/Liberation têm as métricas
 # de Calibri/Arial, então o slide renderizado fica fiel ao que o PowerPoint mostra.
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
-        tesseract-ocr tesseract-ocr-por tesseract-ocr-eng util-linux fonts-dejavu-core \
-        libreoffice-impress libreoffice-writer libreoffice-calc fonts-crosextra-carlito fonts-liberation2 \
+# Espelho do Debian no meio de uma sincronização ("File has unexpected size") derruba o apt: tenta de novo, com espera
+# crescente e índice limpo, antes de desistir.
+RUN for i in 1 2 3 4 5; do \
+        apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 upgrade -y --no-install-recommends \
+        && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+            tesseract-ocr tesseract-ocr-por tesseract-ocr-eng util-linux fonts-dejavu-core \
+            libreoffice-impress libreoffice-writer libreoffice-calc fonts-crosextra-carlito fonts-liberation2 \
+        && break; \
+        [ "$i" = 5 ] && exit 1; \
+        echo "apt falhou (tentativa $i); nova tentativa em $((i * 30))s"; rm -rf /var/lib/apt/lists/*; sleep $((i * 30)); \
+    done \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv
 COPY requirements.txt .
