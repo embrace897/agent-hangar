@@ -417,6 +417,16 @@ async def build_tools() -> tuple[list[Tool], bool]:
                                                             "content_type": {"type": "string"},
                                                             "note": {"type": "string", "description": "o que é este arquivo"}},
                            "required": ["name"]}, _ask, ref="hangar:save_file"))
+        try:  # ferramentas da plataforma (análise, extração, calculadoras…): executadas pela central, via gate
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.get(f"{INTERNAL_BASE_URL}/internal/platform-tools", headers=INTERNAL_HEADERS)
+            r.raise_for_status()
+            for pt in r.json().get("tools", []):
+                tools.append(Tool(_safe(pt["name"]), pt.get("description", ""), pt.get("parameters") or {"type": "object"},
+                                  _ask, ref=f"platform:{pt['name']}"))
+        except Exception as e:  # central fora do ar: o agente segue com o resto e tenta de novo na próxima montagem
+            complete = False
+            print(f"[warn] ferramentas da plataforma indisponíveis: {e}", flush=True)
     return tools, complete
 
 
@@ -795,7 +805,8 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
         if EMPLOYEE and tool is not None and tool.ref:  # Digital employee: a alçada decide antes de executar
             g = await _gate(tool, args, rationale, {"ask_human": "ask_human", "request_capability": "capability",
                                                     "update_plan": "plan", "handoff_task": "handoff", "list_files": "files",
-                                                    "read_file": "files", "save_file": "files"}.get(name, "tool"))
+                                                    "read_file": "files", "save_file": "files"}.get(
+                                                        name, "platform" if tool.ref.startswith("platform:") else "tool"))
             if g.get("status") == "waiting":
                 trace.append({"tool": name, "args": {k: str(v)[:200] for k, v in args.items()},
                               "result": f"aguardando decisão #{g.get('request_id')}"})

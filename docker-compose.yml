@@ -101,6 +101,9 @@ services:
       HANGAR_SECRET_KEY: ${HANGAR_SECRET_KEY:?rode scripts/setup.sh para gerar o .env}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?rode scripts/setup.sh para gerar o .env}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8090}
+      # Data Studio (perfil data-studio): análise e entregáveis do Digital employee sobre os arquivos da tarefa
+      DATA_STUDIO_URL: ${DATA_STUDIO_URL:-http://data-studio:8000/mcp}
+      DATA_STUDIO_FILES_URL: ${DATA_STUDIO_FILES_URL:-http://data-studio:8001}
       REPLICA_ID: central  # nome estável: ao recriar o container, a central recupera os próprios jobs órfãos
       OAUTH_ENABLED: ${OAUTH_ENABLED:-1}
       OAUTH_REDIRECT_HOSTS: ${OAUTH_REDIRECT_HOSTS:-claude.ai,claude.com,chatgpt.com,chat.openai.com,platform.openai.com}

@@ -322,3 +322,5 @@ details.inline summary{cursor:pointer}
 }
 .grid>*{min-width:0}
 @media(max-width:860px){.g2,.g3,.g4{grid-template-columns:minmax(0,1fr)}}
+/* conferência de campos extraídos: o que está em dúvida aparece primeiro e destacado */
+.rf-doubt td{background:color-mix(in srgb,var(--warn,#C99A06) 10%,transparent)}.rf-v{min-width:160px}

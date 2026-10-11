@@ -93,6 +93,17 @@ class GateBody(BaseModel):
     kind: str = "tool"  # tool | ask_human
 
 
+@router.get("/platform-tools")
+def platform_tools(request: Request, db=Depends(db_dep)):
+    """Digital employee: as ferramentas da plataforma liberadas para ele (o runtime as registra como platform:<nome>)."""
+    a = caller_agent(request, db)
+    from sqlalchemy import select
+
+    from ..models import Employee
+    e = db.scalar(select(Employee).where(Employee.agent_id == a.id))
+    return {"tools": svc.platform_tools.tools_for(db, e) if e is not None else []}
+
+
 @router.post("/gate")
 def gate(body: GateBody, request: Request, db=Depends(db_dep)):
     """Digital employee: o runtime pergunta antes de executar cada ferramenta. A alçada é aplicada aqui, não no

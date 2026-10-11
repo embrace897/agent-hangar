@@ -68,6 +68,7 @@ class TaskBody(BaseModel):
     review: bool = False  # o resultado passa por revisão (do gestor, ou de reviewer) antes de concluir
     reviewer: str | None = None  # e-mail de quem revisa
     blocked_by: list[int] = Field(default_factory=list)  # tarefas que precisam terminar antes
+    files: list[dict] = Field(default_factory=list)  # anexos já na criação: [{name, content_base64, content_type}]
 
 
 class InboxBody(BaseModel):
@@ -199,7 +200,8 @@ def tasks(slug: str, request: Request, status: str | None = None, db=Depends(db_
 def assign(slug: str, body: TaskBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.assign(db, acc(request, db), slug, body.title, body.body, body.priority,
                                               body.due_at, plan_approval=body.plan_approval, project=body.project,
-                                              review=body.review, reviewer=body.reviewer, blocked_by=body.blocked_by))
+                                              review=body.review, reviewer=body.reviewer, blocked_by=body.blocked_by,
+                                              files=body.files))
 
 
 @router.put("/employees/{slug}/inbox")

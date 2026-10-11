@@ -111,6 +111,9 @@ PLUGIN_COSIGN_ISSUER = _env("PLUGIN_COSIGN_ISSUER", "https://token.actions.githu
 PLUGIN_REQUIRE_SIGNED = _env("PLUGIN_REQUIRE_SIGNED", "0") == "1"
 FILES_MAX_MB = int(_env("FILES_MAX_MB", "10"))  # tamanho máximo de um arquivo de tarefa (anexo ou entregável)
 FILES_TASK_MAX_MB = int(_env("FILES_TASK_MAX_MB", "50"))  # soma dos arquivos de uma tarefa (todas as versões)
+# Data Studio: análise e entregáveis do Digital employee sobre os arquivos da tarefa (vazio = desligado)
+DATA_STUDIO_URL = _env("DATA_STUDIO_URL", "http://data-studio:8000/mcp")
+DATA_STUDIO_FILES_URL = _env("DATA_STUDIO_FILES_URL", "http://data-studio:8001")
 INBOX_POLL_S = int(_env("INBOX_POLL_S", "60"))  # de quanto em quanto tempo a caixa de e-mail de um funcionário é lida
 DECISION_LINK_TTL_H = int(_env("DECISION_LINK_TTL_H", "48"))  # validade do link assinado de decisão (Teams/e-mail)
 # e-mail das decisões e do resumo diário (opcional): sem SMTP_HOST, o canal e-mail fica desligado

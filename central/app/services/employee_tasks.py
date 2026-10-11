@@ -31,7 +31,7 @@ log = logging.getLogger("hangar.employees")
 WAIT_MARK = re.compile(r"^\[\[HANGAR_WAITING:(\d+)\]\]\s*", re.S)
 JOB_MARK = re.compile(r"\[job #(\d+)")  # resultado de um job de código (runtime: _a2a_call)
 TERMINAL = ("done", "failed", "cancelled", "expired")
-BLOCKING = ("approval", "question", "capability", "plan")  # pedidos que pausam a tarefa até alguém decidir
+BLOCKING = ("approval", "question", "capability", "plan", "review_fields", "doc_change", "message")  # pausam a tarefa até alguém decidir
 SHADOW_REAL = ("read", "delegate")  # no modo sombra estas rodam de verdade; o resto é simulado
 QUIET = ("notice", "shadow")  # registros que não esperam decisão na caixa de Decisões
 WORKER = f"{os.environ.get('REPLICA_ID') or os.environ.get('HOSTNAME') or 'central'}-{os.getpid()}"
@@ -177,6 +177,9 @@ def gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, ar
          kind: str = "tool") -> dict:
     """allow | wait (pedido de decisão aberto) | deny. kind='ask_human': o agente pergunta algo ao gestor; 'plan': o
     plano da tarefa (sem alçada; pode exigir aprovação); 'handoff': repasse a um colega (alçada `delegate`)."""
+    if kind == "platform":  # ferramentas da plataforma (análise, extração, calculadoras…): rodam na central
+        from . import platform_tools
+        return platform_tools.run(db, agent, task_id, tool, args, rationale)
     if kind == "files":  # arquivos da própria tarefa: a plataforma executa, sem alçada (nada sai dela)
         from . import task_files
         e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
@@ -521,6 +524,13 @@ def _decide(db: Session, acc: Access, request_id: int, decision: str, edit: dict
         if outcome == "approval_pending":
             out["message"] = ("Admitido. O time exige a aprovação de outra pessoa para produção: o pedido está em "
                               "Aprovações e ele fica ativo quando for aprovado.")
+        return out
+
+    from . import decision_kinds, platform_tools
+    platform_tools._load()  # os módulos que trazem tipos de pedido (campos extraídos, alteração de documento…)
+    if r.kind in decision_kinds.HANDLERS:
+        out = decision_kinds.HANDLERS[r.kind](db, acc, r, e, task, decision, edit or {}, reason, who)
+        audit(db, who, f"employee.{r.kind}.{r.decision or decision}", _slug(db, e), f"#{r.id}")
         return out
 
     # aprovação de uma ação exata

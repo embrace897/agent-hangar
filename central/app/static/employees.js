@@ -15,7 +15,8 @@ const ACTION_LABEL = { read: 'Ler e consultar', delegate: 'Delegar a outro agent
 const MODE_LABEL = { auto: ['Sozinho', 'ok'], notify: ['Faz e avisa', 'info'], approve: ['Pede aprovação', 'warn'],
   approve_2: ['Duas aprovações', 'warn'], never: ['Nunca', 'bad'] };
 const LEVEL_LABEL = { intern: 'Estagiário', junior: 'Júnior', pleno: 'Pleno', senior: 'Sênior' };
-const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão' };
+const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão',
+  review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão' };
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',
@@ -586,12 +587,15 @@ async function empSettings(t, e) {
     const reason = prompt(`Desligar ${e.name}? Motivo (fica na auditoria):`);
     if (reason !== null) act(ev.target, () => api(`/employees/${e.slug}/status`, { method: 'POST', body: { to: 'offboarded', reason } }).then(route), 'Desligado');
   };
+  t.insertAdjacentHTML('beforeend', '<div id="s-ptools"></div>');
+  platformToolsCard($('#s-ptools'), e);  // análise, extração, calculadoras… (analyst.js)
 }
 
 /* ---------- tarefa: linha do tempo ---------- */
 const EVENT_LABEL = { created: 'Criada', run: 'Rodada', tool: 'Ferramenta', gate: 'Alçada', human_request: 'Pedido de decisão',
   decision: 'Decisão', job: 'Job de código', checkpoint: 'Checkpoint', done: 'Concluída', error: 'Erro', note: 'Nota', due: 'Prazo', shadow: 'Modo sombra',
-  plan: 'Plano', handoff: 'Repasse', handoff_done: 'Repasse concluído' };
+  plan: 'Plano', handoff: 'Repasse', handoff_done: 'Repasse concluído', analysis: 'Análise', extraction: 'Extração', calc: 'Cálculo',
+  file: 'Arquivo', review: 'Revisão' };
 async function taskPage(id) {
   const x = await api('/tasks/' + id);
   const open = (x.requests || []).filter(r => r.status === 'open');
@@ -615,6 +619,7 @@ async function taskPage(id) {
     <div class="mute one-line" data-noi18n title="${esc(JSON.stringify(ev.payload))}">${esc(JSON.stringify(ev.payload))}</div></div>`).join('') || '<div class="mute">—</div>'}</div>`;
   bindThread(id);
   bindTaskFlow(x, id);
+  taskExtras(x, id);  // campos extraídos, contas, conversas… (analyst.js)
   main.querySelectorAll('.q-star').forEach(b => b.onclick = ev => act(ev.target, () => api(`/tasks/${id}/quality`, { method: 'POST',
     body: { score: Number(b.dataset.s), note: $('#q-note').value.trim() } }).then(route), 'Nota salva'));
   const c = $('#t-cancel');
@@ -738,16 +743,19 @@ function decisionCard(d) {
       <input class="dc-reason mt" placeholder="Motivo ou instrução (para recusar ou instruir)">`;
     btns = `<button class="ghost dc-build">Construir com a sua ferramenta de IA</button>
       <button class="ghost dc-go" data-d="instruct">Instruir</button><button class="ghost danger dc-go" data-d="reject">Recusar</button>`;
+  } else if (DECISION_KINDS[d.kind]) {  // tipos trazidos pelas fases E–H (analyst.js)
+    ({ body, btns } = DECISION_KINDS[d.kind].render(d));
   } else {
     body = `<div class="mt small">Feito: <b>${esc(ACTION_LABEL[d.action_type] || d.action_type)}</b> com <code class="inline">${esc(d.tool)}</code></div>${payloadView(d.payload)}`;
     btns = '<button class="ghost dc-go" data-d="ack">Ciente</button>';
   }
-  return `<div class="card mt dc" data-id="${d.id}">${sel}${head}${body}<div class="row mt">${btns}</div></div>`;
+  return `<div class="card mt dc" data-id="${d.id}" data-kind="${esc(d.kind)}">${sel}${head}${body}<div class="row mt">${btns}</div></div>`;
 }
 
 function bindDecisions(root, after) {
   root.querySelectorAll('.dc').forEach(card => {
     const id = card.dataset.id;
+    if (DECISION_KINDS[card.dataset.kind]) return DECISION_KINDS[card.dataset.kind].bind(card, id, after);
     const edit = $('.dc-edit', card), reason = $('.dc-reason', card);
     const openEdit = $('.dc-edit-open', card);
     if (openEdit) openEdit.onclick = () => {
@@ -858,11 +866,11 @@ function chatLinks(c) {
 
 /* ---------- console do admin: força de trabalho digital ---------- */
 async function workforcePage(tab = 'overview') {
-  const tabs = { overview: 'Visão geral', catalog: 'Catálogo de ações', floor: 'Piso da empresa', notify: 'Canais de decisão' };
+  const tabs = { overview: 'Visão geral', catalog: 'Catálogo de ações', floor: 'Piso da empresa', notify: 'Canais de decisão', brand: 'Entregáveis' };
   const key = tabs[tab] ? tab : 'overview';
   main.innerHTML = `<h1>Digital employees</h1><div class="sub">A força de trabalho digital da empresa: quem está trabalhando, o que espera decisão, como cada ferramenta é classificada e a alçada mínima que vale para todos.</div>
   <div class="tabs">${Object.entries(tabs).map(([k, v]) => `<a href="#/workforce/${k}" class="${k === key ? 'on' : ''}">${v}</a>`).join('')}</div><div id="tab"></div>`;
-  await ({ overview: wfOverview, catalog: wfCatalog, floor: wfFloor, notify: wfNotify })[key]($('#tab'));
+  await ({ overview: wfOverview, catalog: wfCatalog, floor: wfFloor, notify: wfNotify, brand: wfBrand })[key]($('#tab'));
 }
 
 async function wfOverview(t) {

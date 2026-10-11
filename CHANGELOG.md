@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Platform tools** ([docs/analyst.md](docs/analyst.md)): Digital employees use the platform itself through tools that
+  run in the central and still go through their authority; the manager turns groups on or off per employee.
+- **Data analysis and formatted deliverables:** Python and SQL over the task's files in the Data Studio, with what the
+  analysis produces coming back as versioned deliverables (and the code on the timeline); PPTX, DOCX and dashboards
+  with the company's branding. Tasks can be created with their files attached.
+- **Document extraction with field review:** extraction schemas, per-field value, confidence and source snippet, a
+  field-check decision for whatever is in doubt, and batches (one task per file plus a consolidated spreadsheet).
+- **Certified calculators:** formulas in a safe Decimal language, test cases, four-eyes certification, a calculation
+  record for every run and optional human review of tasks that use them.
+
+### Fixed
+- A task blocked by dependencies that had never run lost its own request when it was unblocked.
+
 ## [0.25.0] — 2026-10-11
 
 ### Added

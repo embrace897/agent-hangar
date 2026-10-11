@@ -603,7 +603,7 @@ def set_authority(db: Session, acc: Access, slug: str, rules: list[dict]) -> dic
 
 def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", priority: int = 2, due_at=None,
            source: str = "portal", plan_approval: bool = False, project: str | None = None, review: bool = False,
-           reviewer: str | None = None, blocked_by: list[int] | None = None) -> dict:
+           reviewer: str | None = None, blocked_by: list[int] | None = None, files: list[dict] | None = None) -> dict:
     e, a = find(db, acc, slug, "assign")
     if e.status not in ("probation", "active", "paused"):
         raise PlatformError(f"'{slug}' ainda não trabalha (status {e.status}): comece o período de experiência")
@@ -612,8 +612,16 @@ def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", prio
     p = project_for_task(db, acc, project, e)
     blockers = task_flow.check_blockers(db, acc, blocked_by)
     rid = task_flow.reviewer_id(db, reviewer)
+    attached = _decode_files(files)
     t = tasksmod.create_task(db, e, title, body, source, acc.p.name, acc.p.user_id, priority, due_at,
-                             plan_approval=plan_approval, project_id=p.id if p else None)
+                             plan_approval=plan_approval, project_id=p.id if p else None,
+                             status="draft" if attached else "new")  # com anexos: só entra na fila depois deles
+    if attached:
+        from . import task_files
+        for name, data, ctype in attached:
+            task_files.store(db, t, name, data, "input", acc.p.name, ctype)
+        t.status = "new"
+        db.commit()
     if review or rid:
         t.review_required, t.reviewer_user_id = True, rid
         db.commit()
@@ -621,6 +629,19 @@ def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", prio
         task_flow.attach_blockers(db, t, blockers, acc.p.name)
     audit(db, acc.p.name, "employee.task", slug, f"#{t.id} {t.title[:120]}")
     return task_dict(db, t)
+
+
+def _decode_files(files: list[dict] | None) -> list[tuple[str, bytes, str]]:
+    import base64
+    import binascii
+    out = []
+    for f in files or []:
+        try:
+            out.append((str(f.get("name") or "arquivo"), base64.b64decode(f.get("content_base64") or "", validate=True),
+                        str(f.get("content_type") or "")))
+        except (binascii.Error, ValueError):
+            raise PlatformError(f"anexo {f.get('name')}: content_base64 inválido") from None
+    return out
 
 
 def tasks_of(db: Session, acc: Access, slug: str, status: str | None = None) -> list[dict]:

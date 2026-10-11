@@ -1007,6 +1007,9 @@ async function route() {
     else if (r === 'secrets') await secretsPage();
     else if (r === 'orgs') await orgsPage();
     else if (r === 'live') await livePage();
+    else if (r === 'extraction') await extractionPage();
+    else if (r === 'calculators' && a) await calculatorPage(decodeURIComponent(a));
+    else if (r === 'calculators') await calculatorsPage();
     else if (r === 'announcements') await announcementsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);

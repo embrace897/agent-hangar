@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import workforce as wf  # noqa: E402  (pessoas, contratação e ativação do Digital employee mock)
 
 ok, check, admin, RUN = wf.ok, wf.check, wf.admin, wf.RUN
+LEFTOVERS: list[tuple[str, str]] = []  # o que é da empresa (não do time): arquivado ou descontinuado no fim
 
 
 def phase_a(dev, mgr, mgr_email, team):
@@ -139,6 +140,63 @@ def phase_d(dev, mgr, slug):
     ok(dev.put(f"/api/employees/{slug}/runtime", json={"runtime": "hangar"}))
 
 
+def phase_e(dev, mgr, team, slug):
+    import base64
+    import json
+    # extração com esquema: um lote de dois contratos; o de CNPJ inválido vai para conferência campo a campo
+    fields = [{"name": "contratante", "label": "Contratante", "type": "text", "required": True},
+              {"name": "cnpj", "label": "CNPJ", "type": "cnpj", "required": True},
+              {"name": "valor", "label": "Valor", "type": "money", "required": True}]
+    sch = f"contrato_{RUN}"
+    ok(mgr.put("/api/extraction/schemas", json={"name": sch, "title": "Contrato", "fields": fields, "team": team}))
+    LEFTOVERS.append(("DELETE", f"/api/extraction/schemas/{sch}"))
+    docs = {"acme.txt": "Contratante: ACME\nCNPJ: 11.222.333/0001-81\nValor: 1.500,00\n",
+            "beta.txt": "Contratante: Beta\nCNPJ: 11.222.333/0001-00\nValor: 900,00\n"}
+    b = ok(dev.post(f"/api/employees/{slug}/batch", json={"title": f"Contratos {RUN}", "schema": sch, "files": [
+        {"name": n, "content_base64": base64.b64encode(d.encode()).decode(), "content_type": "text/plain"} for n, d in docs.items()]}))
+    review = wf.wait(lambda: next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "review_fields"
+                                   and d["task"] and d["task"]["id"] in b["tasks"]), None))
+    check("extração: o campo em dúvida vai para conferência", review is not None and review["payload"]["fields"]["cnpj"]["error"] == "CNPJ inválido",
+          review and review["payload"]["fields"]["cnpj"])
+    ok(mgr.post(f"/api/decisions/{review['id']}", json={"decision": "approve", "edit": {"fields": {"cnpj": "11222333000181"}}}))
+    p = wf.until(dev, b["parent"], ("done", "failed"))
+    files = {f["name"]: f for f in ok(dev.get(f"/api/tasks/{b['parent']}/files"))}
+    csv = dev.get(f"/api/files/{files[f'{sch}-consolidado.csv']['id']}").text if f"{sch}-consolidado.csv" in files else ""
+    check("extração: lote consolidado com o valor conferido", p and p["status"] == "done" and "ACME" in csv and "11.222.333/0001-81" in csv
+          and csv.count("\n") >= 3, (p and p["status"], csv[:300]))
+    # calculadora: quem escreve não certifica; a conta sai com memória de cálculo e passa por revisão
+    calc = {"name": f"multa_{RUN}", "title": "Multa", "team": team, "requires_review": True,
+            "inputs": [{"name": "valor"}, {"name": "taxa"}], "steps": [{"name": "multa", "expr": "round(pct(valor, taxa), 2)"}],
+            "outputs": ["multa"], "cases": [{"name": "base", "inputs": {"valor": 1000, "taxa": 10}, "expected": {"multa": 100}}]}
+    ok(dev.put("/api/calculators", json=calc))
+    LEFTOVERS.append(("POST", f"/api/calculators/multa_{RUN}/deprecate"))
+    check("calculadora: quatro olhos", dev.post(f"/api/calculators/multa_{RUN}/certify").status_code == 403)
+    ok(mgr.post(f"/api/calculators/multa_{RUN}/certify"))
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Multa", "body": "use calculate " + json.dumps(
+        {"calculator": f"multa_{RUN}", "inputs": {"valor": 2500, "taxa": 2}})}))["id"]
+    t = wf.until(dev, tid, ("in_review", "done", "failed"))
+    rev = next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "review" and d["task"]["id"] == tid), None)
+    if rev:
+        ok(mgr.post(f"/api/decisions/{rev['id']}", json={"decision": "approve"}))
+    files = {f["name"]: f for f in ok(dev.get(f"/api/tasks/{tid}/files"))}
+    memo = json.loads(dev.get(f"/api/files/{files[f'memoria-de-calculo-multa_{RUN}.json']['id']}").text) if files else {}
+    check("calculadora: conta certificada, memória e revisão", t and t["status"] == "in_review" and memo.get("outputs") == {"multa": "50.00"},
+          (t and t["status"], memo))
+    # análise sobre os arquivos da tarefa (só com o Data Studio no ar)
+    if ok(dev.get("/api/brand")).get("data_studio"):
+        code = "df = pd.read_csv('extrato.csv'); r = df.groupby('conta').valor.sum(); print(r.to_dict()); r.to_csv('por_conta.csv')"
+        CSV = b"conta,valor\nA,10\nB,20\nA,5\n"
+        tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Análise", "body": "use analyze_data " + json.dumps({"code": code}),
+                                                                "files": [{"name": "extrato.csv", "content_type": "text/csv",
+                                                                           "content_base64": base64.b64encode(CSV).decode()}]}))["id"]
+        t = wf.until(dev, tid, ("done", "failed"), 300)
+        names = [f["name"] for f in ok(dev.get(f"/api/tasks/{tid}/files"))]
+        check("análise: Python sobre o arquivo da tarefa, entregável de volta", t and t["status"] == "done"
+              and "'A': 15" in (t["result"] or "") and "por_conta.csv" in names, (t and t["result"], names))
+    else:
+        print("   (Data Studio desligado: análise não testada)", flush=True)
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -150,6 +208,7 @@ def main():
     phase_b(dev, mgr, slug)
     phase_c(dev, mgr, mgr_email, team, slug)
     phase_d(dev, mgr, slug)
+    phase_e(dev, mgr, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:
@@ -163,5 +222,7 @@ if __name__ == "__main__":
         main()
     finally:
         if not keep:
+            for method, path in LEFTOVERS:
+                admin.request(method, path)
             wf.cleanup()
         sys.stdout.flush()

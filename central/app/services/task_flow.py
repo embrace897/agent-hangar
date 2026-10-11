@@ -94,8 +94,13 @@ def _unblock(db: Session, t: EmployeeTask):
                           f"TAREFA PRÉVIA #{d.id} CONCLUÍDA ({d.title}):\n") + (d.result or "")[:4000])
     if parts:
         cp = tasksmod.last_checkpoint(db, t)
-        msgs = list(cp.messages) if cp else []
-        tasksmod.checkpoint(db, t, msgs + [{"role": "user", "content": "\n\n".join(parts)}])
+        deps = {"role": "user", "content": "\n\n".join(parts)}
+        if cp is None:  # nunca rodou: o contexto das prévias e, depois, o pedido da própria tarefa
+            tasksmod.checkpoint(db, t, [deps, {"role": "user", "content": tasksmod.task_prompt(t, tasksmod.lang_of(e))}])
+        elif not t.runs:  # só o pedido inicial: as prévias entram antes dele, e o pedido fica por último
+            tasksmod.checkpoint(db, t, [deps, *cp.messages])
+        else:
+            tasksmod.checkpoint(db, t, list(cp.messages) + [deps])
     t.status = "new"
     tasksmod.event(db, t, "unblocked", {"deps": len(parts)})
     db.commit()

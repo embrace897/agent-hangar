@@ -18,6 +18,8 @@ os.environ.update({
     "DEFAULT_MODEL": "mock/echo",
     "SCHEDULER_ENABLED": "0",  # os testes chamam tick()/execute() direto
     "GUIDE_AUTOGEN": "0",  # os testes chamam guides.generate_draft() direto
+    "DATA_STUDIO_URL": "http://data-studio.test/mcp",  # os testes trocam analysis.HTTP
+    "DATA_STUDIO_FILES_URL": "http://data-studio.test:8001",
 })
 sys.path.insert(0, os.path.join(ROOT, "central"))
 

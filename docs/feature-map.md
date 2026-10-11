@@ -41,6 +41,15 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Job history (every change is a version that can be restored) | Employee → Settings | [work.md](work.md#job-history) |
 | Org chart (who reports to whom) | Portal → Org chart | [work.md](work.md#org-chart) |
 
+## The analyst's day to day
+
+| Feature | Where | Docs |
+|---|---|---|
+| Platform tools per employee (on/off by group) | Employee → Settings | [analyst.md](analyst.md) |
+| Data analysis over the task's files and formatted deliverables (PPTX, DOCX, dashboards) with the company's branding | Automatic (Data Studio); Console → Digital employees → Deliverables | [analyst.md](analyst.md#data-analysis-and-formatted-deliverables) |
+| Document extraction with confidence, source snippet and field check; batches | Build → Document extraction; Decisions | [analyst.md](analyst.md#document-extraction-with-field-review) |
+| Certified calculators with test cases, four eyes and calculation record | Build → Calculators | [analyst.md](analyst.md#certified-calculators) |
+
 ## Planning and money
 
 | Feature | Where | Docs |

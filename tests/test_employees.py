@@ -91,8 +91,18 @@ class FakeRuntime:
             if q and "RESPOSTA de" not in last:
                 g = tasksmod.gate(db, agent, task_id, "ask_human", "hangar:ask_human", {"question": q.group(1)}, "", "ask_human")
                 return f"[[HANGAR_WAITING:{g['request_id']}]] {g['message']}"
+            from app.services import platform_tools
+            platform_tools._load()
             u = next((m for m in re.finditer(r"\buse\s+([A-Za-z0-9_]+)(?:[ \t]+(\{.*\}))?", last)  # um "use" por linha: o prompt pode citar resultados com JSON
-                      if m.group(1) in TOOLS), None)
+                      if m.group(1) in TOOLS or m.group(1) in platform_tools.REGISTRY), None)
+            if u and u.group(1) in platform_tools.REGISTRY:  # ferramenta da plataforma: roda na central, via gate
+                args = json.loads(u.group(2)) if u.group(2) else {}
+                g = tasksmod.gate(db, agent, task_id, u.group(1), f"platform:{u.group(1)}", args, "porque a tarefa pede", "platform")
+                if g["status"] == "waiting":
+                    return f"[[HANGAR_WAITING:{g['request_id']}]] {g['message']}"
+                if g["status"] in ("denied", "simulated"):
+                    return f"{'negado' if g['status'] == 'denied' else 'simulado'}: {g.get('message', '')}"
+                return f"feito: {u.group(1)} -> {g.get('result', '')}"
             if u:
                 args = json.loads(u.group(2)) if u.group(2) else {}
                 g = tasksmod.gate(db, agent, task_id, u.group(1), TOOLS[u.group(1)], args, "porque a tarefa pede")

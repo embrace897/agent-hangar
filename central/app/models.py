@@ -237,6 +237,7 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(String(80), default="")
     domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails desses domínios entram nesta empresa (SSO)
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended
+    brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # identidade visual dos entregáveis: theme, accent, footer
 
 
 class Team(Base):
@@ -558,6 +559,7 @@ class Employee(OrgScoped, Base):
     worker_token_hint: Mapped[str] = mapped_column(String(12), default="")
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     worker_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o que o worker contou de si (nome, versão)
+    disabled_tools: Mapped[list | None] = mapped_column(JSON, nullable=True)  # grupos de ferramentas da plataforma desligados
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1039,3 +1041,76 @@ class Announcement(OrgScoped, Base):
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ------------------------------------------------------------------ fase E: dados, documentos e números
+class ExtractionSchema(OrgScoped, Base):
+    """Os campos a extrair de um tipo de documento (contrato, nota fiscal, boleto…), com tipo, regra e o limiar de
+    confiança abaixo do qual uma pessoa confere."""
+    __tablename__ = "extraction_schemas"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_extractionschema_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fields: Mapped[list] = mapped_column(JSON, default=list)  # [{name, label, type, required, pattern, options, hint}]
+    min_confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(10), default="active")  # active | archived
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Extraction(OrgScoped, Base):
+    """Os campos tirados de um arquivo da tarefa: valor, confiança, o trecho de origem e quem corrigiu."""
+    __tablename__ = "extractions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    schema_id: Mapped[int] = mapped_column(Integer, index=True)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    file_name: Mapped[str] = mapped_column(String(200))
+    file_version: Mapped[int] = mapped_column(Integer, default=1)
+    values: Mapped[dict] = mapped_column(JSON, default=dict)  # {campo: {value, confidence, evidence, page, valid, error}}
+    status: Mapped[str] = mapped_column(String(10), default="auto")  # auto | review | reviewed | rejected
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    corrections: Mapped[int] = mapped_column(Integer, default=0)
+    reviewed_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Calculator(OrgScoped, Base):
+    """Calculadora certificada: entradas, passos com fórmulas (linguagem segura, Decimal) e casos de teste. Só a versão
+    certificada — por outra pessoa, com todos os casos passando — é usada pelos Digital employees."""
+    __tablename__ = "calculators"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_calculator_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inputs: Mapped[list] = mapped_column(JSON, default=list)  # [{name, label, type, unit}]
+    steps: Mapped[list] = mapped_column(JSON, default=list)  # [{name, expr, label}]
+    outputs: Mapped[list] = mapped_column(JSON, default=list)  # nomes dos passos que são resultado
+    cases: Mapped[list] = mapped_column(JSON, default=list)  # [{name, inputs, expected: {saida: valor}, tolerance}]
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(12), default="draft")  # draft | certified | deprecated
+    requires_review: Mapped[bool] = mapped_column(Boolean, default=False)  # a tarefa que usa passa por revisão humana
+    edited_by: Mapped[str] = mapped_column(String(254), default="")
+    certified: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {version, inputs, steps, outputs, by, at}
+    last_test: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {version, passed, failed, at, results}
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CalcRun(OrgScoped, Base):
+    """Uma conta feita por uma calculadora certificada: a memória de cálculo que a auditoria pede."""
+    __tablename__ = "calc_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    calculator_id: Mapped[int] = mapped_column(Integer, index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    outputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    trace: Mapped[list] = mapped_column(JSON, default=list)  # [{name, expr, value}]
+    by: Mapped[str] = mapped_column(String(254), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
