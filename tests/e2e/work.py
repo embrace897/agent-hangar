@@ -111,6 +111,34 @@ def phase_c(dev, mgr, mgr_email, team, slug):
     ok(mgr.delete(f"/api/secrets/{d['secret']['id']}"))
 
 
+def phase_d(dev, mgr, slug):
+    import subprocess
+    # várias empresas: a nova não vê nada da principal; quem administra a instalação entra nela pelo X-Hangar-Org
+    org = ok(admin.post("/api/orgs", json={"name": f"E2E Beta {RUN}", "admin_email": f"boss-{RUN}@beta-e2e.test",
+                                           "domains": [f"beta-{RUN}.test"]}))
+    inside = {"X-Hangar-Org": str(org["id"])}
+    teams = ok(admin.get("/api/teams", headers=inside))
+    check("empresas: a nova só vê o próprio time", [t["slug"] for t in teams] == [org["team"]], teams)
+    check("empresas: os agentes da principal não aparecem",
+          all(a["slug"] != slug for a in ok(admin.get("/api/agents", headers=inside))), org["id"])
+    check("empresas: o funcionário da principal não existe lá", admin.get(f"/api/employees/{slug}", headers=inside).status_code in (400, 403, 404))
+    ok(admin.patch(f"/api/orgs/{org['id']}", json={"status": "suspended"}))  # a empresa de teste fica suspensa
+    # Digital employee externo: o worker de exemplo busca a tarefa, pede a alçada e entrega o resultado
+    r = ok(dev.put(f"/api/employees/{slug}/runtime", json={"runtime": "external"}))
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "External run", "body": "summarise the renewals"}))["id"]
+    worker = os.path.join(os.path.dirname(__file__), "..", "..", "examples", "external-worker", "worker.py")
+    env = {**os.environ, "HANGAR_URL": wf.URL, "HANGAR_WORKER_TOKEN": r["token"], "WORKER_NAME": f"e2e-{RUN}"}
+    for k in ("OPENAI_BASE_URL", "OPENAI_API_KEY"):
+        env.pop(k, None)
+    out = subprocess.run([sys.executable, worker, "--once"], env=env, capture_output=True, text=True, timeout=120)
+    t = wf.task(dev, tid)
+    check("worker externo: a tarefa feita fora", t["status"] == "done" and "summarise the renewals" in (t["result"] or ""),
+          (t["status"], out.stdout[-300:], out.stderr[-300:]))
+    ext = ok(dev.get(f"/api/employees/{slug}"))["external"]
+    check("worker externo: online, com nome", ext["online"] and ext["worker"].get("name") == f"e2e-{RUN}", ext)
+    ok(dev.put(f"/api/employees/{slug}/runtime", json={"runtime": "hangar"}))
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -121,6 +149,7 @@ def main():
     slug, _, _ = phase_a(dev, mgr, mgr_email, team)
     phase_b(dev, mgr, slug)
     phase_c(dev, mgr, mgr_email, team, slug)
+    phase_d(dev, mgr, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

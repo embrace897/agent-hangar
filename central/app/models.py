@@ -552,6 +552,12 @@ class Employee(OrgScoped, Base):
     quality_sample: Mapped[int] = mapped_column(Integer, default=20)  # % das tarefas concluídas que o juiz avalia (0 = nenhuma)
     review_policy: Mapped[str] = mapped_column(String(10), default="off")  # off | manager: todo resultado passa pelo gestor
     reports_to_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # o Digital employee chefe (organograma)
+    # hangar: a plataforma roda o agente | external: um worker seu busca as tarefas pelo heartbeat (token ewk_…)
+    runtime: Mapped[str] = mapped_column(String(12), default="hangar")
+    worker_token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    worker_token_hint: Mapped[str] = mapped_column(String(12), default="")
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o que o worker contou de si (nome, versão)
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

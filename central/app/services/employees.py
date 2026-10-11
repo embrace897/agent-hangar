@@ -26,6 +26,7 @@ from ..models import (
     now,
 )
 from ..tenancy import current_org
+from . import employee_external as externalmod
 from . import employee_gate as gatemod
 from . import employee_quality as qualitymod
 from . import employee_tasks as tasksmod
@@ -355,7 +356,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
          "owner": names.get(e.owner_user_id), "backups": [names.get(b) for b in e.backup_user_ids or []],
          "tasks": counts, "open_decisions": open_req, "overdue_tasks": overdue, "cost_30d": round(float(cost), 4),
          "hired_at": iso(tasksmod._aware(e.hired_at)) if e.hired_at else None, "shadow": bool(e.shadow),
-         "created_at": iso(tasksmod._aware(e.created_at)),
+         "created_at": iso(tasksmod._aware(e.created_at)), "runtime": e.runtime or "hangar",
          "can_manage": bool(acc and (acc.can("manage", a) or (uid and uid in (e.owner_user_id, e.manager_user_id))))}
     if detail:
         d.update(responsibilities=e.responsibilities, kpis=e.kpis, systems=e.systems, channels=e.channels,
@@ -367,6 +368,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
                  reports_to=_chief_slug(db, e),
+                 external=externalmod.info(e),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
                          "expires_in_min": r.expires_in_min, "note": r.note}

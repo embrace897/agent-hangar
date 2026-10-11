@@ -8,6 +8,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       composer,
                       connect,
                       employee_dashboard,
+                      employee_external,
                       employee_gate,
                       employee_quality,
                       employee_revisions,

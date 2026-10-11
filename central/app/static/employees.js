@@ -306,8 +306,10 @@ function empRoutines(t, e) {
       <dt>URL</dt><dd>${copyable(w.url || '')}</dd></dl>
     <div id="wh-out"></div>
     ${e.can_manage ? `<div class="row mt"><button id="wh-gen">${w.enabled ? 'Trocar o token' : 'Gerar token e ligar'}</button>
-      ${w.enabled ? '<button class="ghost danger" id="wh-off">Desligar o webhook</button>' : ''}</div>` : ''}</div>`;
+      ${w.enabled ? '<button class="ghost danger" id="wh-off">Desligar o webhook</button>' : ''}</div>` : ''}</div>
+  ${externalCard(e)}`;
   if (!e.can_manage) return;
+  wireExternal(e);
   const base = `/employees/${e.slug}/routines`;
   const pre = $('#rt-preset'), cron = $('#rt-cron');
   pre.onchange = () => { if (pre.value) cron.value = pre.value; else cron.focus(); };
@@ -330,6 +332,37 @@ function empRoutines(t, e) {
   const off = $('#wh-off');
   if (off) off.onclick = ev => confirm('Desligar o webhook? Os sistemas que usam o token param de criar tarefas.') &&
     act(ev.target, () => api(`/employees/${e.slug}/webhook`, { method: 'POST', body: { enabled: false } }).then(route), 'Webhook desligado');
+}
+
+/* Digital employee externo: o trabalho roda num worker seu (qualquer linguagem), que busca as tarefas pelo heartbeat. */
+function externalCard(e) {
+  const x = e.external || {}, ext = x.runtime === 'external';
+  return `<div class="card mt"><h2>Onde ele trabalha</h2>
+    <div class="mute small">Na plataforma (padrão), ou num agente seu — outro framework, outra linguagem, outra máquina — que busca as tarefas pelo heartbeat.
+      A fila, a alçada, as decisões, o orçamento e o histórico continuam aqui: antes de uma ação que muda algo fora, o worker pergunta à alçada.</div>
+    <dl class="kv mt"><dt>Roda</dt><dd>${ext ? '<span class="pill info">worker externo</span>' : '<span class="pill">na plataforma</span>'}</dd>
+      ${ext ? `<dt>Worker</dt><dd>${x.online ? '<span class="pill ok">online</span>' : '<span class="pill warn">offline</span>'}
+        ${x.heartbeat_at ? `<span class="mute small">último sinal ${ago(x.heartbeat_at)}</span>` : `<span class="mute small">${window.t('ainda não deu sinal')}</span>`}
+        ${x.worker && x.worker.name ? ` · <span data-noi18n>${esc(x.worker.name)}${x.worker.version ? ' ' + esc(x.worker.version) : ''}</span>` : ''}</dd>
+      <dt>Token</dt><dd><code class="inline">ewk_…${esc(x.token_hint || '')}</code></dd>
+      <dt>Heartbeat</dt><dd>${copyable(x.heartbeat_url || '')}</dd>` : ''}</dl>
+    <div id="ex-out"></div>
+    ${e.can_manage ? `<div class="row mt">${ext ? '<button class="ghost" id="ex-rotate">Trocar o token</button><button class="ghost danger" id="ex-off">Voltar para a plataforma</button>'
+      : '<button id="ex-on">Usar um worker externo</button>'}</div>` : ''}
+    <div class="mute small mt">${window.t('Exemplo de worker:')} <code class="inline" data-noi18n>examples/external-worker/worker.py</code></div></div>`;
+}
+
+function wireExternal(e) {
+  const show = r => { $('#ex-out').innerHTML = `<div class="card warn-card mt"><b>Copie agora: o token não aparece de novo.</b>
+    <div class="mt">${copyable(r.token)}</div><pre class="code small mt" data-noi18n style="white-space:pre-wrap">HANGAR_URL=${esc(location.origin)} HANGAR_WORKER_TOKEN=${esc(r.token)} python examples/external-worker/worker.py</pre></div>`; };
+  const put = body => api(`/employees/${e.slug}/runtime`, { method: 'PUT', body });
+  const on = $('#ex-on'), rot = $('#ex-rotate'), off = $('#ex-off');
+  if (on) on.onclick = ev => confirm(window.t('A partir de agora as tarefas dele só andam com o seu worker ligado. Continuar?')) &&
+    act(ev.target, () => put({ runtime: 'external' }).then(show), 'Worker externo ligado');
+  if (rot) rot.onclick = ev => confirm(window.t('Trocar o token? O token atual para de funcionar na hora.')) &&
+    act(ev.target, () => put({ runtime: 'external', rotate: true }).then(show), 'Token gerado');
+  if (off) off.onclick = ev => confirm(window.t('Voltar para a plataforma? O token do worker deixa de valer e a plataforma volta a rodar as tarefas.')) &&
+    act(ev.target, () => put({ runtime: 'hangar' }).then(route), 'De volta para a plataforma');
 }
 
 async function empShadow(t, e) {

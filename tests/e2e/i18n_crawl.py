@@ -80,6 +80,7 @@ def setup() -> tuple[str, str, dict]:
            "llm": {"model": "mock/echo"}, "channels": ["portal"], "accept_default_authority": True,
            "probation_tasks": [{"title": f"P{i}", "body": f"p {i}", "expected": f"p {i}"} for i in range(3)]}
     made["employee"] = ok(me.post("/api/employees", json=job))["employee"]["slug"]
+    ok(me.put(f"/api/employees/{made['employee']}/runtime", json={"runtime": "external"}))  # o cartão do worker externo
     ok(me.post("/api/plugins", json={"team": team, "manifest": {
         "name": made["plugin"], "title": "E2E i18n", "version": "1.0.0", "base_url": "https://example.com",
         "tools": [{"name": "get_one", "method": "GET", "path": "/one"}],
@@ -138,6 +139,7 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
     pages = [("/app/#/" + p) for p in PAGES_APP] + [("/ui/#/" + p) for p in PAGES_UI] + [
         f"/app/#/agents/{made['agent']}", f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
+        f"/app/#/employees/{made['employee']}/routines",
         f"/app/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}"]
     with sync_playwright() as p:
         b = p.chromium.launch()

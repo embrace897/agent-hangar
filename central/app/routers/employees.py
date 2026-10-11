@@ -412,3 +412,74 @@ def inbound(slug: str, body: InboundBody, request: Request, db=Depends(db_dep)):
         raise HTTPException(401, str(e)) from None
     except svc.PlatformError as e:
         raise HTTPException(409, str(e)) from None
+
+
+# ------------------------------------------------------------------ Digital employee externo (worker seu, pelo heartbeat)
+class RuntimeBody(BaseModel):
+    runtime: str = "external"  # hangar | external
+    rotate: bool = False  # gera um token novo (o anterior deixa de valer)
+
+
+@router.put("/employees/{slug}/runtime")
+def set_runtime(slug: str, body: RuntimeBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.employee_external.set_runtime(db, acc(request, db), slug, body.runtime, body.rotate))
+
+
+class HeartbeatBody(BaseModel):
+    worker: dict = Field(default_factory=dict)  # nome, versão, máquina — aparece na tela do funcionário
+    want_task: bool = True
+
+
+class WorkerGateBody(BaseModel):
+    tool: str = ""
+    args: dict = Field(default_factory=dict)
+    rationale: str = ""
+    kind: str = "tool"  # tool | ask_human (args.question) | capability (args.need)
+
+
+class ProgressBody(BaseModel):
+    note: str = ""
+    cost_usd: float = 0
+    tokens: int = 0
+
+
+class ResultBody(BaseModel):
+    status: str = "done"  # done | failed | waiting
+    result: str = ""
+    error: str = ""
+    cost_usd: float = 0
+    tokens: int = 0
+
+
+def _worker(request: Request, fn):
+    h = request.headers.get("authorization", "")
+    token = h[7:].strip() if h.lower().startswith("bearer ") else request.headers.get("x-hangar-token", "")
+    if not token:
+        raise HTTPException(401, "token ausente: Authorization: Bearer <token do worker (ewk_…)>")
+    try:
+        return fn(token)
+    except svc.access.Forbidden as e:
+        raise HTTPException(401, str(e)) from None
+    except svc.PlatformError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+@hooks.post("/worker/heartbeat")
+def worker_heartbeat(body: HeartbeatBody, request: Request, db=Depends(db_dep)):
+    return _worker(request, lambda t: svc.employee_external.heartbeat(db, t, body.worker, body.want_task))
+
+
+@hooks.post("/worker/tasks/{task_id}/gate")
+def worker_gate(task_id: int, body: WorkerGateBody, request: Request, db=Depends(db_dep)):
+    return _worker(request, lambda t: svc.employee_external.gate(db, t, task_id, body.tool, body.args, body.rationale, body.kind))
+
+
+@hooks.post("/worker/tasks/{task_id}/progress")
+def worker_progress(task_id: int, body: ProgressBody, request: Request, db=Depends(db_dep)):
+    return _worker(request, lambda t: svc.employee_external.progress(db, t, task_id, body.note, body.cost_usd, body.tokens))
+
+
+@hooks.post("/worker/tasks/{task_id}/result")
+def worker_result(task_id: int, body: ResultBody, request: Request, db=Depends(db_dep)):
+    return _worker(request, lambda t: svc.employee_external.result(db, t, task_id, body.status, body.result, body.error,
+                                                                   body.cost_usd, body.tokens))

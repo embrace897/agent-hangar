@@ -659,6 +659,7 @@ def tick() -> list[int]:
         rows = db.execute(select(EmployeeTask.id, EmployeeTask.probation, Employee.status)
                           .join(Employee, Employee.id == EmployeeTask.employee_id)
                           .where(EmployeeTask.status == "new", Employee.status.in_(("probation", "active")),
+                                 Employee.runtime != "external",  # o worker externo busca as dele pelo heartbeat
                                  or_(EmployeeTask.not_before.is_(None), EmployeeTask.not_before <= now()))
                           .order_by(EmployeeTask.priority, EmployeeTask.created_at).limit(config.EMPLOYEE_WORKERS * 2)).all()
         for tid, probation, est in rows:
