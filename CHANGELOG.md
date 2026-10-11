@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-10-11
+
 ### Added
 - **Platform tools** ([docs/analyst.md](docs/analyst.md)): Digital employees use the platform itself through tools that
   run in the central and still go through their authority; the manager turns groups on or off per employee.
