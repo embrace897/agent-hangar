@@ -33,11 +33,31 @@ All notable changes to this project are documented here. The format follows
   personal OAuth2 account (`identity_mode`), and *Test an action* on the production install.
 - **Secrets vault:** company and team secrets referenced as `secret://name` (plugin credentials and secret settings),
   rotation, usage counts and proposals approved by someone else.
+- **Companies (multi-company)** ([docs/work.md](docs/work.md#companies-multi-company)): one installation serves several
+  fully isolated companies. Instance admins create them (with a first team and admin), set the e-mail domains that join
+  each one through SSO, suspend them, and act inside any of them from the sidebar selector or `X-Hangar-Org`.
+- **External Digital employee** ([docs/digital-employee.md](docs/digital-employee.md#external-employee-bring-your-own-agent)):
+  the work runs in your own agent, which fetches tasks through a heartbeat with a per-employee token, asks the same
+  authority before acting and posts the result; the queue, decisions, budget and history stay in Agent Hangar.
+  Reference worker in `examples/external-worker/`.
+- **Telegram and Discord** as task channels: a message to the bot (or `/hangar` on Discord) becomes a task and the
+  result comes back to the same chat. Each person links their account once with a one-time code.
+- **Getting started, announcements, favorites and live view:** a checklist of next steps on the home page, company
+  announcements as a banner, favorites and recently viewed, and a live view of what the Digital employees are doing.
+- **`hangar test-drive`:** the whole path (team, Digital employee, probation, admission, a task) against your
+  installation with the test model, cleaning up at the end.
+- **Feature map** ([docs/feature-map.md](docs/feature-map.md)): every feature by who uses it and where it is.
 
 ### Changed
 - Reading a Digital employee's task (request, result, conversation) now needs the requester, the people who answer for
   the employee, the employee's team, an auditor or an admin. Seeing the agent in the catalog is no longer enough.
 - Installing a team package needs the team's maintainer (it creates goals, projects and employees at once).
+- The portal and the console work at phone width: wide tables and tab bars scroll inside their box.
+
+### Upgrading
+- Migrations `0026`–`0028` add `org_id` to every company table (existing rows belong to the main company), the
+  external-worker columns on Digital employees and the announcements table. Names of skills, LLM connections, MCP
+  servers, plugins, the action catalog and the authority floor become unique per company instead of per installation.
 
 ## [0.24.0] — 2026-10-10
 

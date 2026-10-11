@@ -435,6 +435,7 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 | [Agent guide](docs/guide.md) | The Guide tab: flow from the spec, fact sheet, the users' guide and its drafts |
 | [Plugins](docs/plugins.md) | Connect any system with a declarative manifest: tools, team credential, action types for the authority, review and install per team |
 | [Digital employee](docs/digital-employee.md) | Agents with a job, a manager and an authority level: self-mode hiring, probation, tasks, decisions, reports |
+| [Day-to-day work](docs/work.md) · [Feature map](docs/feature-map.md) | Goals, projects, the task's conversation, budgets, inbox, files, companies; every feature by who uses it |
 | [Cloud VM](docs/cloud-vm.md) · [Comparison](docs/comparison.md) | Docker on AWS, Azure or Google Cloud; how Agent Hangar compares with other platforms |
 | [Kubernetes](docs/kubernetes.md) · [Terraform](deploy/terraform/README.md) | GKE, AKS, EKS: chart, high availability, vault secrets, cloud identity, one-`apply` stacks |
 | [Observability](docs/observability.md) · [Backup and upgrade](docs/backup.md) · [Supply chain](docs/supply-chain.md) | Metrics, logs, traces; `hangar backup`/`upgrade`; signed images and SBOM |

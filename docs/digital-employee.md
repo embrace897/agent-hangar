@@ -315,7 +315,20 @@ ask.
   Teams*; each request is checked with it (HMAC). The person is found by their Microsoft account, so they must have
   signed in to the portal once with Microsoft. Teams only accepts the immediate answer; the result goes later through
   the person's notification channel (Slack, Teams or e-mail).
-- The task's source is `slack` or `teams`, its page shows where it came from, and the audit log records it.
+- **Telegram.** Create a bot with BotFather and paste its token in *Decision channels → Telegram*: the platform
+  registers the webhook itself (`PUBLIC_BASE_URL/hooks/telegram/<company id>`) with its own secret, checked on every
+  call (`X-Telegram-Bot-Api-Secret-Token`). Talk to the bot directly, or use `/hangar …` (or `@bot`) in a group;
+  other group messages are ignored. Telegram only calls public HTTPS URLs: on a local install the screen shows why the
+  webhook was refused.
+- **Discord.** In the Discord Developer Portal, create an application with a bot; paste its application ID, public key
+  and bot token in *Decision channels → Discord*, and set `PUBLIC_BASE_URL/hooks/discord/<company id>` as the
+  *Interactions Endpoint URL*. The platform registers the `/hangar text:` command and checks Discord's Ed25519
+  signature on every call. The answer comes at once; the result is posted to the same channel by the bot.
+- Telegram and Discord do not give the person's e-mail, so each person links their account once: *Decisions → Ask for
+  work in chat → Connect Telegram/Discord* gives a one-time code (15 minutes) to send to the bot (`/start CODE`, or
+  `/hangar text: link CODE`). A chat account belongs to one person; *Unlink* removes it.
+- The task's source is `slack`, `teams`, `telegram` or `discord`, its page shows where it came from, and the audit log
+  records it.
 
 ## Manager dashboard
 
@@ -443,6 +456,32 @@ curl -X POST https://hangar.example.com/hooks/employees/<slug> \
 - Answers: `200` with `{id, status, duplicate}`; `401` for a missing or wrong token or a closed channel; `409` when the
   employee does not take tasks now (onboarding or offboarded).
 - The token is never shown over MCP, so it never lands in an AI tool's conversation.
+
+## External employee (bring your own agent)
+
+The work can run in an agent of yours — another framework, another language, another machine — while the queue, the
+authority, the decisions, the budget and the history stay in Agent Hangar. In the employee's *Routines* tab, *Where it
+works → Use an external worker* creates a worker token (`ewk_…`, shown once, rotatable); from then on the platform no
+longer runs that employee's tasks: your worker asks for them.
+
+| Call | What it does |
+|---|---|
+| `POST /hooks/worker/heartbeat` `{worker: {name, version}}` | "I'm alive"; returns the next task, already reserved for the worker: `id, title, body, messages` (the conversation so far, with what people wrote on the task), `decisions` taken on it, `budget_usd`, `time_limit_min`, `run` |
+| `POST /hooks/worker/tasks/{id}/gate` `{tool, args, rationale, kind}` | Before an action that changes something outside: the same authority as platform agents. `allowed` → do it; `waiting` → stop (the task leaves the worker and comes back through the heartbeat once someone decides; ask for the same action again and it comes back allowed, once); `denied` → don't; `simulated` → shadow mode, carry on as if done. `kind: ask_human` (`args.question`) asks the manager; `capability` (`args.need`) asks for a missing tool |
+| `POST /hooks/worker/tasks/{id}/progress` `{note, cost_usd, tokens}` | A note on the timeline and partial cost; resets the round's time limit; `stop: true` when the task budget is gone |
+| `POST /hooks/worker/tasks/{id}/result` `{status, result, error, cost_usd, tokens}` | `done` (review, if configured, still applies), `failed`, or `waiting` |
+
+- Every call uses `Authorization: Bearer ewk_…`. The token only reaches that employee's tasks.
+- A task the worker takes and never answers goes back to the queue after the employee's time limit (the same sweep as
+  platform tasks); after 3 attempts it fails.
+- An action name without a prefix is classified as `external:<name>` in the action catalog (by name, like any tool),
+  where the admin can reclassify it.
+- The employee page shows whether the worker is online (a heartbeat in the last 2 minutes), its name and version.
+  *Back to the platform* revokes the token and returns reserved tasks to the platform's queue.
+- Reference worker, standard library only: [`examples/external-worker/worker.py`](../examples/external-worker/worker.py)
+  (`HANGAR_URL=… HANGAR_WORKER_TOKEN=ewk_… python worker.py`; set `OPENAI_BASE_URL`/`OPENAI_API_KEY` to answer with an
+  LLM). Replace its `think()` with your agent. When a task comes back after a decision, the worker runs it again from
+  the start: keep actions that already happened idempotent (or check the timeline notes).
 
 ## Goals
 

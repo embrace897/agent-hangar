@@ -1,7 +1,9 @@
 # Day-to-day work
 
 How people and Digital employees work together day to day: goals and projects give each task its *why*, the task
-has a conversation, budgets stop runaway spend, and the inbox and search show what needs you.
+has a conversation, budgets stop runaway spend, and the inbox and search show what needs you. One installation can
+also serve several companies, each fully isolated. The full list of features, by who uses them, is in
+[feature-map.md](feature-map.md).
 
 ## Goals and projects
 
@@ -171,6 +173,43 @@ Ready-made teams live in `templates/packages/`. The *Renewals team* comes with:
   someone who manages approves it (not the person who proposed it), and the proposed value is not kept after the
   decision.
 
+## Companies (multi-company)
+
+One installation can serve several companies. Each one has its own people, teams, agents, Digital employees, plugins,
+skills, LLM connections, budgets, secrets, channels (Slack, Teams, Telegram, Discord) and audit log; no one in one
+company sees anything from another — not in lists, not by id, not in search.
+
+- **Who manages them:** the admin token and the admins of the main company (id 1). *Organization → Companies* creates a
+  company (it starts with a *Geral* team and its first admin, who signs in through SSO or with a local username and
+  password), sets the e-mail domains whose people join it on their first SSO sign-in, and suspends or reactivates it
+  (a suspended company's people can't sign in; the main company can't be suspended).
+- **Acting inside a company:** an instance admin picks it in the sidebar selector (or sends `X-Hangar-Org: <id or
+  slug>` on the API). Everyone else always acts in their own company.
+- **Names:** skills, LLM connections, MCP servers, plugins, the action catalog and the authority floor are unique per
+  company. Slugs of agents, teams and projects stay unique across the installation (they name containers and URLs).
+- **Under the hood:** every company table has `org_id`; every query is filtered by the request's company (including
+  lookups by id) and every new row is stamped with it. Background work (task runner, schedules, sweeps, Slack, Teams,
+  Telegram, Discord and webhooks) runs inside the company of the record it handles.
+- **Upgrading:** migration `0026` adds `org_id` to the company tables; every existing row belongs to the main company,
+  so a single-company installation keeps working as before.
+
+## Getting started, announcements, favorites and live view
+
+- **Getting started:** the home page shows the next steps — for admins, the company's (connect a model, create a team,
+  invite people, the first agent, hire a Digital employee, turn on a channel, set a budget, see a finished task); for
+  everyone else, their own (join a team, connect a tool, ask for a task, choose where decisions reach them). It goes
+  away when everything is done, or with *Hide*.
+- **Announcements:** admins publish a banner for the whole company (*Organization → Announcements*), as information or
+  a warning, optionally for a number of days. Each person can hide it.
+- **Favorites and recently viewed:** the ☆ next to the title of an agent, Digital employee, project, task, skill or
+  plugin adds it to *Favorites* at the top of the sidebar; the home page lists what was viewed recently. Both live in
+  the browser only.
+- **Live:** what the Digital employees are doing now — tasks in progress (and whether an external worker has them) and
+  a timeline of runs, tools, authority checks, decisions, results and errors — only for tasks the person can read. It
+  updates every few seconds while the page is open.
+- **Phones:** the portal and the console work at phone width; wide tables and tab bars scroll inside their box.
+- **`hangar test-drive`:** the whole path against your installation with the test model — see [cli.md](cli.md).
+
 ## API
 
 | Method | Path | Description |
@@ -206,5 +245,13 @@ Ready-made teams live in `templates/packages/`. The *Renewals team* comes with:
 | GET | `/api/files` | Deliverables library (`?kind=output|input&q=&project=&employee=`) |
 | GET | `/api/employees/{slug}/revisions` | Job history |
 | POST | `/api/employees/{slug}/revisions/{v}/restore` | Restore a version |
+| GET / POST | `/api/orgs` | Companies (instance admins) / create (`name, slug, admin_email, admin_name, admin_username, admin_password, domains`) |
+| PATCH | `/api/orgs/{id}` | `{name, domains, status: active|suspended}` |
+| GET / PUT | `/api/onboarding` | Getting-started steps / `{hidden}` |
+| GET / POST | `/api/announcements` | Active announcements (`?all=true` for admins) / publish (`text, level: info|warn, days`) |
+| DELETE | `/api/announcements/{id}` | Remove |
+| GET | `/api/live` | `?since=<last event id>`: recent events and tasks in progress |
+| PUT | `/api/employees/{slug}/runtime` | `{runtime: hangar|external, rotate}`: the external worker token (shown once) |
+| POST / DELETE | `/api/me/notifications/chat-link` | `{channel: telegram|discord}`: one-time link code / `/{channel}`: unlink |
 
 `POST /api/employees/{slug}/tasks` also takes `project`, `review`, `reviewer` and `blocked_by`.

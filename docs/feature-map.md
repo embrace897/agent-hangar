@@ -1,0 +1,99 @@
+# Feature map
+
+Everything Agent Hangar does, grouped by who uses it, with where to find it. **Portal** is `/app` (everyone);
+**Console** is `/ui` (admins). Each line links to the page that explains it in depth.
+
+## Everyone (portal)
+
+| Feature | Where | Docs |
+|---|---|---|
+| Home: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Inbox: decisions, tasks I asked for, stuck work I manage, budget stops (read / archived) | Portal → Inbox | [work.md](work.md#inbox-and-search) |
+| Search everything I can see (`Ctrl+K`) | Top of every page | [work.md](work.md#inbox-and-search) |
+| Favorites (☆ on a title) and recently viewed | Sidebar, Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Company catalog and access requests to other teams' agents | Portal → Company catalog | [access.md](access.md) |
+| Connect AI tools (Claude, ChatGPT, Codex, Cursor, LibreChat, VS Code…) and personal keys | Portal → Connect tools, My keys | [clients.md](clients.md) |
+| Usage and cost | Portal → Usage and cost | [observability.md](observability.md) |
+| Where decisions reach me (Slack, Teams, e-mail) and the daily digest | Portal → Decisions | [digital-employee.md](digital-employee.md#decisions-outside-the-portal) |
+| Link Telegram / Discord to ask for work in chat | Portal → Decisions | [digital-employee.md](digital-employee.md#tasks-from-chat) |
+| Company announcements | Banner at the top | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Phone-width layout | Any page | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+
+## Working with Digital employees
+
+| Feature | Where | Docs |
+|---|---|---|
+| Hire (guided, or by talking to an AI tool over MCP), probation, admission, pause, offboard | Portal → My Digital employees | [digital-employee.md](digital-employee.md#lifecycle) |
+| Assign tasks (portal, MCP, Slack, Teams, Telegram, Discord, e-mail inbox, inbound webhook, routines, plugin triggers) | Employee page, chat, systems | [digital-employee.md](digital-employee.md#tasks) |
+| Authority: what each employee may do alone, with notice, with one or two approvals, never | Employee → Authority | [digital-employee.md](digital-employee.md#authority) |
+| Decisions: approve, edit, reject, answer — in the portal, Slack buttons, Teams cards, e-mail links | Portal → Decisions | [digital-employee.md](digital-employee.md#human-in-the-loop) |
+| The task's conversation (write while it works; reopen a finished task) | Task page | [work.md](work.md#the-tasks-conversation) |
+| Dependencies, review before done, hold a task tree | Task page | [work.md](work.md#dependencies-review-and-hold) |
+| Files and deliverables (attach, versioned outputs, library) | Task page, Portal → Deliverables | [work.md](work.md#files-and-deliverables) |
+| Why it stopped / continue a failed task | Task page | [work.md](work.md#recovery) |
+| Live view of what the employees are doing | Portal → Live | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Shadow mode, career plan, result quality (judge + manager) | Employee → Shadow, Overview | [digital-employee.md](digital-employee.md#shadow-mode) |
+| Handoffs between employees, plans for long tasks, memory of its own work | Automatic; task page | [digital-employee.md](digital-employee.md#handoff-between-employees) |
+| Routines (cron), inbound webhook, e-mail inbox | Employee → Routines, Settings | [digital-employee.md](digital-employee.md#routines) |
+| External employee: the work runs in your own agent via heartbeat | Employee → Routines → Where it works | [digital-employee.md](digital-employee.md#external-employee-bring-your-own-agent) |
+| Daily and weekly reports, deadlines and escalation | Employee → Reports; Decision channels | [digital-employee.md](digital-employee.md#reports) |
+| Manager dashboard: cost, decisions, deadlines, bottlenecks | Portal → Manager | [digital-employee.md](digital-employee.md#manager-dashboard) |
+| Job history (every change is a version that can be restored) | Employee → Settings | [work.md](work.md#job-history) |
+| Org chart (who reports to whom) | Portal → Org chart | [work.md](work.md#org-chart) |
+
+## Planning and money
+
+| Feature | Where | Docs |
+|---|---|---|
+| Goals (company and team tree) and projects (instructions, goal, default employee) | Portal → Goals, Projects | [work.md](work.md#goals-and-projects) |
+| Budgets per company, team, agent or project, by day or month, with warning and hard stop | Portal → Budgets | [work.md](work.md#budgets) |
+| Team monthly budget and per-task budget | Team page; employee settings | [access.md](access.md) |
+
+## Building agents
+
+| Feature | Where | Docs |
+|---|---|---|
+| New agent (form or spec), templates, multi-agent composer | Portal → New agent, Templates | [guide.md](guide.md), [composer.md](composer.md) |
+| Skills and MCP servers catalog | Portal → Skills and MCPs | [mcp-catalog.md](mcp-catalog.md) |
+| Skill Studio: versions, saved test cases, runs, restore | Portal → Skill Studio | [work.md](work.md#skill-studio) |
+| Plugins (HTTP / server), per-action policy, personal OAuth identity, triggers, egress proxy | Portal → Plugins | [plugins.md](plugins.md) |
+| Code work through harnesses (Claude Code, Codex, OpenCode…) | Agent → Jobs | [harnesses.md](harnesses.md) |
+| Memory (agent, team, company) with review and deletion | Agent → Memory | [memory.md](memory.md) |
+| Stage tests, promotion to production (four eyes optional), rollback, schedules | Agent page | [concepts.md](concepts.md) |
+| Team packages: export, preview, install; ready-made teams | Portal → Team packages | [work.md](work.md#team-packages) |
+| Remote MCP gateway | Agent → Connect | [remote-mcp.md](remote-mcp.md) |
+
+## Administration (console)
+
+| Feature | Where | Docs |
+|---|---|---|
+| Companies: create, SSO domains, suspend; act inside one (selector / `X-Hangar-Org`) | Console → Companies | [work.md](work.md#companies-multi-company) |
+| Users, teams, roles, SSO (OIDC/SAML) and SCIM | Console → Users, Teams, SSO and SCIM | [access.md](access.md) |
+| LLM providers and connections | Console → LLM providers | [install.md](install.md) |
+| Digital workforce: overview, action catalog, authority floor, decision channels (Slack, Teams, Telegram, Discord, e-mail) | Console → Digital employees | [digital-employee.md](digital-employee.md) |
+| Secrets vault (`secret://`), rotation, proposals approved by someone else | Console → Secrets | [work.md](work.md#secrets-vault) |
+| Announcements | Console → Announcements | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Deployments, tests, usage, audit log | Console → Monitoring | [observability.md](observability.md) |
+| Security model, supply chain (signed images, SBOM), egress controls | — | [security.md](security.md), [supply-chain.md](supply-chain.md) |
+
+## Operating the installation
+
+| Feature | Where | Docs |
+|---|---|---|
+| Guided install (Docker or Kubernetes), unattended answers file | `hangar setup` | [install.md](install.md), [kubernetes.md](kubernetes.md) |
+| Diagnose | `hangar doctor` | [cli.md](cli.md) |
+| Backup, restore, upgrade | `hangar backup / restore / upgrade` | [backup.md](backup.md) |
+| Try the whole path with the test model | `hangar test-drive` | [cli.md](cli.md) |
+| GitOps: agents, skills and MCPs from a file; CI | `hangar apply` | [cli.md](cli.md#agents-in-ci) |
+| Cloud VM recipes | — | [cloud-vm.md](cloud-vm.md) |
+| Metrics, traces, logs | Prometheus, OpenTelemetry | [observability.md](observability.md) |
+
+## For developers
+
+| Feature | Where | Docs |
+|---|---|---|
+| REST API (everything the portal does) | `/api` | [api.md](api.md) |
+| MCP server per agent and the platform's own MCP | `/mcp` | [clients.md](clients.md) |
+| Agent spec | YAML | [spec.md](spec.md) |
+| External worker protocol (heartbeat, gate, progress, result) | `/hooks/worker` | [digital-employee.md](digital-employee.md#external-employee-bring-your-own-agent) |
+| Inbound webhook, Slack, Teams, Telegram and Discord endpoints | `/hooks` | [digital-employee.md](digital-employee.md#tasks-from-chat) |

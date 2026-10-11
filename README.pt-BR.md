@@ -299,7 +299,8 @@ Veja [integrations/librechat](integrations/librechat/).
 [Conceitos](docs/concepts.md) · [Referência da spec](docs/spec.md) · [Harnesses](docs/harnesses.md) ·
 [API](docs/api.md) · [CLI](docs/cli.md) · [Clientes](docs/clients.md) · [Templates](docs/templates.md) ·
 [Segurança](docs/security.md) ·
-[Digital employee](docs/digital-employee.md)
+[Digital employee](docs/digital-employee.md) · [Trabalho do dia a dia](docs/work.md) ·
+[Mapa de funcionalidades](docs/feature-map.md)
 
 ## Licença
 
