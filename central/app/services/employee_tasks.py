@@ -296,6 +296,12 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
         return {"status": "denied", "action_type": cat.action_type,
                 "message": f"MODO PAR: '{tool}' muda algo ({cat.action_type}) e quem faz é a pessoa. Descreva o que ela deve "
                            "fazer e por quê."}
+    if task is not None and task.source == "regression" and cat.action_type not in SHADOW_REAL:
+        event(db, task, "gate", {"tool": tool, "ref": ref, "action_type": cat.action_type, "mode": "regression"})
+        db.commit()  # tarefa de ouro: nada que mude algo é executado de verdade
+        return {"status": "simulated", "action_type": cat.action_type,
+                "message": f"[TAREFA DE OURO] '{tool}' NÃO foi executada (teste de regressão). Continue como se tivesse "
+                           "dado certo e diga no resultado o que você fez."}
     ev = gatemod.evaluate(db, e, cat.action_type, args)
     mode = ev["mode"]
     pol = _plugin_policy(db, agent, ref)  # o mantenedor desligou a ação ou exige aprovação a cada uso
@@ -703,6 +709,9 @@ def tick() -> list[int]:
             playbooks.sweep(db)  # execuções agendadas (@bd 1 08:00…)
             correspondence.sweep(db)  # lembretes sem resposta e promessas vencidas
             meetings.sweep(db)  # briefings antes das reuniões
+            from . import decision_memos, watchers
+            watchers.sweep(db)  # vigias: só agem quando algo muda
+            decision_memos.sweep(db)  # "como foi a decisão?"
             if retention_now:
                 from . import governance, knowledge
                 governance.retention_sweep(db)  # conteúdo vencido pela política de retenção
@@ -863,6 +872,8 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
     from . import playbooks, work_queues
     work_queues.task_finished(db, task)  # o item da fila acompanha (ou vai para as pessoas, se falhou)
     playbooks.task_finished(db, task)  # a próxima etapa do processo começa
+    from . import regression
+    regression.task_finished(db, task)  # tarefa de ouro: a nota entra na rodada de regressão
     if task.probation:
         from .employees import probation_progress
         probation_progress(db, db.get(Employee, task.employee_id))

@@ -1,4 +1,4 @@
-"""E2E do trabalho do dia a dia (fases A a D), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
+"""E2E do trabalho do dia a dia (fases A a H), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py [--keep FILE]
 
@@ -294,6 +294,68 @@ def phase_g(dev, mgr, mgr_email, team, slug):
         print("   (navegador desligado: perfil browser não testado)", flush=True)
 
 
+def phase_h(dev, mgr, mgr_email, team, slug):
+    import json
+    # memorando de decisão: o revisor crítico barra a recomendação que contraria as notas; depois decisão e resultado
+    ok(mgr.put(f"/api/employees/{slug}/critic", json={"mode": "auto"}))
+    memo = {"question": "Renovar a ACME com desconto ou deixar ir?",
+            "options": [{"name": "Renovar", "pros": ["receita"], "cons": ["margem"]}, {"name": "Deixar ir", "pros": ["foco"], "cons": ["receita"]}],
+            "criteria": [{"name": "receita", "weight": 3}, {"name": "margem", "weight": 1}],
+            "scores": {"Renovar": {"receita": 9, "margem": 5}, "Deixar ir": {"receita": 2, "margem": 8}}, "confidence": 0.7,
+            "citations": ["[1] Contrato ACME"]}
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Renovação ACME", "body": "use submit_decision_memo " + json.dumps(
+        {**memo, "recommendation": "Deixar ir", "risks": []})}))["id"]
+    t = wf.until(dev, tid, ("done", "failed"))
+    critic = t and "REVISOR CRÍTICO" in (t["result"] or "")
+    ok(dev.post(f"/api/tasks/{tid}/messages", json={"body": "use submit_decision_memo " + json.dumps(
+        {**memo, "recommendation": "Renovar", "risks": ["pedir mais desconto no ano que vem"]})}))
+    m = wf.wait(lambda: next((x for x in ok(dev.get("/api/memos")) if x["task"] == tid and x["recommendation"] == "Renovar"), None))
+    d = ok(dev.post(f"/api/memos/{m['id']}/decide", json={"option": "Renovar", "follow_up_days": 30}))
+    o = ok(dev.post(f"/api/memos/{m['id']}/outcome", json={"outcome": "good", "note": "renovou"}))
+    check("memorando: revisor crítico, decisão e resultado", critic and m["totals"] == {"Renovar": 8.0, "Deixar ir": 3.5}
+          and d["follow_up_at"] and o["outcome"] == "good", (t and t["result"][:200], m and m["totals"]))
+    ok(mgr.put(f"/api/employees/{slug}/critic", json={"mode": "off"}))
+    # vigia: fila com item aberto cruza o limiar e vira tarefa do Digital employee (só na virada)
+    q = ok(mgr.put("/api/queues", json={"name": f"Vigiada {RUN}", "team": team, "categories": [
+        {"name": "Geral", "keywords": [], "sla_hours": 24, "route": {"type": "people"}}], "default_category": "Geral"}))["slug"]
+    LEFTOVERS.append(("DELETE", f"/api/queues/{q}"))
+    w = ok(mgr.post("/api/watchers", json={"name": f"Fila {RUN}", "team": team, "employee": slug, "schedule": "0 * * * *",
+                                          "source": {"type": "metric", "metric": f"queue_open:{q}"},
+                                          "condition": {"type": "threshold", "op": ">", "value": 0},
+                                          "action": {"type": "task", "title": f"Fila acumulando {RUN}"}}))
+    first = ok(mgr.post(f"/api/watchers/{w['id']}/check"))["fired"]
+    ok(dev.post(f"/api/queues/{q}/items", json={"title": "Item parado"}))
+    second = ok(mgr.post(f"/api/watchers/{w['id']}/check"))["fired"]
+    third = ok(mgr.post(f"/api/watchers/{w['id']}/check"))["fired"]
+    fired_task = wf.wait(lambda: next((x for x in ok(mgr.get(f"/api/employees/{slug}/tasks")) if x["title"] == f"Fila acumulando {RUN}"), None))
+    ok(mgr.delete(f"/api/watchers/{w['id']}"))
+    check("vigia: dispara na virada do limiar e cria a tarefa", (first, second, third) == (0, 1, 1) and fired_task is not None,
+          (first, second, third))
+    # modo par: o Digital employee orienta, não age
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "me ajude", "mode": "copilot",
+                                                            "body": 'use send_email {"to": "x@cliente.com", "body": "oi"}'}))["id"]
+    t = wf.until(dev, tid, ("done", "failed"))
+    check("modo par: nenhuma ação, nenhum pedido de aprovação", t and t["mode"] == "copilot" and "MODO PAR" in (t["result"] or "")
+          and not any(e["kind"] == "human_request" for e in t["events"]), t and t["result"][:200])
+    # trilha tirada do playbook da fase F
+    tr = ok(mgr.post("/api/learning", json={"source": f"playbook:fech_{RUN}", "team": team}))
+    a = ok(dev.post(f"/api/learning/{tr['id']}/answer", json={"answers": [0] * tr["count"]}))
+    res = ok(mgr.get(f"/api/learning/{tr['id']}/results"))
+    check("trilha: perguntas do playbook, nota e quadro do time", tr["count"] >= 4 and 0 <= a["score"] <= 1
+          and any(r["attempts"] == 1 for r in res), (tr["count"], a["score"]))
+    # tarefas de ouro: rodada sem agir de verdade
+    ok(mgr.post(f"/api/employees/{slug}/golden", json={"title": f"Ouro {RUN}", "body": "responda ok", "expected": "ok"}))
+    ok(mgr.post(f"/api/employees/{slug}/golden/run"))
+    run = wf.wait(lambda: (lambda g: g["runs"][0] if g["runs"] and g["runs"][0]["status"] != "running" else None)(
+        ok(mgr.get(f"/api/employees/{slug}/golden"))), 300)
+    check("tarefas de ouro: rodada concluída com nota", run is not None and run["status"] == "passed"
+          and all(x["score"] for x in run["results"]), run)
+    # valor: o que o funcionário fez nesta rodada aparece no ROI
+    roi = ok(mgr.get("/api/value/roi", params={"team": team}))
+    row = next((r for r in roi["employees"] if r["employee"] == slug), None)
+    check("valor: ROI por Digital employee", row is not None and row["done"] > 0 and row["hours_saved"] > 0, row)
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -308,6 +370,7 @@ def main():
     phase_e(dev, mgr, team, slug)
     phase_f(dev, mgr, mgr_email, team, slug)
     phase_g(dev, mgr, mgr_email, team, slug)
+    phase_h(dev, mgr, mgr_email, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

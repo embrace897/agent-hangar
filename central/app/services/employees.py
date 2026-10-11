@@ -26,6 +26,7 @@ from ..models import (
     now,
 )
 from ..tenancy import current_org
+from . import decision_memos as memosmod
 from . import employee_external as externalmod
 from . import employee_gate as gatemod
 from . import employee_quality as qualitymod
@@ -321,7 +322,7 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
          "created_at": iso(tasksmod._aware(t.created_at)),
          "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None,
          "classification": t.classification or "internal", "legal_hold": bool(t.legal_hold),
-         "purged": bool(t.purged_at)}
+         "purged": bool(t.purged_at), "mode": t.mode or "work"}
     if detail:
         from ..models import TaskEvent
         d["events"] = [{"kind": ev.kind, "payload": ev.payload, "at": iso(tasksmod._aware(ev.at))}
@@ -375,7 +376,8 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
                  quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
-                 reports_to=_chief_slug(db, e), browser_domains=e.browser_domains or [],
+                 reports_to=_chief_slug(db, e), browser_domains=e.browser_domains or [], critic_mode=e.critic_mode or "off",
+                 decision_record=memosmod.record(db, e),
                  external=externalmod.info(e),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
@@ -611,7 +613,8 @@ def set_authority(db: Session, acc: Access, slug: str, rules: list[dict]) -> dic
 
 def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", priority: int = 2, due_at=None,
            source: str = "portal", plan_approval: bool = False, project: str | None = None, review: bool = False,
-           reviewer: str | None = None, blocked_by: list[int] | None = None, files: list[dict] | None = None) -> dict:
+           reviewer: str | None = None, blocked_by: list[int] | None = None, files: list[dict] | None = None,
+           mode: str = "work") -> dict:
     e, a = find(db, acc, slug, "assign")
     if e.status not in ("probation", "active", "paused"):
         raise PlatformError(f"'{slug}' ainda não trabalha (status {e.status}): comece o período de experiência")
@@ -620,10 +623,17 @@ def assign(db: Session, acc: Access, slug: str, title: str, body: str = "", prio
     p = project_for_task(db, acc, project, e)
     blockers = task_flow.check_blockers(db, acc, blocked_by)
     rid = task_flow.reviewer_id(db, reviewer)
+    if mode not in ("work", "copilot"):
+        raise PlatformError("mode: work | copilot")
     attached = _decode_files(files)
     t = tasksmod.create_task(db, e, title, body, source, acc.p.name, acc.p.user_id, priority, due_at,
                              plan_approval=plan_approval, project_id=p.id if p else None,
-                             status="draft" if attached else "new")  # com anexos: só entra na fila depois deles
+                             status="draft" if attached or mode != "work" else "new")  # com anexos: só entra na fila depois deles
+    if mode != "work":
+        t.mode = mode
+        if not attached:
+            t.status = "new"
+            db.commit()
     if attached:
         from . import task_files
         for name, data, ctype in attached:

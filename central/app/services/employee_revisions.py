@@ -33,6 +33,9 @@ def record(db: Session, e: Employee, who: str, summary: str) -> EmployeeRevision
     r = EmployeeRevision(employee_id=e.id, version=v, snapshot=snap, summary=summary[:300], changed_by=who, at=now())
     db.add(r)
     db.commit()
+    if last is not None:  # o cargo mudou: as tarefas de ouro rodam de novo
+        from . import regression
+        regression.on_revision(db, e, r)
     return r
 
 

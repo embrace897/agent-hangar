@@ -665,3 +665,194 @@ def subject_request(body: SubjectBody, request: Request, db=Depends(db_dep)):
 @router.post("/subject-requests/{rid}/erase")
 def subject_erase(rid: int, body: EraseBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.governance.erase(db, acc(request, db), rid, body.approve))
+
+
+# ================================================================== fase H
+# ------------------------------------------------------------------ memorandos de decisão
+class MemoDecideBody(BaseModel):
+    option: str
+    note: str = ""
+    follow_up_days: int = 30
+
+
+class MemoOutcomeBody(BaseModel):
+    outcome: str  # good | mixed | bad
+    note: str = ""
+
+
+class CriticBody(BaseModel):
+    mode: str  # off | auto
+
+
+@router.get("/memos")
+def memos(request: Request, pending: bool = False, db=Depends(db_dep)):
+    return guard(lambda: svc.decision_memos.list_memos(db, acc(request, db), pending))
+
+
+@router.get("/memos/{mid}")
+def memo(mid: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.decision_memos.get(db, acc(request, db), mid))
+
+
+@router.post("/memos/{mid}/decide")
+def memo_decide(mid: int, body: MemoDecideBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.decision_memos.decide(db, acc(request, db), mid, body.option, body.note, body.follow_up_days))
+
+
+@router.post("/memos/{mid}/outcome")
+def memo_outcome(mid: int, body: MemoOutcomeBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.decision_memos.outcome(db, acc(request, db), mid, body.outcome, body.note))
+
+
+@router.put("/employees/{slug}/critic")
+def critic_mode(slug: str, body: CriticBody, request: Request, db=Depends(db_dep)):
+    def run():
+        a_ = acc(request, db)
+        if body.mode not in ("off", "auto"):
+            raise svc.PlatformError("mode: off | auto")
+        e, a = svc.employees.find(db, a_, slug, "manage")
+        e.critic_mode = body.mode
+        db.commit()
+        svc.common.audit(db, a_.p.name, "employee.critic", a.slug, body.mode)
+        return {"critic_mode": e.critic_mode}
+    return guard(run)
+
+
+# ------------------------------------------------------------------ vigias
+@router.get("/watchers")
+def watchers(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.watchers.list_watchers(db, acc(request, db)))
+
+
+@router.post("/watchers")
+def watcher_create(body: dict, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.watchers.save(db, acc(request, db), body))
+
+
+@router.put("/watchers/{wid}")
+def watcher_update(wid: int, body: dict, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.watchers.save(db, acc(request, db), body, wid))
+
+
+@router.delete("/watchers/{wid}")
+def watcher_delete(wid: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.watchers.delete(db, acc(request, db), wid))
+
+
+@router.post("/watchers/{wid}/check")
+def watcher_check(wid: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.watchers.run_now(db, acc(request, db), wid))
+
+
+# ------------------------------------------------------------------ modo par e trilhas
+class ReviewReqBody(BaseModel):
+    employee: str
+
+
+class TrackBody(BaseModel):
+    source: str = "manual"  # playbook:<nome> | procedure:<nome> | manual
+    name: str = ""
+    team: str = ""
+    questions: list[dict] = Field(default_factory=list)
+
+
+class AnswerBody(BaseModel):
+    answers: list[int] = Field(default_factory=list)
+
+
+@router.post("/work-items/{item_id}/review-request")
+def review_request(item_id: int, body: ReviewReqBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.learning.review_request(db, acc(request, db), item_id, body.employee))
+
+
+@router.get("/learning")
+def tracks(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.learning.list_tracks(db, acc(request, db)))
+
+
+@router.post("/learning")
+def track_create(body: TrackBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.learning.create(db, acc(request, db), body.source, body.name, body.team, body.questions))
+
+
+@router.post("/learning/{track_id}/answer")
+def track_answer(track_id: int, body: AnswerBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.learning.answer(db, acc(request, db), track_id, body.answers))
+
+
+@router.get("/learning/{track_id}/results")
+def track_results(track_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.learning.results(db, acc(request, db), track_id))
+
+
+# ------------------------------------------------------------------ valor e oportunidades
+class BaselinesBody(BaseModel):
+    items: list[dict] = Field(default_factory=list)
+
+
+@router.get("/value/baselines")
+def value_baselines(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.value.baselines(db, acc(request, db)))
+
+
+@router.put("/value/baselines")
+def value_baselines_set(body: BaselinesBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.value.set_baselines(db, acc(request, db), body.items))
+
+
+@router.get("/value/roi")
+def value_roi(request: Request, days: int = 30, team: str = "", db=Depends(db_dep)):
+    return guard(lambda: svc.value.roi(db, acc(request, db), days, team))
+
+
+@router.get("/value/report")
+def value_report(request: Request, days: int = 30, db=Depends(db_dep)):
+    text = guard(lambda: svc.value.report(db, acc(request, db), days))
+    return Response(text, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="valor-digital-employees.md"'})
+
+
+@router.get("/value/opportunities")
+def value_opportunities(request: Request, days: int = 90, db=Depends(db_dep)):
+    return guard(lambda: svc.value.opportunities(db, acc(request, db), days))
+
+
+# ------------------------------------------------------------------ tarefas de ouro e regressão
+class GoldenBody(BaseModel):
+    title: str
+    body: str = ""
+    expected: str
+
+
+class ModeBody(BaseModel):
+    mode: str
+
+
+@router.get("/employees/{slug}/golden")
+def golden(slug: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.view(db, acc(request, db), slug))
+
+
+@router.post("/employees/{slug}/golden")
+def golden_add(slug: str, body: GoldenBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.add(db, acc(request, db), slug, body.title, body.body, body.expected))
+
+
+@router.post("/employees/{slug}/golden/from-probation")
+def golden_from_probation(slug: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.from_probation(db, acc(request, db), slug))
+
+
+@router.post("/employees/{slug}/golden/run")
+def golden_run(slug: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.run_now(db, acc(request, db), slug))
+
+
+@router.put("/employees/{slug}/golden/mode")
+def golden_mode(slug: str, body: ModeBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.set_mode(db, acc(request, db), slug, body.mode))
+
+
+@router.delete("/golden/{golden_id}")
+def golden_remove(golden_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.regression.remove(db, acc(request, db), golden_id))

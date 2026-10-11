@@ -33,6 +33,10 @@ async function taskExtras(x, id) {
   main.append(box);
   taskConversations(id, box);  // conversas com gente de fora (fase F)
   taskGovernance(x, id, box);  // classificação, retenção legal e o caminho do navegador (fase G)
+  const memo = (x.events || []).filter(e => e.kind === 'memo').pop();  // memorando de decisão (fase H)
+  if (memo || x.mode === 'copilot') box.insertAdjacentHTML('afterbegin', `<div class="card mt row between">${x.mode === 'copilot' ? `<span><span class="pill info">${window.t('modo par')}</span>
+    <span class="small mute">${window.t('o Digital employee orienta; quem faz é a pessoa')}</span></span>` : '<span></span>'}
+    ${memo ? `<a href="#/memos/${memo.payload.id}"><button class="ghost">${window.t('Abrir o memorando de decisão')}</button></a>` : ''}</div>`);
   const ex = await api(`/tasks/${id}/extractions`).catch(() => []);
   if (ex.length) box.insertAdjacentHTML('beforeend', `<div class="card mt"><h2>Campos extraídos</h2>
     ${ex.map(x2 => `<div class="mt"><b data-noi18n>${esc(x2.file)}</b> <span class="mute small">v${x2.file_version} · ${esc(x2.schema)}</span>
@@ -266,6 +270,7 @@ async function workItemPage(id) {
         <input id="wi-to" placeholder="e-mail para atribuir" style="max-width:240px" data-noi18n><button class="ghost wi-a" data-a="assign">Atribuir</button>
         <button class="ghost danger wi-a" data-a="cancel">Cancelar</button></div></div>`
       : (['done', 'cancelled'].includes(i.status) ? '<div class="row mt"><button class="ghost wi-a" data-a="reopen">Reabrir</button></div>' : '')}`;
+  if (['in_progress', 'review'].includes(i.status) || (i.status === 'done' && i.result)) itemReviewBox(id);  // modo par (fase H)
   main.querySelectorAll('.wi-a').forEach(b => b.onclick = ev => act(ev.target, () => api('/work-items/' + id, { method: 'POST',
     body: { action: b.dataset.a, note: ($('#wi-note') || {}).value || '', assignee: ($('#wi-to') || {}).value || '' } }).then(() => workItemPage(id)), 'Feito'));
   const up = $('#wi-up');
@@ -688,4 +693,195 @@ function taskGovernance(x, id, box) {
   const pr = $('#tg-proc');
   if (pr) pr.onclick = ev => act(ev.target, () => api('/procedures/from-task', { method: 'POST', body: { task_id: Number(id), name: $('#tg-pname').value.trim() } })
     .then(() => { location.hash = '#/procedures'; }), 'Procedimento salvo');
+}
+
+/* ================================================================== fase H: julgamento, vigias, aprendizado, valor */
+const OUTCOME = { good: ['deu certo', 'ok'], mixed: ['em parte', 'warn'], bad: ['não deu certo', 'bad'] };
+
+async function memosPage() {
+  const list = await api('/memos');
+  main.innerHTML = `<h1>Memorandos de decisão</h1><div class="sub">Quando o pedido é uma escolha, o Digital employee entrega opções, critérios com peso, notas, a recomendação com confiança,
+    riscos e fontes. Registre o que foi decidido e, depois, como foi — é assim que se mede se a recomendação era boa.</div>
+    <div class="card">${list.length ? `<table class="small"><tr><th>Pergunta</th><th>Recomendação</th><th>Decidido</th><th>Resultado</th></tr>
+      ${list.map(m => `<tr><td><a href="#/memos/${m.id}" data-noi18n>${esc(m.question.slice(0, 120))}</a></td><td data-noi18n>${esc(m.recommendation)}
+        <span class="mute">${Math.round(m.confidence * 100)}%</span></td><td data-noi18n>${esc(m.decided_option || '—')}</td>
+        <td>${m.outcome ? `<span class="pill ${OUTCOME[m.outcome][1]}">${esc(window.t(OUTCOME[m.outcome][0]))}</span>` : (m.follow_up_at ? `<span class="mute">${window.t('perguntar em')} ${dtLocal(m.follow_up_at)}</span>` : '—')}</td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum memorando ainda.</div>'}</div>`;
+}
+
+async function memoPage(id) {
+  const m = await api('/memos/' + id);
+  const best = Object.entries(m.totals).sort((a, b) => b[1] - a[1])[0] || [];
+  main.innerHTML = `<a href="#/memos" class="mute small">← Memorandos</a><h1 data-noi18n>${esc(m.question)}</h1>
+    <div class="sub">${window.t('Recomendação')}: <b data-noi18n>${esc(m.recommendation)}</b> · ${window.t('confiança')} ${Math.round(m.confidence * 100)}%
+      ${m.task ? ` · <a href="#/tasks/${m.task}">${window.t('tarefa')} #${m.task}</a>` : ''}</div>
+    <div class="card"><table class="small"><tr><th>Opção</th>${m.criteria.map(c => `<th data-noi18n>${esc(c.name)} <span class="mute">×${c.weight}</span></th>`).join('')}<th>Nota ponderada</th></tr>
+      ${m.options.map(o => `<tr${o.name === m.recommendation ? ' style="font-weight:600"' : ''}><td data-noi18n>${esc(o.name)}${o.name === best[0] ? ' ★' : ''}</td>
+        ${m.criteria.map(c => `<td>${(m.scores[o.name] || {})[c.name] ?? '—'}</td>`).join('')}<td><b>${m.totals[o.name]}</b></td></tr>`).join('')}</table></div>
+    <div class="grid g2 mt">${m.options.map(o => `<div class="card"><h3 data-noi18n>${esc(o.name)}</h3><div class="small" data-noi18n>${esc(o.summary || '')}</div>
+      <ul class="small" data-noi18n>${(o.pros || []).map(p => `<li>+ ${esc(p)}</li>`).join('')}${(o.cons || []).map(c => `<li>− ${esc(c)}</li>`).join('')}</ul></div>`).join('')}</div>
+    <div class="grid g2 mt"><div class="card"><h2>Riscos</h2><ul class="small" data-noi18n>${m.risks.map(r => `<li>${esc(r)}</li>`).join('') || '<li>—</li>'}</ul>
+      <h3 class="mt">Fontes</h3><div class="small" data-noi18n>${m.citations.map(c => esc(c)).join('<br>') || '—'}</div></div>
+      <div class="card"><h2>Revisor crítico</h2>${m.critic ? `<span class="pill ${m.critic.severity === 'high' ? 'bad' : m.critic.severity === 'medium' ? 'warn' : 'ok'}">${esc(m.critic.severity)}</span>
+        <ul class="small" data-noi18n>${(m.critic.notes || []).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '<div class="mute small">Desligado para este funcionário.</div>'}</div></div>
+    <div class="card mt"><h2>Decisão e resultado</h2>${m.decided_option ? `<div class="small">${window.t('Decidido')}: <b data-noi18n>${esc(m.decided_option)}</b> ·
+        <span data-noi18n>${esc(m.decided_by)}</span> · ${dtLocal(m.decided_at)}${m.decided_note ? ` — <span data-noi18n>${esc(m.decided_note)}</span>` : ''}</div>
+      ${m.outcome ? `<div class="small mt">${window.t('Resultado')}: <span class="pill ${OUTCOME[m.outcome][1]}">${esc(window.t(OUTCOME[m.outcome][0]))}</span> <span data-noi18n>${esc(m.outcome_note)}</span></div>`
+        : `<div class="row mt" style="gap:6px"><select id="mo-r"><option value="good">${window.t('deu certo')}</option><option value="mixed">${window.t('em parte')}</option>
+          <option value="bad">${window.t('não deu certo')}</option></select><input id="mo-n" placeholder="o que aconteceu"><button id="mo-go">Registrar o resultado</button></div>`}`
+      : `<div class="row" style="gap:6px"><select id="md-o">${m.options.map(o => `<option ${o.name === m.recommendation ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}<option value="outra">${window.t('outra')}</option></select>
+        <input id="md-n" placeholder="por quê (opcional)"><label class="row small" style="gap:4px">${window.t('perguntar como foi em')} <input id="md-d" type="number" value="30" style="width:70px"> ${window.t('dias')}</label>
+        <button id="md-go">Registrar a decisão</button></div>`}</div>`;
+  const dg = $('#md-go');
+  if (dg) dg.onclick = ev => act(ev.target, () => api(`/memos/${id}/decide`, { method: 'POST', body: { option: $('#md-o').value, note: $('#md-n').value,
+    follow_up_days: Number($('#md-d').value) } }).then(() => memoPage(id)), 'Decisão registrada');
+  const og = $('#mo-go');
+  if (og) og.onclick = ev => act(ev.target, () => api(`/memos/${id}/outcome`, { method: 'POST', body: { outcome: $('#mo-r').value, note: $('#mo-n').value } })
+    .then(() => memoPage(id)), 'Resultado registrado');
+}
+
+/* ---------- vigias ---------- */
+async function watchersPage() {
+  const [list, teams, emps] = await Promise.all([api('/watchers'), api('/teams').catch(() => []), api('/employees').catch(() => [])]);
+  main.innerHTML = `<h1>Vigias</h1><div class="sub">Olham uma fonte de tempos em tempos e só agem quando algo muda ou cruza um limiar: mudança regulatória, preço de concorrente,
+    fila estourando, nova versão de uma política.</div>
+    <div class="card">${list.length ? `<table class="small"><tr><th>Vigia</th><th>Fonte</th><th>Quando</th><th>Disparos</th><th>Última mudança</th><th></th></tr>
+      ${list.map(w => `<tr data-w="${w.id}"><td><b data-noi18n>${esc(w.name)}</b>${w.enabled ? '' : ` <span class="pill">${window.t('pausado')}</span>`}${w.last_error ? ` <span class="pill bad" data-noi18n>${esc(w.last_error)}</span>` : ''}</td>
+        <td class="mute" data-noi18n>${esc(w.source.type)}: ${esc(w.source.url || w.source.query || w.source.metric || '')}</td><td>${esc(w.schedule_text)}</td><td>${w.fired}</td>
+        <td class="mute" data-noi18n style="max-width:280px;white-space:pre-wrap">${esc((w.last_change || '—').slice(0, 200))}</td>
+        <td class="row" style="gap:4px"><button class="ghost small wt-chk">Olhar agora</button><button class="ghost small danger wt-del">×</button></td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum vigia ainda.</div>'}</div>
+    <div class="card mt"><h2>Novo vigia</h2><div class="grid g2"><label>Nome<input id="wt-name"></label>
+      <label>Time<select id="wt-team">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label>
+      <label>Fonte<select id="wt-src"><option value="url">página (texto)</option><option value="json">JSON (um valor)</option><option value="knowledge">base de conhecimento</option><option value="metric">número da plataforma</option></select></label>
+      <label>URL, pergunta ou métrica<input id="wt-ref" data-noi18n placeholder="https://… · open_tasks · queue_breached:backoffice"></label>
+      <label>Caminho no JSON (opcional)<input id="wt-path" data-noi18n placeholder="data.0.price"></label>
+      <label>Condição<select id="wt-cond"><option value="changed">mudou</option><option value="threshold">cruzou um limiar</option><option value="contains">passou a conter</option></select></label>
+      <label>Limiar (op valor) ou frase<input id="wt-val" data-noi18n placeholder="> 100 · nova resolução"></label>
+      <label>Agenda<input id="wt-sched" value="0 * * * *" data-noi18n></label>
+      <label>Ação<select id="wt-act"><option value="task">tarefa para um Digital employee</option><option value="notify">me avisar</option><option value="log">só registrar</option></select></label>
+      <label>Digital employee<select id="wt-emp"><option value="">—</option>${emps.filter(e => e.status === 'active').map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1">Título da tarefa<input id="wt-title" placeholder="ex.: Analisar mudança regulatória"></label></div>
+      <div class="row mt"><button id="wt-go">Criar vigia</button></div></div>`;
+  $('#wt-go').onclick = ev => {
+    const kind = $('#wt-src').value, ref = $('#wt-ref').value.trim(), c = $('#wt-cond').value, v = $('#wt-val').value.trim();
+    const source = { type: kind, ...(kind === 'url' || kind === 'json' ? { url: ref, path: $('#wt-path').value.trim() } : kind === 'knowledge' ? { query: ref } : { metric: ref }) };
+    const m = v.match(/^(>=|<=|==|!=|>|<)\s*(-?[\d.]+)$/);
+    const condition = c === 'threshold' ? (m ? { type: c, op: m[1], value: Number(m[2]) } : { type: c }) : c === 'contains' ? { type: c, text: v } : { type: c };
+    act(ev.target, () => api('/watchers', { method: 'POST', body: { name: $('#wt-name').value.trim(), team: $('#wt-team').value, source, condition, schedule: $('#wt-sched').value.trim(),
+      action: { type: $('#wt-act').value, title: $('#wt-title').value.trim() }, employee: $('#wt-emp').value } }).then(watchersPage), 'Vigia criado');
+  };
+  main.querySelectorAll('tr[data-w]').forEach(tr => { const id = tr.dataset.w;
+    $('.wt-chk', tr).onclick = ev => act(ev.target, () => api(`/watchers/${id}/check`, { method: 'POST' }).then(watchersPage));
+    $('.wt-del', tr).onclick = ev => confirm(window.t('Remover este vigia?')) && act(ev.target, () => api('/watchers/' + id, { method: 'DELETE' }).then(watchersPage)); });
+}
+
+/* ---------- trilhas ---------- */
+async function learningPage() {
+  const [tracks, pbs, procs, teams] = await Promise.all([api('/learning'), api('/playbooks').catch(() => []), api('/procedures').catch(() => ({ procedures: [] })), api('/teams').catch(() => [])]);
+  main.innerHTML = `<h1>Trilhas de aprendizado</h1><div class="sub">Perguntas tiradas dos playbooks e procedimentos: quem faz cada etapa, o que vem antes, a evidência, o prazo. Bom para quem está chegando.</div>
+    <div class="card">${tracks.length ? tracks.map(t => `<div class="li row between" data-t="${t.id}"><span><b data-noi18n>${esc(t.name)}</b> <span class="mute small">${t.count} ${window.t('perguntas')}</span>
+      ${t.my_best != null ? ` <span class="pill ${t.my_best >= 0.8 ? 'ok' : 'warn'}">${Math.round(t.my_best * 100)}%</span>` : ''}</span>
+      <span class="row" style="gap:4px"><button class="ghost small tr-go">Fazer</button><button class="ghost small tr-res">Notas do time</button></span></div>`).join('')
+      : '<div class="mute small">Nenhuma trilha ainda.</div>'}<div id="tr-box"></div></div>
+    <div class="card mt"><h2>Nova trilha</h2><div class="grid g2"><label>A partir de<select id="tr-src">
+      ${pbs.map(p => `<option value="playbook:${esc(p.name)}">playbook: ${esc(p.title)}</option>`).join('')}${procs.procedures.map(p => `<option value="procedure:${esc(p.name)}">procedimento: ${esc(p.title)}</option>`).join('')}</select></label>
+      <label>Time<select id="tr-team">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label></div>
+      <div class="row mt"><button id="tr-new" ${pbs.length + procs.procedures.length ? '' : 'disabled'}>Criar trilha</button></div></div>`;
+  $('#tr-new').onclick = ev => act(ev.target, () => api('/learning', { method: 'POST', body: { source: $('#tr-src').value, team: $('#tr-team').value } }).then(learningPage), 'Trilha criada');
+  main.querySelectorAll('[data-t]').forEach(el => { const t = tracks.find(x => String(x.id) === el.dataset.t);
+    $('.tr-go', el).onclick = () => { $('#tr-box').innerHTML = `<div class="card mt"><h3 data-noi18n>${esc(t.name)}</h3>${t.questions.map((q, i) => `<div class="mt"><b data-noi18n>${i + 1}. ${esc(q.q)}</b>
+      ${q.options.map((o, j) => `<label class="row small" style="gap:6px"><input type="radio" name="q${i}" value="${j}"> <span data-noi18n>${esc(o)}</span></label>`).join('')}</div>`).join('')}
+      <div class="row mt"><button id="tr-send">Enviar respostas</button></div><div id="tr-out"></div></div>`;
+      $('#tr-send').onclick = ev => act(ev.target, async () => {
+        const answers = t.questions.map((_, i) => Number((main.querySelector(`input[name=q${i}]:checked`) || { value: -1 }).value));
+        const r = await api(`/learning/${t.id}/answer`, { method: 'POST', body: { answers } });
+        $('#tr-out').innerHTML = `<div class="card mt"><b>${Math.round(r.score * 100)}%</b>${r.results.map(x => `<div class="small mt">${x.right ? '✓' : '✗'} <span data-noi18n>${esc(x.q)}</span>
+          ${x.right ? '' : `<div class="mute" data-noi18n>${esc(x.answer)} — ${esc(x.explain)}</div>`}</div>`).join('')}</div>`; }); };
+    $('.tr-res', el).onclick = ev => act(ev.target, async () => { const r = await api(`/learning/${t.id}/results`);
+      $('#tr-box').innerHTML = `<div class="card mt"><table class="small"><tr><th>Pessoa</th><th>Melhor nota</th><th>Tentativas</th></tr>${r.map(x => `<tr><td data-noi18n>${esc(x.user)}</td>
+        <td>${x.best == null ? '—' : Math.round(x.best * 100) + '%'}</td><td>${x.attempts}</td></tr>`).join('')}</table></div>`; }); });
+}
+
+/* ---------- valor e oportunidades ---------- */
+async function valuePage() {
+  const days = Number(new URLSearchParams(location.hash.split('?')[1] || '').get('days') || 30);
+  const [roi, ops, base] = await Promise.all([api(`/value/roi?days=${days}`), api('/value/opportunities'), api('/value/baselines')]);
+  const t = roi.total || {};
+  main.innerHTML = `<div class="row between"><div><h1>Valor e oportunidades</h1><div class="sub">Quanto os Digital employees economizam, a que custo e com quanto retrabalho — e o que ainda é feito por pessoas e vale automatizar.</div></div>
+    <div class="row" style="gap:6px"><select id="vl-days">${[7, 30, 90, 365].map(d => `<option value="${d}" ${d === days ? 'selected' : ''}>${d} ${window.t('dias')}</option>`).join('')}</select>
+    <a href="/api/value/report?days=${days}"><button class="ghost">Relatório (markdown)</button></a></div></div>
+    <div class="board">${kpi(fmt(t.done || 0), 'Tarefas concluídas')}${kpi((t.hours_saved || 0) + ' h', 'Horas poupadas')}${kpi(fmt(t.human_cost || 0), 'Custo equivalente humano')}
+      ${kpi(usd(t.llm_cost || 0), 'Custo de LLM')}${kpi(fmt(t.net || 0), 'Líquido')}${kpi(roi.queues.automation_rate == null ? '—' : Math.round(roi.queues.automation_rate * 100) + '%', 'Filas: automático')}</div>
+    <div class="card mt"><h2>Por Digital employee</h2>${roi.employees.length ? `<table class="small"><tr><th>Digital employee</th><th>Concluídas</th><th>Horas poupadas</th><th>Custo humano</th><th>LLM</th><th>Líquido</th><th>Retrabalho</th></tr>
+      ${roi.employees.map(e => `<tr><td><a href="#/employees/${esc(e.employee)}" data-noi18n>${esc(e.name)}</a></td><td>${e.done}</td><td>${e.hours_saved}</td><td>${fmt(e.human_cost)}</td>
+        <td>${usd(e.llm_cost)}</td><td><b>${fmt(e.net)}</b></td><td>${Math.round(e.rework_rate * 100)}%</td></tr>`).join('')}</table>` : '<div class="mute small">Nada concluído na janela.</div>'}</div>
+    <div class="grid g2 mt"><div class="card"><h2>Oportunidades</h2><div class="mute small">Pedidos que se repetem e ainda são feitos por pessoas (últimos 90 dias).</div>
+      ${ops.map(o => `<div class="li"><b data-noi18n>${esc(o.label)}</b> <span class="mute small">${o.per_month} ${window.t('por mês')} · ${o.hours} h</span>
+        <div class="small">${esc(window.t(o.suggestion))}</div><div class="mute small" data-noi18n>${esc(o.examples.join(' · '))}</div></div>`).join('') || '<div class="mute small mt">Nada repetido o bastante ainda.</div>'}</div>
+      <div class="card"><h2>Linhas de base</h2><div class="mute small">Quanto tempo uma pessoa levaria e quanto custa a hora — padrão, por Digital employee (employee:slug) ou por categoria de fila (queue:fila:categoria).</div>
+        <textarea id="vb" rows="5" class="code mt" data-noi18n placeholder="default | 30 | 60&#10;employee:analista-fiscal | 45 | 80">${esc(base.map(b => `${b.scope} | ${b.minutes} | ${b.hourly_cost}`).join('\n'))}</textarea>
+        ${ME.is_admin ? '<div class="row mt"><button class="ghost" id="vb-save">Salvar linhas de base</button></div>' : ''}</div></div>`;
+  $('#vl-days').onchange = () => { location.hash = `#/value?days=${$('#vl-days').value}`; };
+  const vs = $('#vb-save');
+  if (vs) vs.onclick = ev => { const now = lines($('#vb').value).map(l => { const [scope, minutes, hourly_cost] = l.split('|').map(x => (x || '').trim()); return { scope, minutes: Number(minutes), hourly_cost: Number(hourly_cost || 0) }; });
+    const gone = base.filter(b => !now.some(n => n.scope === b.scope)).map(b => ({ scope: b.scope, remove: true }));
+    act(ev.target, () => api('/value/baselines', { method: 'PUT', body: { items: [...now, ...gone] } }).then(() => valuePage()), 'Linhas de base salvas'); };
+}
+
+/* ---------- tarefas de ouro e revisor crítico (Configurações do funcionário) ---------- */
+async function goldenCard(box, e) {
+  const g = await api(`/employees/${e.slug}/golden`).catch(() => null);
+  if (!g || !box) return;
+  const last = g.runs[0];
+  box.innerHTML = `<div class="card mt"><h2>Tarefas de ouro</h2><div class="mute small">O que ele precisa continuar acertando. Cada mudança no cargo roda estas tarefas de novo (sem agir de verdade);
+    se piorar, você decide manter a mudança ou voltar à versão anterior.</div>
+    <label class="row small mt" style="gap:6px"><input type="checkbox" id="gd-auto" ${g.mode === 'auto' ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}> ${window.t('Rodar a cada mudança no cargo')}</label>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="gd-critic" ${e.critic_mode === 'auto' ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}> ${window.t('Revisor crítico nos memorandos de decisão')}</label>
+    ${(e.decision_record || {}).memos ? `<div class="small mute">${window.t('Memorandos')}: ${e.decision_record.memos} · ${window.t('com resultado')}: ${e.decision_record.with_outcome}
+      · ${window.t('acerto quando seguido')}: ${e.decision_record.accuracy == null ? '—' : Math.round(e.decision_record.accuracy * 100) + '%'}</div>` : ''}
+    <table class="small mt"><tr><th>Tarefa</th><th>Resposta esperada</th><th>Última nota</th><th></th></tr>${g.golden.filter(x => x.active).map(x => {
+      const r = last ? last.results.find(y => y.golden === x.id) : null;
+      return `<tr data-g="${x.id}"><td data-noi18n>${esc(x.title)}</td><td class="mute" data-noi18n>${esc(x.expected.slice(0, 100))}</td>
+        <td>${r && r.score != null ? `${r.before != null ? r.before + ' → ' : ''}<b>${r.score}</b>` : '—'}</td><td>${e.can_manage ? '<button class="ghost small danger gd-del">×</button>' : ''}</td></tr>`; }).join('')}</table>
+    ${last ? `<div class="small mt">${window.t('Última rodada')}: <span class="pill ${last.status === 'passed' || last.status === 'kept' ? 'ok' : last.status === 'running' ? 'info' : 'bad'}">${esc(window.t(last.status))}</span>
+      <span class="mute" data-noi18n>${esc(last.trigger)}</span></div>` : ''}
+    ${e.can_manage ? `<div class="grid g2 mt"><label>Título<input id="gd-title"></label><label>Resposta esperada<input id="gd-exp"></label>
+      <label style="grid-column:1/-1">Pedido<textarea id="gd-body" rows="2"></textarea></label></div>
+      <div class="row mt" style="gap:6px"><button class="ghost" id="gd-add">Adicionar</button><button class="ghost" id="gd-prob">Trazer as tarefas da experiência</button><button class="ghost" id="gd-run">Rodar agora</button></div>` : ''}</div>`;
+  if (!e.can_manage) return;
+  const re = () => goldenCard(box, e);
+  $('#gd-auto', box).onchange = ev => act(ev.target, () => api(`/employees/${e.slug}/golden/mode`, { method: 'PUT', body: { mode: ev.target.checked ? 'auto' : 'off' } }));
+  $('#gd-critic', box).onchange = ev => act(ev.target, () => api(`/employees/${e.slug}/critic`, { method: 'PUT', body: { mode: ev.target.checked ? 'auto' : 'off' } }).then(r => { e.critic_mode = r.critic_mode; }));
+  $('#gd-add', box).onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/golden`, { method: 'POST', body: { title: $('#gd-title').value.trim(), body: $('#gd-body').value,
+    expected: $('#gd-exp').value.trim() } }).then(re), 'Tarefa de ouro adicionada');
+  $('#gd-prob', box).onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/golden/from-probation`, { method: 'POST' }).then(r => { toast(`${r.added} ${window.t('adicionada(s)')}`); return re(); }));
+  $('#gd-run', box).onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/golden/run`, { method: 'POST' }).then(re), 'Rodada iniciada');
+  box.querySelectorAll('tr[data-g] .gd-del').forEach(b => b.onclick = ev => act(ev.target, () => api('/golden/' + b.closest('tr').dataset.g, { method: 'DELETE' }).then(re)));
+}
+
+DECISION_KINDS.regression = {
+  render(d) {
+    const rs = (d.payload || {}).results || [];
+    return {
+      body: `<div class="mt"><b>Uma mudança no cargo piorou as tarefas de ouro.</b></div><div class="small mt" data-noi18n style="white-space:pre-wrap">${esc(d.question || '')}</div>
+        <table class="small mt"><tr><th>Tarefa</th><th>Antes</th><th>Agora</th></tr>${rs.map(r => `<tr><td><a href="#/tasks/${r.task}" data-noi18n>${esc(r.title)}</a></td><td>${r.before ?? '—'}</td>
+          <td><b>${r.score ?? '—'}</b></td></tr>`).join('')}</table><input class="dc-reason mt" placeholder="Comentário (opcional)">`,
+      btns: '<button class="ghost danger rg-go" data-d="revert">Voltar à versão anterior do cargo</button><button class="ghost rg-go" data-d="keep">Manter a mudança</button>',
+    };
+  },
+  bind(card, id, after) {
+    card.querySelectorAll('.rg-go').forEach(b => b.onclick = ev => act(ev.target, () => decide(id, { decision: b.dataset.d, reason: $('.dc-reason', card).value }).then(after),
+      b.dataset.d === 'revert' ? 'Cargo restaurado' : 'Mudança mantida'));
+  },
+};
+
+/* ---------- item: pedir revisão a um Digital employee (modo par) ---------- */
+async function itemReviewBox(id) {
+  const emps = (await api('/employees').catch(() => [])).filter(e => e.status === 'active');
+  if (!emps.length) return;
+  main.insertAdjacentHTML('beforeend', `<div class="card mt"><h2>Pedir revisão do meu trabalho</h2><div class="mute small">Um Digital employee confere o que você fez contra o pedido e devolve um checklist — em modo par: ele aponta, não refaz.</div>
+    <div class="row mt" style="gap:6px"><select id="ir-emp">${emps.map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('')}</select><button class="ghost" id="ir-go">Pedir revisão</button></div></div>`);
+  $('#ir-go').onclick = ev => act(ev.target, () => api(`/work-items/${id}/review-request`, { method: 'POST', body: { employee: $('#ir-emp').value } })
+    .then(r => { location.hash = '#/tasks/' + r.task; }), 'Revisão pedida');
 }

@@ -69,6 +69,7 @@ class TaskBody(BaseModel):
     reviewer: str | None = None  # e-mail de quem revisa
     blocked_by: list[int] = Field(default_factory=list)  # tarefas que precisam terminar antes
     files: list[dict] = Field(default_factory=list)  # anexos já na criação: [{name, content_base64, content_type}]
+    mode: str = "work"  # work | copilot (modo par: o funcionário orienta, a pessoa faz)
 
 
 class InboxBody(BaseModel):
@@ -201,7 +202,7 @@ def assign(slug: str, body: TaskBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.assign(db, acc(request, db), slug, body.title, body.body, body.priority,
                                               body.due_at, plan_approval=body.plan_approval, project=body.project,
                                               review=body.review, reviewer=body.reviewer, blocked_by=body.blocked_by,
-                                              files=body.files))
+                                              files=body.files, mode=body.mode))
 
 
 @router.put("/employees/{slug}/inbox")

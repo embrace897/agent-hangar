@@ -15,6 +15,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       connect,
                       correspondence,
                       decision_kinds,
+                      decision_memos,
                       doc_changes,
                       docx_lite,
                       employee_dashboard,
@@ -33,6 +34,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       home,
                       inbox,
                       knowledge,
+                      learning,
                       llm,
                       mcp_gateway,
                       mcp_oauth,
@@ -47,6 +49,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       playbooks,
                       plugins,
                       registry,
+                      regression,
                       remote_mcp,
                       schedules,
                       secrets_vault,
@@ -55,7 +58,9 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       task_flow,
                       task_thread,
                       ux,
+                      value,
                       vscode,
+                      watchers,
                       work_queues,
 )
 from .catalog import (  # noqa: F401

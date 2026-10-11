@@ -39,6 +39,18 @@ All notable changes to this project are documented here. The format follows
 - **Document change proposals:** before/after per passage, partial acceptance and edits, DOCX redlines, new versions in
   Confluence and SharePoint, refused when the document changed meanwhile.
 
+- **Decision memos:** options, weighted criteria and scores with totals computed by the platform, recommendation with
+  confidence, risks and sources; an optional critical reviewer; the decision and its real outcome recorded, with a
+  follow-up item and the employee's decision record.
+- **Watchers:** pages, JSON values, knowledge-base searches and platform numbers checked on a schedule, firing on
+  change or on crossing a threshold, turning into a task, a notice or a log entry.
+- **Pair mode and learning tracks:** tasks where the employee guides but doesn't act, review of a person's work by a
+  Digital employee, and quizzes generated from playbooks and procedures with the team's scores.
+- **Value and opportunities:** baselines, ROI per employee (hours, human cost, LLM cost, rework), a Markdown report,
+  and repeated human work worth automating.
+- **Golden tasks and regression:** every change to the role re-runs the golden tasks without acting for real; if the
+  scores drop, the manager keeps the change or restores the previous version.
+
 ### Fixed
 - A task blocked by dependencies that had never run lost its own request when it was unblocked.
 

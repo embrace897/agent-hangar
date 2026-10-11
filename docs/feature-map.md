@@ -58,6 +58,11 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Governed browser and procedures for systems without an API | Build → Browser procedures; employee settings | [analyst.md](analyst.md#governed-browser) |
 | Classification, DLP, retention, data subject requests, information barriers | Organization → Data governance | [analyst.md](analyst.md#data-governance) |
 | Document change proposals with per-passage acceptance and DOCX redlines | Decisions | [analyst.md](analyst.md#document-change-proposals) |
+| Decision memos with weighted criteria, critical reviewer, decision and outcome | Digital employees → Decision memos | [analyst.md](analyst.md#decision-memos) |
+| Watchers on pages, JSON, knowledge and platform numbers | Digital employees → Watchers | [analyst.md](analyst.md#watchers) |
+| Pair mode, review of a person's work, learning tracks | Assign task; My work; Digital employees → Learning tracks | [analyst.md](analyst.md#pair-mode-and-learning-tracks) |
+| ROI, baselines, report and automation opportunities | Digital employees → Value and opportunities | [analyst.md](analyst.md#value-and-opportunities) |
+| Golden tasks and regression after role changes | Employee → Settings; Decisions | [analyst.md](analyst.md#golden-tasks-and-regression) |
 
 ## Planning and money
 

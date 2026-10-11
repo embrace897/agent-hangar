@@ -203,6 +203,71 @@ version of the task file, a new version of the Confluence page, or a new version
 back as a redline**: accepted passages appear as tracked deletions and insertions signed by whoever approved (the
 original formatting isn't kept in that version). If the document changed after the proposal, nothing is applied.
 
+## Decision memos
+
+When the request is a choice ("renew with a discount or let it go?", "which supplier?"), the employee calls
+`submit_decision_memo`: the question, the options with pros and cons, weighted criteria, a 0–10 score per option and
+criterion, the recommendation with its confidence, the risks and the sources. The platform computes the **weighted
+totals** — the employee doesn't add them up.
+
+- **Critical reviewer** (*Settings → Golden tasks*, per employee): checks the memo before it's delivered — a
+  recommendation that isn't the highest score without an explanation, high confidence without sources, no risks, no
+  cons on the chosen option, a single criterion. With an LLM connection, a second model reviews it too. A serious
+  problem on the first version sends the memo back to the employee once, with the notes.
+- *Digital employees → Decision memos* shows the matrix, the critic's notes and the task. Whoever can read the task
+  **records the decision** (the recommended option, another one, or "other", with a note) and when to ask how it
+  went; on that day the platform opens a **"How did the decision go?"** item for that person. The **outcome** (worked,
+  partly, didn't) feeds the employee's **decision record**: how often its recommendation was followed and, when
+  followed, how often it worked.
+
+## Watchers
+
+*Digital employees → Watchers*: look at a source on a schedule (at least every 15 minutes) and act only when
+something happens.
+
+- **Sources:** a web page (its text), a JSON value (`path` like `data.0.price`), a knowledge-base search, or a platform
+  number — `open_tasks`, `failed_tasks_24h`, `queue_open:<queue>`, `queue_breached:<queue>`. Addresses go through the
+  same check as knowledge-base URLs.
+- **Conditions:** *changed* (the first look only records the baseline; then a diff of what changed), *crossed a
+  threshold* (`> 100`) or *started to contain* a phrase — these fire **on the transition**, not on every look while
+  the condition holds.
+- **Actions:** a task for a Digital employee with what changed, a notice to whoever created the watcher, or just the
+  log. Each watcher shows how many times it fired, the last change and the last error.
+
+## Pair mode and learning tracks
+
+- **Pair mode:** when assigning a task, tick *Pair mode*: the employee explains, reviews and drafts, but **doesn't act**
+  — any tool that changes something is refused ("MODO PAR") without opening a request. Good for someone learning the
+  job, or for work the person must do themselves.
+- **Ask for a review of my work:** on an item in progress, in review or done (*My work*), choose a Digital employee: it
+  receives the request, what the person did and the attached files, in pair mode, and returns a checklist.
+- **Learning tracks** (*Digital employees → Learning tracks*): multiple-choice questions generated from a playbook
+  or a browser procedure — who does each step, what comes first, the evidence, the deadline, the domains. The answers
+  never go to the screen; each attempt is scored with the explanation of what was wrong, and maintainers see the
+  team's best scores and attempts.
+
+## Value and opportunities
+
+*Digital employees → Value and opportunities*:
+
+- **Baselines** (admins): how long a person would take and what an hour costs — `default`, per employee
+  (`employee:<slug>`) or per queue category (`queue:<queue>:<category>`).
+- **ROI** per employee over 7, 30, 90 or 365 days: tasks done, hours saved, equivalent human cost, LLM cost, net value
+  and rework rate (rejected reviews and failed tasks); the queues' automation rate. *Report* downloads it as Markdown, ready
+  for a monthly review.
+- **Opportunities:** requests that repeat and are still handled by people (queue categories, playbook steps done by
+  people), with how many per month and how many hours — candidates for a Digital employee.
+
+## Golden tasks and regression
+
+*Employee → Settings → Golden tasks*: what the employee must keep getting right — a request and the expected answer
+(or bring in the probation tasks that had one). Every change to the role becomes a version in the history; with
+*Run on every role change* on, the golden tasks **run again** with the production configuration, but **nothing that
+changes something is executed** (and no requests are opened). Each one is scored 1–5 by the quality judge (or, without
+an LLM, by how much of the expected answer is in the result) and compared with the previous run. If any task drops 2
+points, or the average drops 1, the manager gets a **regression** decision showing before → after: keep the change,
+or go back to the previous version of the role.
+
 ## API
 
 | Method | Path | Description |
@@ -240,3 +305,18 @@ original formatting isn't kept in that version). If the document changed after t
 | PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
 | PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |
 | GET / POST | `/api/subject-requests` · POST `/{id}/erase` | Data subject requests · approve or reject an erasure |
+| GET | `/api/memos` · `/api/memos/{id}` | Decision memos you can read (`?pending=true`) · detail |
+| POST | `/api/memos/{id}/decide` · `/outcome` | `{option, note, follow_up_days}` · `{outcome: good, mixed, bad, note}` |
+| PUT | `/api/employees/{slug}/critic` | `{mode: off, auto}`: critical reviewer |
+| GET / POST / PUT / DELETE | `/api/watchers`, `/api/watchers/{id}` | Watchers / create or change (`name, team, source, condition, action, schedule, employee`) / remove |
+| POST | `/api/watchers/{id}/check` | Look now |
+| POST | `/api/work-items/{id}/review-request` | `{employee}`: a pair-mode review task |
+| GET / POST | `/api/learning` | Tracks / create (`source: playbook:<name>, procedure:<name> or manual, team, questions`) |
+| POST / GET | `/api/learning/{id}/answer` · `/results` | `{answers}` · the team's scores (maintainers) |
+| GET / PUT | `/api/value/baselines` | Baselines / `{items: [{scope, minutes, hourly_cost, remove}]}` (admins) |
+| GET | `/api/value/roi` · `/report` · `/opportunities` | `?days=&team=` · Markdown · repeated human work |
+| GET / POST | `/api/employees/{slug}/golden` | Golden tasks and the last runs / add (`title, body, expected`) |
+| POST / PUT | `/api/employees/{slug}/golden/from-probation` · `/run` · `/mode` | Bring in probation tasks · run now · `{mode: auto, off}` |
+| DELETE | `/api/golden/{id}` | Retire a golden task |
+
+Tasks are created with `mode: copilot` for pair mode (`POST /api/employees/{slug}/tasks`).

@@ -251,6 +251,7 @@ function empOverview(t, e) {
         <label>Prazo (opcional)<input id="as-due" type="datetime-local"></label></div>
       <label class="mt">Projeto (opcional)<select id="as-proj"><option value="">—</option></select></label>
       <label class="row small mt" style="gap:6px"><input type="checkbox" id="as-plan" ${e.plan_policy === 'approve' ? 'checked disabled' : ''}> <span>Quero aprovar o plano antes da execução</span></label>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="as-pair"> <span>Modo par: eu faço; ele orienta, revisa e explica (sem agir)</span></label>
       <details class="mt small"><summary>Mais opções</summary>
         <label class="row small mt" style="gap:6px"><input type="checkbox" id="as-review" ${e.review_policy === 'manager' ? 'checked disabled' : ''}> <span>O resultado passa por revisão antes de concluir</span></label>
         <div class="grid g2"><label>Revisor (e-mail; vazio = o gestor)<input id="as-reviewer" data-noi18n></label>
@@ -268,7 +269,7 @@ function empOverview(t, e) {
     body: { title: $('#as-title').value.trim(), body: $('#as-body').value.trim(), priority: Number($('#as-prio').value),
       due_at: $('#as-due').value ? new Date($('#as-due').value).toISOString() : null, plan_approval: $('#as-plan').checked,
       project: $('#as-proj').value || null, review: $('#as-review').checked, reviewer: $('#as-reviewer').value.trim() || null,
-      blocked_by: $('#as-deps').value.split(/[^0-9]+/).filter(Boolean).map(Number) } })
+      blocked_by: $('#as-deps').value.split(/[^0-9]+/).filter(Boolean).map(Number), mode: ($('#as-pair') || {}).checked ? 'copilot' : 'work' } })
     .then(r => { location.hash = `#/tasks/${r.id}`; }), 'Tarefa entregue');
 }
 
@@ -587,8 +588,9 @@ async function empSettings(t, e) {
     const reason = prompt(`Desligar ${e.name}? Motivo (fica na auditoria):`);
     if (reason !== null) act(ev.target, () => api(`/employees/${e.slug}/status`, { method: 'POST', body: { to: 'offboarded', reason } }).then(route), 'Desligado');
   };
-  t.insertAdjacentHTML('beforeend', '<div id="s-ptools"></div>');
+  t.insertAdjacentHTML('beforeend', '<div id="s-ptools"></div><div id="s-golden"></div>');
   platformToolsCard($('#s-ptools'), e);  // análise, extração, calculadoras… (analyst.js)
+  goldenCard($('#s-golden'), e);  // tarefas de ouro e revisor crítico (analyst.js)
 }
 
 /* ---------- tarefa: linha do tempo ---------- */
