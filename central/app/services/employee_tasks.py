@@ -91,6 +91,12 @@ def task_prompt(task: EmployeeTask, lang: str = "pt", lessons: list | None = Non
         meta.append("This is a probation task: do it as you would in real work." if en else
                     "Esta é uma tarefa do período de experiência: faça como faria no trabalho real.")
     parts.append("\n".join(meta))
+    if (task.mode or "work") == "copilot":  # modo par: a pessoa faz; o funcionário orienta, revisa e explica
+        parts.append("PAIR MODE: the person does the work. Suggest the next step, explain why, check what they did "
+                     "against the procedure and point out problems. Do not take actions that change anything — reading "
+                     "is fine." if en else
+                     "MODO PAR: quem faz é a pessoa. Sugira o próximo passo, explique o porquê, confira o que ela fez contra o "
+                     "procedimento e aponte problemas. Não execute ações que mudam algo — ler e consultar pode.")
     if lessons:  # o que o gestor ensinou (aplicado a partir das sugestões de aprendizado)
         head = "Lessons from your manager (follow them):" if en else "Lições do seu gestor (siga-as):"
         parts.append(head + "\n" + "\n".join(f"- {x['text']}" for x in lessons if x.get("text")))
@@ -176,7 +182,23 @@ def can_decide(db: Session, acc: Access, r: HumanRequest, e: Employee) -> bool:
 def gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, args: dict, rationale: str = "",
          kind: str = "tool") -> dict:
     """allow | wait (pedido de decisão aberto) | deny. kind='ask_human': o agente pergunta algo ao gestor; 'plan': o
-    plano da tarefa (sem alçada; pode exigir aprovação); 'handoff': repasse a um colega (alçada `delegate`)."""
+    plano da tarefa (sem alçada; pode exigir aprovação); 'handoff': repasse a um colega (alçada `delegate`).
+    Com DLP ligado, os argumentos chegam mascarados ([CPF_1]); a decisão e a execução usam os valores reais, e o
+    resultado que volta ao modelo vai mascarado de novo."""
+    from . import governance
+    real = governance.unmask(db, task_id, args or {})
+    out = _gate_any(db, agent, task_id, tool, ref, real, rationale, kind)
+    task = db.get(EmployeeTask, task_id) if task_id else None
+    if task is not None and isinstance(out.get("result"), str):
+        out["result"] = governance.mask(db, task, out["result"])
+        db.commit()
+    if real != (args or {}) and out.get("status") == "allowed" and "result" not in out:
+        out["args"] = real  # o runtime executa a ferramenta dele com os valores reais
+    return out
+
+
+def _gate_any(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, args: dict, rationale: str = "",
+              kind: str = "tool") -> dict:
     if kind == "platform":  # ferramentas da plataforma (análise, extração, calculadoras…): rodam na central
         from . import platform_tools
         return platform_tools.run(db, agent, task_id, tool, args, rationale)
@@ -268,6 +290,12 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
                 "message": f"Pedido de capacidade #{r.id} enviado ao gestor; a tarefa continua quando ele decidir."}
 
     cat = gatemod.classify(db, ref)
+    if task is not None and (task.mode or "work") == "copilot" and cat.action_type != "read":
+        event(db, task, "gate", {"tool": tool, "ref": ref, "action_type": cat.action_type, "mode": "copilot"})
+        db.commit()
+        return {"status": "denied", "action_type": cat.action_type,
+                "message": f"MODO PAR: '{tool}' muda algo ({cat.action_type}) e quem faz é a pessoa. Descreva o que ela deve "
+                           "fazer e por quê."}
     ev = gatemod.evaluate(db, e, cat.action_type, args)
     mode = ev["mode"]
     pol = _plugin_policy(db, agent, ref)  # o mantenedor desligou a ação ou exige aprovação a cada uso
@@ -642,6 +670,7 @@ def sweep(db: Session) -> dict:
 
 # ------------------------------------------------------------------ executor
 _last_budget_sweep = 0.0
+_last_retention = 0.0
 
 
 def tick() -> list[int]:
@@ -651,6 +680,10 @@ def tick() -> list[int]:
     budgets_now = time.monotonic() - _last_budget_sweep > 60  # avisos e paradas de orçamento, mesmo sem chamada nova
     if budgets_now:
         _last_budget_sweep = time.monotonic()
+    global _last_retention
+    retention_now = time.monotonic() - _last_retention > 3600
+    if retention_now:
+        _last_retention = time.monotonic()
     for org_id in tenancy.active_orgs():  # cada empresa com a própria sessão e o próprio contexto (Slack, fuso, avisos)
         with tenancy.using(org_id), SessionLocal() as db:
             sweep(db)
@@ -670,6 +703,10 @@ def tick() -> list[int]:
             playbooks.sweep(db)  # execuções agendadas (@bd 1 08:00…)
             correspondence.sweep(db)  # lembretes sem resposta e promessas vencidas
             meetings.sweep(db)  # briefings antes das reuniões
+            if retention_now:
+                from . import governance, knowledge
+                governance.retention_sweep(db)  # conteúdo vencido pela política de retenção
+                knowledge.sweep(db)  # fontes da base de conhecimento (uma por vez, uma vez por dia)
     with SessionLocal() as db:  # a fila é uma só: reserva entre todas as empresas
         rows = db.execute(select(EmployeeTask.id, EmployeeTask.probation, Employee.status)
                           .join(Employee, Employee.id == EmployeeTask.employee_id)
@@ -721,6 +758,11 @@ def _run_task(task_id: int) -> EmployeeTask | None:
         if len(delivered) != len(messages):  # já no checkpoint: uma rodada que falhe não perde as mensagens
             messages = delivered
             checkpoint(db, task, messages)
+        from . import governance
+        why = governance.llm_blocked(db, task, a)
+        if why:  # dado mais sensível do que a conexão de LLM pode receber
+            return _finish(db, task, "failed", error=why)
+        messages = governance.mask_messages(db, task, messages)  # DLP: o modelo vê [CPF_1], não o CPF
         task.runs += 1
         event(db, task, "run", {"run": task.runs, "env": env})
         slug, limit_min = a.slug, e.task_time_limit_min
@@ -798,6 +840,8 @@ def _run_task(task_id: int) -> EmployeeTask | None:
 
 
 def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", error: str = "") -> EmployeeTask:
+    from . import governance
+    result, error = governance.unmask(db, task.id, result), governance.unmask(db, task.id, error)  # as pessoas veem o real
     task.status, task.finished_at = status, now()
     if status == "done" and task.due_at and _aware(task.finished_at) > _aware(task.due_at):
         event(db, task, "due", {"stage": "late", "due_at": iso(_aware(task.due_at))})

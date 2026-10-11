@@ -28,6 +28,17 @@ All notable changes to this project are documented here. The format follows
 - **Calendar and meetings:** free times and invites through Microsoft 365 or Google Workspace, briefings before
   meetings, minutes from transcripts, actions turned into work and followed up at the next meeting of the series.
 
+- **Knowledge base:** uploads, web pages, Confluence, SharePoint and Google Drive with inherited permissions; search
+  with the requester's access, numbered citations, outdated documents and unanswered questions.
+- **Governed browser:** an isolated Playwright browser for systems without an API, with allowed domains, authority
+  (and a screenshot) on clicks that confirm something, vault secrets in fields, CAPTCHA handed to a person, and
+  versioned procedures that can be saved from a task.
+- **Data governance:** classification with per-LLM-connection limits, DLP masking with real values for execution,
+  outbound blocking, retention with legal hold, data subject requests with four-eyes erasure, and information
+  barriers with audited emergency access.
+- **Document change proposals:** before/after per passage, partial acceptance and edits, DOCX redlines, new versions in
+  Confluence and SharePoint, refused when the document changed meanwhile.
+
 ### Fixed
 - A task blocked by dependencies that had never run lost its own request when it was unblocked.
 

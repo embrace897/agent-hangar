@@ -290,6 +290,12 @@ def can_read_task(acc: Access, t: EmployeeTask, e: Employee) -> bool:
     """Ler uma tarefa (pedido, resultado, conversa): quem pediu, quem responde pelo funcionário, quem é do time dele,
     auditores e admins. Ver o agente no catálogo (visibilidade da empresa) não dá acesso ao trabalho dele."""
     uid = acc.p.user_id
+    from sqlalchemy.orm import object_session
+
+    from . import governance
+    db = object_session(t)
+    if db is not None and governance.barrier_blocks(db, acc, t):  # projeto confidencial: só os membros
+        return False
     if acc.p.is_auditor:
         return True
     if uid and (uid == t.requester_user_id or uid in (e.manager_user_id, e.owner_user_id, *(e.backup_user_ids or []))):
@@ -313,7 +319,9 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
          "quality": t.quality, "quality_note": t.quality_note or "", "quality_by": t.quality_by or "",
          "via": next(iter(t.origin or {}), ""), "project": _project_ref(db, t.project_id),
          "created_at": iso(tasksmod._aware(t.created_at)),
-         "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None}
+         "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None,
+         "classification": t.classification or "internal", "legal_hold": bool(t.legal_hold),
+         "purged": bool(t.purged_at)}
     if detail:
         from ..models import TaskEvent
         d["events"] = [{"kind": ev.kind, "payload": ev.payload, "at": iso(tasksmod._aware(ev.at))}
@@ -367,7 +375,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
                  quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
-                 reports_to=_chief_slug(db, e),
+                 reports_to=_chief_slug(db, e), browser_domains=e.browser_domains or [],
                  external=externalmod.info(e),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,

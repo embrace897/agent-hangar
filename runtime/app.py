@@ -821,6 +821,8 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
                 trace.append({"tool": name, "args": {k: str(v)[:200] for k, v in args.items()}, "result": out[:300]})
                 msgs.append({"role": "tool", "tool_call_id": call["id"], "content": out})
                 return
+            if isinstance(g.get("args"), dict):  # DLP: o modelo viu [CPF_1]; a ferramenta recebe o valor real
+                args = g["args"]
             if "result" in g:  # a própria plataforma executou (plano, repasse): o resultado vem do gate
                 out = str(g["result"])
                 trace.append({"tool": name, "args": {k: str(v)[:200] for k, v in args.items()}, "result": out[:300]})

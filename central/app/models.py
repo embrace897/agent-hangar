@@ -169,6 +169,8 @@ class LlmConnection(OrgScoped, Base):
     # aprovada para receber código (arquivos e saídas de terminal dos devs) quando a empresa usa code_policy=approved
     allow_code: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    max_classification: Mapped[str] = mapped_column(String(12), default="confidential")  # o mais sensível que pode receber
+
 
 
 class Job(OrgScoped, Base):
@@ -239,6 +241,7 @@ class Organization(Base):
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended
     brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # identidade visual dos entregáveis: theme, accent, footer
     calendar: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # dias úteis, expediente e feriados da empresa
+    governance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # DLP e retenção por classificação
 
 
 class Team(Base):
@@ -561,6 +564,9 @@ class Employee(OrgScoped, Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     worker_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o que o worker contou de si (nome, versão)
     disabled_tools: Mapped[list | None] = mapped_column(JSON, nullable=True)  # grupos de ferramentas da plataforma desligados
+    browser_domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # o navegador governado só abre estes domínios
+    critic_mode: Mapped[str] = mapped_column(String(8), default="off")  # off | auto: um revisor crítico lê o memorando
+    regression_mode: Mapped[str] = mapped_column(String(8), default="auto")  # auto: mudança no cargo roda as tarefas de ouro
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -651,6 +657,11 @@ class EmployeeTask(OrgScoped, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    classification: Mapped[str] = mapped_column(String(12), default="internal")  # public | internal | confidential | restricted
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # conteúdo apagado pela retenção
+    mode: Mapped[str] = mapped_column(String(8), default="work")  # work | copilot (modo par: sugere e explica, não age)
+
 
 
 class TaskEvent(OrgScoped, Base):
@@ -849,6 +860,10 @@ class Project(Base):
     goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | archived
+    classification: Mapped[str] = mapped_column(String(12), default="internal")  # public | internal | confidential | restricted
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)  # a retenção não apaga nada deste projeto
+    confidential: Mapped[bool] = mapped_column(Boolean, default=False)  # barreira de informação: só os membros
+    members: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails de quem passa a barreira
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -941,6 +956,8 @@ class TaskFile(OrgScoped, Base):
     uploaded_by: Mapped[str] = mapped_column(String(254), default="")
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    classification: Mapped[str] = mapped_column(String(12), default="internal")
+
 
 
 class EmployeeRevision(OrgScoped, Base):
@@ -1300,3 +1317,216 @@ class Meeting(OrgScoped, Base):
     status: Mapped[str] = mapped_column(String(12), default="scheduled")  # scheduled | held | minutes
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# ------------------------------------------------------------------ fase G: conhecimento, navegador e governança de dados
+class KnowledgeSource(OrgScoped, Base):
+    """De onde vem o conhecimento da empresa (arquivos enviados, páginas, Confluence, SharePoint, Google Drive), com a
+    regra de acesso: herdar as permissões do documento original, ou valer para um time ou a empresa."""
+    __tablename__ = "knowledge_sources"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_knowledgesource_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(12), default="upload")  # upload | url | confluence | sharepoint | gdrive
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o que cada tipo precisa (segredos criptografados)
+    acl_mode: Mapped[str] = mapped_column(String(8), default="team")  # inherit | team | org
+    team_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # recebe as lacunas e os vencidos
+    review_days: Mapped[int] = mapped_column(Integer, default=365)  # documento sem revisão há mais que isso: vencido
+    classification: Mapped[str] = mapped_column(String(12), default="internal")
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class KnowledgeDoc(OrgScoped, Base):
+    __tablename__ = "knowledge_docs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("knowledge_sources.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str] = mapped_column(String(300), default="", index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    url: Mapped[str] = mapped_column(String(1000), default="")
+    acl: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ["org"] | ["team:3", "user:ana@x.com", "group:Financeiro"]
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_by: Mapped[str] = mapped_column(String(10), default="")  # AAAA-MM-DD
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # versão do Confluence, id do arquivo no SharePoint…
+
+
+class KnowledgeChunk(OrgScoped, Base):
+    __tablename__ = "knowledge_chunks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    doc_id: Mapped[int] = mapped_column(ForeignKey("knowledge_docs.id", ondelete="CASCADE"), index=True)
+    idx: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text, default="")
+    norm: Mapped[str] = mapped_column(Text, default="")  # minúsculo e sem acento: a busca é por termos
+
+
+class KnowledgeGap(OrgScoped, Base):
+    """Pergunta que a base não respondeu: vai para quem cuida do conteúdo."""
+    __tablename__ = "knowledge_gaps"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    query: Mapped[str] = mapped_column(String(500))
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    asked_by: Mapped[str] = mapped_column(String(254), default="")
+    best_score: Mapped[float] = mapped_column(Float, default=0)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Procedure(OrgScoped, Base):
+    """Passo a passo no navegador para um sistema sem API (portal de banco, site do governo, ERP antigo)."""
+    __tablename__ = "procedures"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_procedure_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_url: Mapped[str] = mapped_column(String(1000), default="")
+    domains: Mapped[list] = mapped_column(JSON, default=list)  # o navegador só abre páginas destes domínios
+    steps: Mapped[list] = mapped_column(JSON, default=list)  # [{action, target, value, note, commit}]
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DlpToken(OrgScoped, Base):
+    """O valor real de um dado mascarado ([CPF_1]) numa tarefa: o modelo vê o marcador; quem executa vê o valor."""
+    __tablename__ = "dlp_tokens"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(40))
+    value: Mapped[str] = mapped_column(Text)  # criptografado
+
+
+class SubjectRequest(OrgScoped, Base):
+    """Pedido do titular (LGPD): onde estão os dados de uma pessoa e, aprovado por outra pessoa, a remoção."""
+    __tablename__ = "subject_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject: Mapped[str] = mapped_column(String(300))  # CPF, e-mail ou nome
+    kind: Mapped[str] = mapped_column(String(8), default="access")  # access | erase
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | done | rejected
+    report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(254), default="")
+    approved_by: Mapped[str] = mapped_column(String(254), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ------------------------------------------------------------------ fase H: julgamento, vigias, aprendizado e valor
+class DecisionMemo(OrgScoped, Base):
+    """Memorando de decisão: opções, critérios com peso, notas, recomendação com confiança e riscos — e, depois, o que
+    a pessoa decidiu e como foi (para medir se a recomendação era boa)."""
+    __tablename__ = "decision_memos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    question: Mapped[str] = mapped_column(Text, default="")
+    options: Mapped[list] = mapped_column(JSON, default=list)  # [{name, summary, pros, cons}]
+    criteria: Mapped[list] = mapped_column(JSON, default=list)  # [{name, weight}]
+    scores: Mapped[dict] = mapped_column(JSON, default=dict)  # {opção: {critério: nota 0-10}}
+    totals: Mapped[dict] = mapped_column(JSON, default=dict)
+    recommendation: Mapped[str] = mapped_column(String(200), default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    risks: Mapped[list] = mapped_column(JSON, default=list)
+    citations: Mapped[list] = mapped_column(JSON, default=list)
+    critic: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {notes, severity, by}
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    decided_option: Mapped[str] = mapped_column(String(200), default="")
+    decided_by: Mapped[str] = mapped_column(String(254), default="")
+    decided_note: Mapped[str] = mapped_column(Text, default="")
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    follow_up_item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str] = mapped_column(String(8), default="")  # good | mixed | bad
+    outcome_note: Mapped[str] = mapped_column(Text, default="")
+    outcome_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Watcher(OrgScoped, Base):
+    """Vigia: olha uma fonte de tempos em tempos e só age quando algo muda ou cruza um limiar."""
+    __tablename__ = "watchers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # quem age quando dispara
+    source: Mapped[dict] = mapped_column(JSON, default=dict)  # {type: url | json | knowledge | metric, …}
+    condition: Mapped[dict] = mapped_column(JSON, default=dict)  # {type: changed | threshold | contains, …}
+    action: Mapped[dict] = mapped_column(JSON, default=dict)  # {type: task | notify | log, title, body}
+    schedule: Mapped[str] = mapped_column(String(60), default="0 * * * *")
+    state: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {hash, value, active}
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_change: Mapped[str] = mapped_column(Text, default="")
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    fired: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LearningTrack(OrgScoped, Base):
+    """Trilha de aprendizado: perguntas de verificação tiradas de um playbook ou procedimento."""
+    __tablename__ = "learning_tracks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    source: Mapped[str] = mapped_column(String(120), default="")  # playbook:<nome> | procedure:<nome> | manual
+    questions: Mapped[list] = mapped_column(JSON, default=list)  # [{q, options, answer, explain}]
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LearningAttempt(OrgScoped, Base):
+    __tablename__ = "learning_attempts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey("learning_tracks.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    answers: Mapped[list] = mapped_column(JSON, default=list)
+    score: Mapped[float] = mapped_column(Float, default=0)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ValueBaseline(OrgScoped, Base):
+    """Quanto tempo uma pessoa levaria (e quanto custa a hora) para um tipo de trabalho: a base do ROI."""
+    __tablename__ = "value_baselines"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(160), index=True)  # default | employee:<slug> | queue:<slug>:<categoria>
+    minutes: Mapped[float] = mapped_column(Float, default=30)
+    hourly_cost: Mapped[float] = mapped_column(Float, default=0)
+    updated_by: Mapped[str] = mapped_column(String(254), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GoldenTask(OrgScoped, Base):
+    """Tarefa de ouro: um pedido com a resposta esperada, que o funcionário precisa continuar acertando."""
+    __tablename__ = "golden_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text, default="")
+    expected: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RegressionRun(OrgScoped, Base):
+    """As tarefas de ouro rodadas depois de uma mudança no cargo, com a nota de cada uma e a comparação com a anterior."""
+    __tablename__ = "regression_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    trigger: Mapped[str] = mapped_column(String(200), default="manual")
+    revision: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a versão do cargo testada
+    status: Mapped[str] = mapped_column(String(10), default="running")  # running | passed | worse | kept | reverted
+    results: Mapped[list] = mapped_column(JSON, default=list)  # [{golden, task, score, before}]
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

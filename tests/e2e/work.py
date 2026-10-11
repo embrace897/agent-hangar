@@ -241,6 +241,59 @@ def phase_f(dev, mgr, mgr_email, team, slug):
           d and d["actions"])
 
 
+def phase_g(dev, mgr, mgr_email, team, slug):
+    import base64
+    import json
+    # base de conhecimento: o funcionário busca com o acesso de quem pediu e cita a fonte
+    src = ok(mgr.put("/api/knowledge/sources", json={"name": f"pol_{RUN}", "kind": "upload", "teams": [team]}))["name"]
+    ok(mgr.post(f"/api/knowledge/sources/{src}/documents", json={"title": f"Reembolso {RUN}",
+                                                                 "text": "Hospedagem nacional até R$ 400 por noite."}))
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Limite", "body": 'use search_knowledge {"query": "hospedagem nacional"}'}))["id"]
+    t = wf.until(dev, tid, ("done", "failed"))
+    check("conhecimento: busca com as permissões e cita", t and "R$ 400" in (t["result"] or "") and '"n": 1' in t["result"], t and t["result"][:200])
+    # alteração de documento: proposta, aceite e nova versão
+    body = "use propose_document_change " + json.dumps({"document": "file:politica.txt", "summary": "prazo",
+                                                        "edits": [{"find": "30 dias", "replace": "45 dias"}]})
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Política", "body": body, "files": [
+        {"name": "politica.txt", "content_type": "text/plain", "content_base64": base64.b64encode(b"Prazo: 30 dias.\n\nForo: SP.").decode()}]}))["id"]
+    req = wf.wait(lambda: next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "doc_change" and d["task"]["id"] == tid), None))
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve"}))
+    wf.until(dev, tid, ("done", "failed"))
+    f = next(x for x in ok(dev.get(f"/api/tasks/{tid}/files")) if x["name"] == "politica.txt")
+    check("documento: diff aprovado vira versão nova", f["version"] == 2 and "45 dias" in dev.get(f"/api/files/{f['id']}").text, f["version"])
+    # DLP: o modelo vê [CPF_1]; o resultado guardado mostra o CPF
+    ok(admin.put("/api/governance", json={"dlp": {"mask": ["cpf"]}}))
+    try:
+        tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Cadastro", "body": "cliente CPF 529.982.247-25"}))["id"]
+        t = wf.until(dev, tid, ("done", "failed"))
+        check("DLP: o modelo não vê o CPF, as pessoas veem", t and "[CPF_1]" not in t["result"] and "529.982.247-25" in t["result"], t and t["result"][:200])
+    finally:
+        ok(admin.put("/api/governance", json={"dlp": {"mask": []}}))
+    # navegador governado (com o perfil browser no ar): procedimento, segredo do cofre e pagamento com duas aprovações
+    if ok(dev.get("/api/procedures")).get("ready"):
+        ok(dev.put(f"/api/employees/{slug}/browser-domains", json={"domains": ["e2e-echo"]}))
+        ok(admin.put("/api/secrets", json={"name": f"banco-{RUN}", "value": "s3nh4-e2e"}))
+        LEFTOVERS.append(("DELETE", f"/api/secrets/{next(x['id'] for x in ok(admin.get('/api/secrets'))['secrets'] if x['name'] == f'banco-{RUN}')}"))
+        pr = ok(dev.put("/api/procedures", json={"name": f"banco_{RUN}", "team": team, "domains": ["e2e-echo"], "steps": [
+            {"action": "open", "target": "http://e2e-echo:8080/portal"}, {"action": "fill", "target": "Usuário", "value": "{{usuario}}"},
+            {"action": "fill", "target": "Senha", "value": f"secret://banco-{RUN}"}, {"action": "click", "target": "Entrar"}]}))
+        tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Pagar", "body": "use run_procedure " + json.dumps(
+            {"name": pr["name"], "values": {"usuario": "ana"}})}))["id"]
+        t = wf.until(dev, tid, ("done", "failed"), 300)
+        check("navegador: procedimento com senha do cofre", t and "Bem-vindo, ana" in (t["result"] or "") and "s3nh4" not in t["result"],
+              t and t["result"][:300])
+        ok(dev.post(f"/api/tasks/{tid}/messages", json={"body": 'use browser_click {"target": "Pagar boleto"}'}))
+        req = wf.wait(lambda: next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "approval" and d["task"]["id"] == tid), None))
+        ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve"}))
+        if ok(mgr.get("/api/decisions")) and any(d["id"] == req["id"] for d in ok(admin.get("/api/decisions"))):
+            ok(admin.post(f"/api/decisions/{req['id']}", json={"decision": "approve"}))
+        t = wf.wait(lambda: (lambda x: x if "Pagamento confirmado" in (x["result"] or "") else None)(wf.task(dev, tid)), 300)
+        check("navegador: pagamento só depois da alçada (captura na decisão)", t is not None and req["action_type"] == "financial"
+              and "Tela: tela-" in (req["rationale"] or ""), (req["action_type"], t and t["result"][:200]))
+    else:
+        print("   (navegador desligado: perfil browser não testado)", flush=True)
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -254,6 +307,7 @@ def main():
     phase_d(dev, mgr, slug)
     phase_e(dev, mgr, team, slug)
     phase_f(dev, mgr, mgr_email, team, slug)
+    phase_g(dev, mgr, mgr_email, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

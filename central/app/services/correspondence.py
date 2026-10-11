@@ -233,6 +233,8 @@ def send_external_message(ctx: Ctx, args: dict):
         subject, body = str(args.get("subject") or ""), str(args.get("body") or "")
     if not body.strip():
         raise PlatformError("mande o texto (body) ou um modelo aprovado (template)")
+    from . import governance
+    governance.check_outbound(db, f"{subject}\n{body}")  # DLP: o que a empresa não deixa sair numa mensagem
     th = db.scalar(select(ExternalThread).where(ExternalThread.task_id == ctx.task.id, ExternalThread.contact == to,
                                                 ExternalThread.channel == channel))
     # a alçada decide sobre o envio exato (destinatário, texto e se veio de um modelo aprovado)

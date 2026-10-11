@@ -15,7 +15,13 @@ async function platformToolsCard(box, e) {
     ${groups.map(g => `<label class="row small mt" style="gap:8px"><input type="checkbox" class="pt-g" value="${esc(g.group)}" ${g.enabled ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}>
       <span><b>${esc(g.title)}</b> ${g.available ? '' : `<span class="pill">${window.t('indisponível na instalação')}</span>`}
       <span class="mute" data-noi18n>${esc(g.tools.join(', '))}</span></span></label>`).join('')}
-    ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-save">Salvar ferramentas</button></div>' : ''}</div>`;
+    ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-save">Salvar ferramentas</button></div>' : ''}
+    ${groups.some(g => g.group === 'browser') ? `<label class="mt">Domínios que o navegador pode abrir (separados por vírgula)<input id="pt-doms" data-noi18n
+      value="${esc((e.browser_domains || []).join(', '))}" ${e.can_manage ? '' : 'disabled'} placeholder="banco.com.br, gov.br"></label>
+      ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-doms-save">Salvar domínios</button></div>' : ''}` : ''}</div>`;
+  const ds = $('#pt-doms-save', box);
+  if (ds) ds.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/browser-domains`, { method: 'PUT',
+    body: { domains: $('#pt-doms', box).value.split(',').map(x => x.trim()).filter(Boolean) } }), 'Domínios salvos');
   const save = $('#pt-save', box);
   if (save) save.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/platform-tools`, { method: 'PUT',
     body: { disabled: [...box.querySelectorAll('.pt-g')].filter(c => !c.checked).map(c => c.value) } }).then(() => platformToolsCard(box, e)), 'Ferramentas salvas');
@@ -26,6 +32,7 @@ async function taskExtras(x, id) {
   const box = document.createElement('div');
   main.append(box);
   taskConversations(id, box);  // conversas com gente de fora (fase F)
+  taskGovernance(x, id, box);  // classificação, retenção legal e o caminho do navegador (fase G)
   const ex = await api(`/tasks/${id}/extractions`).catch(() => []);
   if (ex.length) box.insertAdjacentHTML('beforeend', `<div class="card mt"><h2>Campos extraídos</h2>
     ${ex.map(x2 => `<div class="mt"><b data-noi18n>${esc(x2.file)}</b> <span class="mute small">v${x2.file_version} · ${esc(x2.schema)}</span>
@@ -521,4 +528,164 @@ function notifyExtras(t, n, put) {
   $('#mt-token').onclick = ev => act(ev.target, async () => { const r = await api('/meetings-token', { method: 'POST' });
     $('#mt-token-out').innerHTML = `<div class="card warn-card mt"><b>${window.t('Copie agora: o token não aparece de novo.')}</b><div class="mt">${copyable(r.token)}</div>
       <div class="small mt"><code class="inline" data-noi18n>POST ${esc(r.url)} {"meeting_id": …, "transcript": "…"}</code></div></div>`; });
+}
+
+/* ================================================================== fase G: conhecimento, navegador, governança */
+const KS_KIND = { upload: 'arquivos enviados', url: 'páginas (URL)', confluence: 'Confluence', sharepoint: 'SharePoint', gdrive: 'Google Drive' };
+const CLS = ['public', 'internal', 'confidential', 'restricted'];
+const CLS_LABEL = { public: 'pública', internal: 'interna', confidential: 'confidencial', restricted: 'restrita' };
+
+function citations(list) {
+  return list.length ? list.map(h => `<div class="li"><b>[${h.n}]</b> ${h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener" data-noi18n>${esc(h.title)}</a>` : `<b data-noi18n>${esc(h.title)}</b>`}
+    <span class="mute small">${h.updated ? esc(h.updated) : ''}</span>${h.stale ? ` <span class="pill warn">${window.t('vencido')}</span>` : ''}
+    <div class="small" data-noi18n style="white-space:pre-wrap">${esc(h.snippet)}</div></div>`).join('') : `<div class="mute small">${window.t('Nada que você possa ler cobre isso.')}</div>`;
+}
+
+async function knowledgePage() {
+  const [sources, teams] = await Promise.all([api('/knowledge/sources'), api('/teams').catch(() => [])]);
+  const gaps = await api('/knowledge/gaps').catch(() => null), stale = await api('/knowledge/stale').catch(() => []);
+  main.innerHTML = `<h1>Base de conhecimento</h1><div class="sub">Políticas, procedimentos e histórico da empresa, com as permissões de cada documento: os Digital employees buscam com o
+    acesso de quem pediu a tarefa e citam a fonte.</div>
+    <div class="card"><div class="row" style="gap:6px"><input id="kq" placeholder="Pergunte à base (ex.: limite de hospedagem)"><button id="kq-go">Buscar</button></div><div id="kq-out" class="mt"></div></div>
+    <div class="card mt"><h2>Fontes (${sources.length})</h2>${sources.length ? `<table class="small"><tr><th>Fonte</th><th>Tipo</th><th>Acesso</th><th>Documentos</th><th>Sincronizada</th><th></th></tr>
+      ${sources.map(s => `<tr data-n="${esc(s.name)}"><td><b data-noi18n>${esc(s.title)}</b><div class="mute" data-noi18n>${esc(s.name)}</div></td><td>${esc(window.t(KS_KIND[s.kind] || s.kind))}</td>
+        <td>${esc(window.t({ inherit: 'herda do original', team: 'times da fonte', org: 'empresa toda' }[s.acl_mode]))}</td><td>${s.docs}${s.stale ? ` <span class="pill warn">${s.stale} ${window.t('vencidos')}</span>` : ''}</td>
+        <td>${s.last_sync_at ? ago(s.last_sync_at) : '—'}${s.last_error ? ` <span class="pill bad" data-noi18n>${esc(s.last_error)}</span>` : ''}</td>
+        <td>${s.can_manage ? (s.kind === 'upload' ? '<button class="ghost small ks-up">Enviar documento</button>' : '<button class="ghost small ks-sync">Sincronizar</button>') : ''}</td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhuma fonte ainda.</div>'}<div id="ks-up-box"></div></div>
+    <div class="card mt"><h2>Nova fonte</h2><div class="grid g2"><label>Nome<input id="ks-name" data-noi18n></label>
+      <label>Tipo<select id="ks-kind">${Object.entries(KS_KIND).map(([k, v]) => `<option value="${k}">${window.t(v)}</option>`).join('')}</select></label>
+      <label>Acesso<select id="ks-acl"><option value="team">times da fonte</option><option value="inherit">herdar as permissões do original</option><option value="org">empresa toda (admin)</option></select></label>
+      <label>Times<select id="ks-teams" multiple size="3">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label>
+      <label>Revisão (dias até ficar vencido)<input id="ks-rev" type="number" value="365"></label>
+      <label>Classificação<select id="ks-cls">${CLS.map(c => `<option value="${c}" ${c === 'internal' ? 'selected' : ''}>${window.t(CLS_LABEL[c])}</option>`).join('')}</select></label></div>
+      <label class="mt">Configuração (JSON) — url: {"urls": […]}; confluence: {"base_url", "space", "email", "api_token"}; sharepoint: {"drive_id", "folder"}; gdrive: {"folder_id", "subject"}
+        <textarea id="ks-cfg" rows="3" class="code" data-noi18n>{}</textarea></label>
+      <div class="row mt"><button id="ks-save">Criar fonte</button></div></div>
+    ${gaps ? `<div class="grid g2 mt"><div class="card"><h2>Lacunas (${gaps.length})</h2><div class="mute small">Perguntas que a base não respondeu bem.</div>
+      ${gaps.slice(0, 30).map(g => `<div class="li small row between" data-g="${g.id}"><span data-noi18n>${esc(g.query)}</span><button class="ghost small kg-ok">Resolvida</button></div>`).join('') || '<div class="mute small">—</div>'}</div>
+      <div class="card"><h2>Documentos vencidos (${stale.length})</h2>${stale.slice(0, 30).map(d => `<div class="li small"><span data-noi18n>${esc(d.title)}</span> <span class="mute">${esc(d.review_by)}</span></div>`).join('') || '<div class="mute small">—</div>'}</div></div>` : ''}`;
+  const search = () => act($('#kq-go'), async () => { $('#kq-out').innerHTML = citations(await api('/knowledge/search?q=' + encodeURIComponent($('#kq').value))); });
+  $('#kq-go').onclick = search;
+  $('#kq').onkeydown = e => { if (e.key === 'Enter') search(); };
+  $('#ks-save').onclick = ev => { let cfg; try { cfg = JSON.parse($('#ks-cfg').value || '{}'); } catch { return toast(window.t('Configuração: JSON inválido'), true); }
+    act(ev.target, () => api('/knowledge/sources', { method: 'PUT', body: { name: $('#ks-name').value.trim(), kind: $('#ks-kind').value, acl_mode: $('#ks-acl').value,
+      teams: [...$('#ks-teams').selectedOptions].map(o => o.value), review_days: Number($('#ks-rev').value), classification: $('#ks-cls').value, config: cfg } }).then(knowledgePage), 'Fonte criada'); };
+  main.querySelectorAll('tr[data-n]').forEach(tr => {
+    const n = tr.dataset.n, sy = $('.ks-sync', tr), up = $('.ks-up', tr);
+    if (sy) sy.onclick = ev => act(ev.target, () => api(`/knowledge/sources/${n}/sync`, { method: 'POST' }).then(r => { toast(`${r.docs} ${window.t('documento(s)')}`); return knowledgePage(); }));
+    if (up) up.onclick = () => { $('#ks-up-box').innerHTML = `<div class="card mt"><h3>Enviar documento</h3><label>Título<input id="kd-title"></label>
+      <label class="mt">Texto<textarea id="kd-text" rows="4"></textarea></label><label class="mt">ou arquivo (DOCX, TXT, MD, HTML; PDF com o Data Studio)<input id="kd-file" type="file"></label>
+      <div class="row mt"><button id="kd-go">Enviar</button></div></div>`;
+      $('#kd-go').onclick = ev => act(ev.target, async () => { const f = $('#kd-file').files[0]; const body = { title: $('#kd-title').value.trim() || (f ? f.name : ''), text: $('#kd-text').value };
+        if (f) { body.file_name = f.name; body.content_type = f.type; body.content_base64 = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.readAsDataURL(f); }); }
+        await api(`/knowledge/sources/${n}/documents`, { method: 'POST', body }); return knowledgePage(); }, 'Documento enviado'); };
+  });
+  main.querySelectorAll('[data-g] .kg-ok').forEach(b => b.onclick = ev => act(ev.target, () => api(`/knowledge/gaps/${b.closest('[data-g]').dataset.g}/resolve`, { method: 'POST' }).then(knowledgePage)));
+}
+
+/* ---------- procedimentos do navegador ---------- */
+async function proceduresPage() {
+  const [d, teams] = await Promise.all([api('/procedures'), api('/teams').catch(() => [])]);
+  const toLines = st => st.map(s => [s.action, s.target, s.value, s.commit ? 'commit' : ''].join(' | ')).join('\n');
+  main.innerHTML = `<h1>Procedimentos do navegador</h1><div class="sub">Passo a passo para sistemas sem API — portal do banco, site do governo, ERP antigo. O Digital employee executa no
+    navegador governado (só nos domínios do procedimento); cliques que confirmam algo passam pela alçada, e senhas vêm do cofre (secret://nome).</div>
+    <div class="small">${window.t('Navegador')}: ${d.ready ? '<span class="pill ok">no ar</span>' : `<span class="pill warn">${window.t('desligado')}</span> <span class="mute">docker compose --profile browser up -d</span>`}</div>
+    <div class="card mt">${d.procedures.length ? `<table class="small"><tr><th>Procedimento</th><th>Domínios</th><th>Passos</th><th>Variáveis</th><th></th></tr>
+      ${d.procedures.map(p => `<tr data-n="${esc(p.name)}"><td><b data-noi18n>${esc(p.title)}</b> <span class="mute">v${p.version}</span></td><td data-noi18n>${esc(p.domains.join(', '))}</td>
+        <td>${p.steps.length}</td><td data-noi18n>${esc(p.vars.join(', ') || '—')}</td><td><button class="ghost small pr-edit">Editar</button></td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum procedimento ainda. Na página de uma tarefa que usou o navegador, “Salvar o caminho como procedimento”.</div>'}</div>
+    <div class="card mt"><h2 id="pr-h">Novo procedimento</h2><div class="grid g2"><label>Nome<input id="pr-name" data-noi18n></label><label>Título<input id="pr-title"></label>
+      <label>Domínios (separados por vírgula)<input id="pr-doms" data-noi18n placeholder="banco.com.br"></label>
+      <label>Time<select id="pr-team">${teams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></label></div>
+      <label class="mt">Passos — um por linha: ação (open, fill, select, click, read, screenshot) | alvo (URL, rótulo ou seletor) | valor ({{variável}} ou secret://nome) | commit
+        <textarea id="pr-steps" rows="6" class="code" data-noi18n placeholder="open | https://portal.banco.com.br/login&#10;fill | Usuário | {{usuario}}&#10;fill | Senha | secret://banco-senha&#10;click | Entrar&#10;click | Gerar extrato | | commit"></textarea></label>
+      <div class="row mt"><button id="pr-save">Salvar</button></div></div>`;
+  main.querySelectorAll('tr[data-n]').forEach(tr => { const p = d.procedures.find(x => x.name === tr.dataset.n);
+    $('.pr-edit', tr).onclick = () => { $('#pr-h').textContent = window.t('Editar procedimento'); $('#pr-name').value = p.name; $('#pr-title').value = p.title;
+      $('#pr-doms').value = p.domains.join(', '); $('#pr-steps').value = toLines(p.steps); $('#pr-name').scrollIntoView(); }; });
+  $('#pr-save').onclick = ev => act(ev.target, () => api('/procedures', { method: 'PUT', body: { name: $('#pr-name').value.trim(), title: $('#pr-title').value.trim(), team: $('#pr-team').value,
+    domains: $('#pr-doms').value.split(',').map(x => x.trim()).filter(Boolean),
+    steps: lines($('#pr-steps').value).map(l => { const [action, target, value, commit] = l.split('|').map(x => (x || '').trim()); return { action, target, value, commit: commit === 'commit' }; }) } })
+    .then(proceduresPage), 'Procedimento salvo');
+}
+
+/* ---------- governança de dados ---------- */
+async function governancePage() {
+  const [g, reqs, projects] = await Promise.all([api('/governance'), api('/subject-requests').catch(() => []), api('/projects').catch(() => [])]);
+  const DET = { cpf: 'CPF', cnpj: 'CNPJ', card: 'cartão', email: 'e-mail', phone: 'telefone', health: 'CID (saúde)' };
+  main.innerHTML = `<h1>Governança de dados</h1><div class="sub">Classificação, mascaramento (DLP), retenção, pedidos do titular (LGPD) e barreiras de informação.</div>
+    <div class="grid g2"><div class="card"><h2>DLP</h2><div class="mute small">Mascarar no que vai ao modelo (ele vê [CPF_1]; quem executa e as pessoas veem o valor real) e bloquear nas mensagens para fora.</div>
+      <table class="small mt"><tr><th>Dado</th><th>Mascarar</th><th>Bloquear para fora</th></tr>${g.detectors.map(d => `<tr><td>${esc(window.t(DET[d] || d))}</td>
+        <td><input type="checkbox" class="dl-m" value="${d}" ${g.dlp.mask.includes(d) ? 'checked' : ''}></td><td><input type="checkbox" class="dl-b" value="${d}" ${g.dlp.block_outbound.includes(d) ? 'checked' : ''}></td></tr>`).join('')}</table>
+      <h3 class="mt">Retenção (dias depois de encerrada; vazio = não apaga)</h3><div class="grid g2">${g.levels.map(l => `<label>${window.t(CLS_LABEL[l])}<input class="rt-d" data-l="${l}" type="number" min="30" value="${g.retention[l] ?? ''}"></label>`).join('')}</div>
+      <div class="row mt"><button id="gv-save">Salvar política</button></div></div>
+    <div class="card"><h2>Modelos e classificação</h2><div class="mute small">O mais sensível que cada conexão de LLM pode receber; uma tarefa acima disso não vai para aquele modelo.</div>
+      ${g.llm.map(c => `<div class="row between li small" data-c="${esc(c.name)}"><span><b data-noi18n>${esc(c.name)}</b> <span class="mute" data-noi18n>${esc(c.model)}</span></span>
+        <select class="gl-c">${CLS.map(x => `<option value="${x}" ${x === c.max_classification ? 'selected' : ''}>${window.t(CLS_LABEL[x])}</option>`).join('')}</select></div>`).join('') || '<div class="mute small">—</div>'}</div></div>
+    <div class="grid g2 mt"><div class="card"><h2>Pedidos do titular (LGPD)</h2><div class="grid g2"><label>CPF, e-mail ou nome<input id="sr-s" data-noi18n></label>
+      <label>Tipo<select id="sr-k"><option value="access">localizar</option><option value="erase">remover (outro admin aprova)</option></select></label></div>
+      <div class="row mt"><button id="sr-go">Abrir pedido</button></div>
+      ${reqs.map(r => `<div class="li small" data-r="${r.id}"><b data-noi18n>${esc(r.subject)}</b> · ${esc(window.t(r.kind === 'erase' ? 'remoção' : 'localização'))} · <span class="pill">${esc(window.t(r.status))}</span>
+        · ${r.report ? r.report.total : 0} ${window.t('ocorrência(s)')} <span class="mute" data-noi18n>${esc(r.requested_by)}</span>
+        ${r.kind === 'erase' && r.status === 'open' ? '<button class="ghost small sr-ok">Aprovar a remoção</button><button class="ghost small danger sr-no">Recusar</button>' : ''}</div>`).join('')}</div>
+    <div class="card"><h2>Projetos</h2><div class="mute small">Projeto confidencial: só os membros (e quem pediu a tarefa) leem — admins e auditores só com acesso de emergência, justificado e avisado ao dono.</div>
+      <label class="mt">Projeto<select id="pg-p">${projects.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join('')}</select></label>
+      <div class="grid g2 mt"><label>Classificação<select id="pg-c"><option value="">—</option>${CLS.map(c => `<option value="${c}">${window.t(CLS_LABEL[c])}</option>`).join('')}</select></label>
+        <label class="row small" style="gap:6px"><input type="checkbox" id="pg-conf"> ${window.t('Confidencial (barreira de informação)')}</label>
+        <label class="row small" style="gap:6px"><input type="checkbox" id="pg-hold"> ${window.t('Retenção legal')}</label>
+        <label>Membros (e-mails)<input id="pg-mem" data-noi18n></label></div>
+      <div class="row mt" style="gap:6px"><button class="ghost" id="pg-save">Salvar</button><input id="bg-why" placeholder="motivo do acesso de emergência"><button class="ghost danger" id="bg-go">Acesso de emergência</button></div></div></div>`;
+  $('#gv-save').onclick = ev => act(ev.target, () => api('/governance', { method: 'PUT', body: {
+    dlp: { mask: [...main.querySelectorAll('.dl-m')].filter(x => x.checked).map(x => x.value), block_outbound: [...main.querySelectorAll('.dl-b')].filter(x => x.checked).map(x => x.value) },
+    retention: Object.fromEntries([...main.querySelectorAll('.rt-d')].map(i => [i.dataset.l, i.value ? Number(i.value) : null])) } }).then(governancePage), 'Política salva');
+  main.querySelectorAll('[data-c] .gl-c').forEach(s => s.onchange = () => act(s, () => api(`/governance/llm/${encodeURIComponent(s.closest('[data-c]').dataset.c)}`, { method: 'PUT', body: { max_classification: s.value } }), 'Salvo'));
+  $('#sr-go').onclick = ev => act(ev.target, () => api('/subject-requests', { method: 'POST', body: { subject: $('#sr-s').value.trim(), kind: $('#sr-k').value } }).then(governancePage), 'Pedido aberto');
+  main.querySelectorAll('[data-r]').forEach(el => { const id = el.dataset.r, ok = $('.sr-ok', el), no = $('.sr-no', el);
+    if (ok) ok.onclick = ev => confirm(window.t('Remover os dados desta pessoa? Não dá para desfazer.')) && act(ev.target, () => api(`/subject-requests/${id}/erase`, { method: 'POST', body: { approve: true } }).then(governancePage));
+    if (no) no.onclick = ev => act(ev.target, () => api(`/subject-requests/${id}/erase`, { method: 'POST', body: { approve: false } }).then(governancePage)); });
+  $('#pg-save').onclick = ev => act(ev.target, () => api(`/projects/${$('#pg-p').value}/governance`, { method: 'PUT', body: { classification: $('#pg-c').value || null,
+    confidential: $('#pg-conf').checked, legal_hold: ME.is_admin ? $('#pg-hold').checked : null, members: $('#pg-mem').value.split(',').map(x => x.trim()).filter(Boolean) } }), 'Projeto salvo');
+  $('#bg-go').onclick = ev => act(ev.target, () => api(`/projects/${$('#pg-p').value}/break-glass`, { method: 'POST', body: { reason: $('#bg-why').value } })
+    .then(r => toast(`${window.t('Acesso liberado até')} ${dtLocal(r.until)}`)));
+}
+
+/* ---------- alteração de documento (decisão) ---------- */
+DECISION_KINDS.doc_change = {
+  render(d) {
+    const p = d.payload || {}, hs = p.hunks || [];
+    return {
+      body: `<div class="mt"><b>Alteração proposta</b> em <code class="inline" data-noi18n>${esc(p.document || '')}</code> — <span data-noi18n>${esc(p.summary || '')}</span></div>
+        <div class="small mute">${window.t('Marque os trechos que aceita; você pode ajustar o texto antes de aplicar.')}</div>
+        ${hs.map(h => `<div class="card mt dch" data-h="${h.id}"><label class="row small" style="gap:6px"><input type="checkbox" class="dch-ok" checked> <b>${window.t('Trecho')} ${h.id}</b></label>
+          <div class="grid g2 mt"><div><div class="mute small">${window.t('Antes')}</div><div class="small" data-noi18n style="white-space:pre-wrap;background:color-mix(in srgb,var(--stop,#c33) 10%,transparent);padding:6px">${esc(h.before.join('\n\n')) || '—'}</div></div>
+            <div><div class="mute small">${window.t('Depois')}</div><textarea class="dch-after small" rows="${Math.max(2, h.after.join('\n\n').length / 70 | 0)}" data-noi18n>${esc(h.after.join('\n\n'))}</textarea></div></div></div>`).join('')}
+        <input class="dc-reason mt" placeholder="Comentário (para recusar, diga o porquê)">`,
+      btns: '<button class="dch-go">Aplicar os trechos marcados</button><button class="ghost danger dch-no">Recusar</button>',
+    };
+  },
+  bind(card, id, after) {
+    $('.dch-go', card).onclick = ev => {
+      const accept = [], edits = {};
+      card.querySelectorAll('.dch').forEach(h => { if (!$('.dch-ok', h).checked) return; const n = Number(h.dataset.h); accept.push(n);
+        const ta = $('.dch-after', h); if (ta.value !== ta.defaultValue) edits[n] = ta.value; });
+      act(ev.target, () => decide(id, { decision: Object.keys(edits).length ? 'approve_edited' : 'approve', edit: { accept, edits }, reason: $('.dc-reason', card).value }).then(after), 'Alteração aplicada');
+    };
+    $('.dch-no', card).onclick = ev => act(ev.target, () => decide(id, { decision: 'reject', reason: $('.dc-reason', card).value }).then(after), 'Recusado');
+  },
+};
+
+/* ---------- página da tarefa: classificação e caminho do navegador ---------- */
+function taskGovernance(x, id, box) {
+  const used = (x.events || []).some(e => e.kind === 'browser');
+  box.insertAdjacentHTML('beforeend', `<div class="card mt"><div class="row between"><h2>Dados desta tarefa</h2>
+    <span class="row small" style="gap:6px">${window.t('Classificação')} <select id="tg-cls">${CLS.map(c => `<option value="${c}" ${c === (x.classification || 'internal') ? 'selected' : ''}>${window.t(CLS_LABEL[c])}</option>`).join('')}</select>
+    ${ME.is_admin ? `<label class="row" style="gap:4px"><input type="checkbox" id="tg-hold" ${x.legal_hold ? 'checked' : ''}> ${window.t('retenção legal')}</label>` : ''}</span></div>
+    ${used ? `<div class="row mt" style="gap:6px"><input id="tg-pname" placeholder="nome do procedimento" data-noi18n><button class="ghost" id="tg-proc">Salvar o caminho como procedimento</button></div>` : ''}</div>`);
+  $('#tg-cls').onchange = () => act($('#tg-cls'), () => api(`/tasks/${id}/classification`, { method: 'PUT', body: { classification: $('#tg-cls').value } }), 'Classificação salva');
+  const hold = $('#tg-hold');
+  if (hold) hold.onchange = () => act(hold, () => api(`/tasks/${id}/classification`, { method: 'PUT', body: { legal_hold: hold.checked } }), 'Salvo');
+  const pr = $('#tg-proc');
+  if (pr) pr.onclick = ev => act(ev.target, () => api('/procedures/from-task', { method: 'POST', body: { task_id: Number(id), name: $('#tg-pname').value.trim() } })
+    .then(() => { location.hash = '#/procedures'; }), 'Procedimento salvo');
 }

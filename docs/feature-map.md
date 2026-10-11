@@ -54,6 +54,10 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Team queues, SLA, take the next one, hand-off to a person, My work | Digital employees → Queues, My work | [analyst.md](analyst.md#team-queues-and-work-for-people) |
 | Conversations with people outside (e-mail, WhatsApp), approved templates, reminders, promises | Task page; Build → Message templates | [analyst.md](analyst.md#conversations-with-people-outside-the-company) |
 | Company calendar, invites, briefings, minutes and actions | Digital employees → Meetings | [analyst.md](analyst.md#calendar-and-meetings) |
+| Knowledge base with inherited permissions, citations, outdated documents and gaps | Build → Knowledge base | [analyst.md](analyst.md#knowledge-base) |
+| Governed browser and procedures for systems without an API | Build → Browser procedures; employee settings | [analyst.md](analyst.md#governed-browser) |
+| Classification, DLP, retention, data subject requests, information barriers | Organization → Data governance | [analyst.md](analyst.md#data-governance) |
+| Document change proposals with per-passage acceptance and DOCX redlines | Decisions | [analyst.md](analyst.md#document-change-proposals) |
 
 ## Planning and money
 

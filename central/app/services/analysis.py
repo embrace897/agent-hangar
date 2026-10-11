@@ -48,13 +48,18 @@ def _sid(task) -> str:
 
 
 def call(task, name: str, args: dict, timeout: int = 330):
-    """tools/call no MCP do Data Studio (stateless, resposta JSON). Devolve o conteúdo estruturado ou o texto."""
+    """tools/call no MCP do Data Studio (stateless, resposta JSON), na sessão da tarefa."""
+    return call_session(_sid(task), name, args, timeout)
+
+
+def call_session(sid: str, name: str, args: dict, timeout: int = 330):
+    """tools/call numa sessão qualquer do Data Studio. Devolve o conteúdo estruturado ou o texto."""
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}}
     try:
         with HTTP(timeout) as h:
             r = h.post(config.DATA_STUDIO_URL, json=body, headers={
                 "Accept": "application/json, text/event-stream", "Content-Type": "application/json",
-                "x-session-id": _sid(task)})
+                "x-session-id": sid})
     except httpx.HTTPError as e:
         raise PlatformError(f"Data Studio indisponível: {e}") from None
     if r.status_code >= 400:

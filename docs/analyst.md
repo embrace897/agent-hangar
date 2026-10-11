@@ -138,6 +138,71 @@ employees find times when everyone is free, within business days and hours (`fin
   (`record_minutes`). Each action becomes work with a deadline — an item for a person, or a task for a Digital
   employee — and the next meeting of the series lists the ones still open.
 
+## Knowledge base
+
+*Build → Knowledge base* gathers the company's policies, procedures, templates and history from **sources**:
+uploaded files (DOCX, TXT, MD, HTML; PDF and images through the Data Studio's OCR), web pages, a **Confluence**
+space, a **SharePoint** folder (through the company's Microsoft 365 app credential) or a **Google Drive** folder
+(through the Google Workspace service account). Non-upload sources sync once a day (or on demand).
+
+- **Permissions:** per source — the source's teams, the whole company (admin), or **inherited from the original**:
+  Confluence page restrictions, SharePoint sharing (people, groups, organisation links) and Drive permissions.
+  Groups match the SCIM groups synced from the identity provider.
+- **Searching with the requester's access:** `search_knowledge` searches with the access of **the person who asked
+  for the task** — never returning what they couldn't read. Tasks without a person (routines, webhooks) see only what
+  belongs to the whole company and the employee's team. People search the same way on the page.
+- **Citations:** each passage comes back numbered with title, link and date, and the employee cites `[1]`, `[2]`.
+- **Freshness:** a document without review for longer than the source's review period shows as *outdated* (in the
+  results and in the source owner's list). **Gaps:** questions the base doesn't answer well are listed for whoever
+  maintains the content.
+
+## Governed browser
+
+For systems without an API, a Digital employee can drive an isolated browser (`docker compose --profile browser up
+-d`; Playwright/Chromium, its own network, reachable only by the central):
+
+- **Allowed domains:** the employee only opens pages on the domains set in *Settings → Platform tools* (or those of
+  the procedure it runs); any other navigation is blocked inside the browser itself.
+- **Clicks that confirm something** — send, save, pay, transfer, approve, sign — go through the authority with a
+  **screenshot** in the decision: paying or transferring is `financial` (by default the company floor asks for two
+  people), sending is `send_external`, the rest `write_internal`. Plain navigation doesn't need authority.
+- **Secrets:** `value: "secret://name"` fills a field from the vault; the model never sees the value and the timeline
+  records only *[secret]*.
+- **CAPTCHA and two-factor checks are never bypassed:** they become a question for a person.
+- **Procedures** (*Build → Browser procedures*): versioned step-by-steps (`open`, `fill`, `select`, `click`, `read`,
+  `screenshot`) with `{{variables}}`, run by `run_procedure`. A task that went well can be **saved as a procedure**
+  from its page (secrets stay as `secret://`).
+
+## Data governance
+
+*Organization → Data governance* (admins and auditors):
+
+- **Classification** — public, internal, confidential, restricted — on tasks, files, projects and knowledge sources;
+  a task's level is the highest of them. Each **LLM connection** has the most sensitive level it may receive: a task
+  above it doesn't go to that model (it fails with the reason). Lowering a task's level is for admins.
+- **DLP:** CPF, CNPJ, card numbers (Luhn), e-mail, phone and ICD codes can be **masked** in what the platform sends to
+  the model — the request, the task's conversation, files and platform-tool results. The model sees `[CPF_1]`; the
+  gate hands the **real values** to whatever executes the action, and the stored result shows them to people. What an
+  agent fetches directly from its own tools isn't masked (authority and plugin policies cover that).
+  **Block outbound** stops those data from leaving in a message to someone outside.
+- **Retention** per classification: the content of tasks closed more than N days ago is erased (the record and the
+  audit log stay), unless the task or its project is under **legal hold** (admins).
+- **Data subject requests (LGPD):** locate a person's data (CPF with or without punctuation, e-mail or name) across
+  tasks, conversations, text files, extractions, outside conversations and the knowledge base; **erasure** needs the
+  approval of another admin and is logged.
+- **Information barriers:** a **confidential project** is readable only by its members and whoever asked for the task
+  — not even admins and auditors, unless they open **emergency access**: a justification, one hour, the audit log and
+  a notice to the project's owner.
+
+## Document change proposals
+
+Digital employees never edit a document directly: `propose_document_change` (a task file, `file:<name>`, or a
+knowledge-base document, `kb:<id>`, from Confluence or SharePoint) turns the change into a decision showing each
+passage **before and after**. The person accepts all, some, or adjusts the text; only then is it applied — a new
+version of the task file, a new version of the Confluence page, or a new version of the SharePoint file. **DOCX comes
+back as a redline**: accepted passages appear as tracked deletions and insertions signed by whoever approved (the
+original formatting isn't kept in that version). If the document changed after the proposal, nothing is applied.
+
 ## API
 
 | Method | Path | Description |
@@ -165,3 +230,13 @@ employees find times when everyone is free, within business days and hours (`fin
 | GET | `/api/tasks/{id}/conversations` | The task's conversations with messages and promises |
 | GET / POST / DELETE | `/api/meetings`, `/api/meetings/{id}` | Meetings / create (`schedule: true` books it in the company calendar) / remove |
 | POST | `/api/meetings/{id}/transcript` · `/api/meetings-token` | Send the transcript · token for `/hooks/meetings/<company>` |
+| GET / PUT | `/api/knowledge/sources` | Sources / create or change (`name, kind, acl_mode, teams, config, review_days, classification`) |
+| POST | `/api/knowledge/sources/{name}/sync` · `/documents` | Sync now · upload a document (`title, text` or `file_name, content_base64`) |
+| GET | `/api/knowledge/search?q=` · `/gaps` · `/stale` | Search with your access · unanswered questions · outdated documents |
+| GET / PUT | `/api/procedures` | Browser procedures (and whether the browser is up) / create or change |
+| POST | `/api/procedures/from-task` | `{task_id, name}`: save the path a task took |
+| PUT | `/api/employees/{slug}/browser-domains` | `{domains}`: what the browser may open |
+| GET / PUT | `/api/governance` | DLP and retention policy (and LLM connections' levels) |
+| PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
+| PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |
+| GET / POST | `/api/subject-requests` · POST `/{id}/erase` | Data subject requests · approve or reject an erasure |

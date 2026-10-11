@@ -1020,6 +1020,9 @@ async function route() {
     else if (r === 'meetings' && a) await meetingPage(a);
     else if (r === 'meetings') await meetingsPage();
     else if (r === 'message-templates') await templatesMsgPage();
+    else if (r === 'knowledge') await knowledgePage();
+    else if (r === 'procedures') await proceduresPage();
+    else if (r === 'governance') await governancePage();
     else if (r === 'announcements') await announcementsPage();
     else if (r === 'plugins' && a === 'new') await pluginNewPage();
     else if (r === 'plugins' && a) await pluginDetail(a);
@@ -1040,7 +1043,7 @@ const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisio
 setInterval(() => {
   const parts = location.hash.split('/');
   if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs', 'extraction', 'calculators', 'playbooks', 'message-templates',
-    'meetings', 'queues', 'work'].includes(parts[1])) return;
+    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance'].includes(parts[1])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

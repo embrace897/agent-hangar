@@ -446,3 +446,222 @@ def meetings_hook(org_id: int, body: dict, request: Request, db=Depends(db_dep))
         raise HTTPException(401, str(e)) from None
     except svc.PlatformError as e:
         raise HTTPException(409, str(e)) from None
+
+
+# ================================================================== fase G
+# ------------------------------------------------------------------ base de conhecimento
+class SourceBody(BaseModel):
+    name: str
+    kind: str = "upload"
+    title: str = ""
+    acl_mode: str = "team"
+    teams: list[str] = Field(default_factory=list)
+    config: dict = Field(default_factory=dict)
+    review_days: int = 365
+    classification: str = "internal"
+
+
+class DocBody(BaseModel):
+    title: str
+    text: str = ""
+    file_name: str = ""
+    content_base64: str = ""
+    content_type: str = ""
+    url: str = ""
+
+
+@router.get("/knowledge/sources")
+def k_sources(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.list_sources(db, acc(request, db)))
+
+
+@router.put("/knowledge/sources")
+def k_source_save(body: SourceBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.save_source(db, acc(request, db), body.name, body.kind, body.title, body.acl_mode,
+                                                   body.teams, body.config, body.review_days, body.classification))
+
+
+@router.post("/knowledge/sources/{name}/sync")
+def k_sync(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.sync_now(db, acc(request, db), name))
+
+
+@router.post("/knowledge/sources/{name}/documents")
+def k_doc(name: str, body: DocBody, request: Request, db=Depends(db_dep)):
+    import base64
+
+    def run():
+        data = base64.b64decode(body.content_base64) if body.content_base64 else b""
+        return svc.knowledge.add_document(db, acc(request, db), name, body.title, body.text, body.file_name, data,
+                                          body.content_type, body.url)
+    return guard(run)
+
+
+@router.get("/knowledge/search")
+def k_search(request: Request, q: str = "", db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.people_search(db, acc(request, db), q))
+
+
+@router.get("/knowledge/gaps")
+def k_gaps(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.gaps(db, acc(request, db)))
+
+
+@router.post("/knowledge/gaps/{gap_id}/resolve")
+def k_gap_resolve(gap_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.resolve_gap(db, acc(request, db), gap_id))
+
+
+@router.get("/knowledge/stale")
+def k_stale(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.knowledge.stale_docs(db, acc(request, db)))
+
+
+# ------------------------------------------------------------------ navegador governado
+class ProcedureBody(BaseModel):
+    name: str
+    title: str = ""
+    domains: list[str] = Field(default_factory=list)
+    steps: list[dict] = Field(default_factory=list)
+    team: str = ""
+    start_url: str = ""
+
+
+class FromTaskBody(BaseModel):
+    task_id: int
+    name: str
+    title: str = ""
+    team: str = ""
+
+
+class DomainsBody(BaseModel):
+    domains: list[str] = Field(default_factory=list)
+
+
+@router.get("/procedures")
+def procedures(request: Request, db=Depends(db_dep)):
+    return guard(lambda: {"procedures": svc.browser.list_procedures(db, acc(request, db)), "ready": svc.browser.ready()})
+
+
+@router.put("/procedures")
+def procedure_save(body: ProcedureBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.browser.save_procedure(db, acc(request, db), body.name, body.title, body.domains, body.steps,
+                                                    body.team, body.start_url))
+
+
+@router.post("/procedures/from-task")
+def procedure_from_task(body: FromTaskBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.browser.from_task(db, acc(request, db), body.task_id, body.name, body.title, body.team))
+
+
+@router.put("/employees/{slug}/browser-domains")
+def browser_domains(slug: str, body: DomainsBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.browser.set_domains(db, acc(request, db), slug, body.domains))
+
+
+# ------------------------------------------------------------------ governança de dados
+class PolicyBody(BaseModel):
+    dlp: dict | None = None
+    retention: dict | None = None
+
+
+class ClassifyBody(BaseModel):
+    classification: str | None = None
+    legal_hold: bool | None = None
+
+
+class ProjectGovBody(BaseModel):
+    classification: str | None = None
+    legal_hold: bool | None = None
+    confidential: bool | None = None
+    members: list[str] | None = None
+
+
+class SubjectBody(BaseModel):
+    subject: str
+    kind: str = "access"
+    note: str = ""
+
+
+class EraseBody(BaseModel):
+    approve: bool = True
+
+
+class BreakGlassBody(BaseModel):
+    reason: str
+
+
+class LlmClassBody(BaseModel):
+    max_classification: str
+
+
+@router.get("/governance")
+def gov(request: Request, db=Depends(db_dep)):
+    def run():
+        a_ = acc(request, db)
+        if not (a_.p.is_admin or a_.p.is_auditor):
+            raise svc.access.Forbidden("só admins e auditores")
+        from sqlalchemy import select
+
+        from ..models import LlmConnection
+        out = svc.governance.view(db)
+        out["llm"] = [{"name": c.name, "model": c.model_name, "max_classification": c.max_classification or "confidential"}
+                      for c in db.scalars(select(LlmConnection).order_by(LlmConnection.name))]
+        return out
+    return guard(run)
+
+
+@router.put("/governance")
+def gov_set(body: PolicyBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.set_policy(db, acc(request, db), body.model_dump()))
+
+
+@router.put("/governance/llm/{name}")
+def gov_llm(name: str, body: LlmClassBody, request: Request, db=Depends(db_dep)):
+    def run():
+        a_ = acc(request, db)
+        if not a_.p.is_admin:
+            raise svc.access.Forbidden("só o admin")
+        if body.max_classification not in svc.governance.LEVELS:
+            raise svc.PlatformError(f"classificação: {', '.join(svc.governance.LEVELS)}")
+        c = svc.catalog.get_connection(db, name)
+        c.max_classification = body.max_classification
+        db.commit()
+        svc.common.audit(db, a_.p.name, "governance.llm", name, body.max_classification)
+        return {"name": c.name, "max_classification": c.max_classification}
+    return guard(run)
+
+
+@router.put("/tasks/{task_id}/classification")
+def task_class(task_id: int, body: ClassifyBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.classify(db, acc(request, db), "task", task_id, body.classification, body.legal_hold))
+
+
+@router.put("/files/{file_id}/classification")
+def file_class(file_id: int, body: ClassifyBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.classify(db, acc(request, db), "file", file_id, body.classification))
+
+
+@router.put("/projects/{slug}/governance")
+def project_gov(slug: str, body: ProjectGovBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.project_governance(db, acc(request, db), slug, body.model_dump()))
+
+
+@router.post("/projects/{slug}/break-glass")
+def break_glass(slug: str, body: BreakGlassBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.break_glass(db, acc(request, db), slug, body.reason))
+
+
+@router.get("/subject-requests")
+def subject_requests(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.list_subject_requests(db, acc(request, db)))
+
+
+@router.post("/subject-requests")
+def subject_request(body: SubjectBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.subject_request(db, acc(request, db), body.subject, body.kind, body.note))
+
+
+@router.post("/subject-requests/{rid}/erase")
+def subject_erase(rid: int, body: EraseBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.governance.erase(db, acc(request, db), rid, body.approve))
