@@ -18,7 +18,13 @@ async function platformToolsCard(box, e) {
     ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-save">Salvar ferramentas</button></div>' : ''}
     ${groups.some(g => g.group === 'browser') ? `<label class="mt">Domínios que o navegador pode abrir (separados por vírgula)<input id="pt-doms" data-noi18n
       value="${esc((e.browser_domains || []).join(', '))}" ${e.can_manage ? '' : 'disabled'} placeholder="banco.com.br, gov.br"></label>
-      ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-doms-save">Salvar domínios</button></div>' : ''}` : ''}</div>`;
+      ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-doms-save">Salvar domínios</button></div>' : ''}` : ''}
+    ${groups.some(g => g.group === 'desktop') ? `<label class="mt">Apps de desktop que ele pode abrir (separados por vírgula)<input id="pt-apps" data-noi18n
+      value="${esc((e.desktop_apps || []).join(', '))}" ${e.can_manage ? '' : 'disabled'} placeholder="ERP Legado, Gnumeric"></label>
+      ${e.can_manage ? '<div class="row mt"><button class="ghost" id="pt-apps-save">Salvar apps</button></div>' : ''}` : ''}</div>`;
+  const as = $('#pt-apps-save', box);
+  if (as) as.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/desktop-apps`, { method: 'PUT',
+    body: { apps: $('#pt-apps', box).value.split(',').map(x => x.trim()).filter(Boolean) } }), 'Apps salvos');
   const ds = $('#pt-doms-save', box);
   if (ds) ds.onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/browser-domains`, { method: 'PUT',
     body: { domains: $('#pt-doms', box).value.split(',').map(x => x.trim()).filter(Boolean) } }), 'Domínios salvos');

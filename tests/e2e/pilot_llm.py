@@ -42,7 +42,7 @@ def hire(dev, mgr_email, team):
                       "certificadas, analisar planilhas, consultar as políticas da empresa e preparar decisões.",
            "responsibilities": ["extrair dados de documentos", "calcular multas e encargos", "analisar planilhas",
                                 "responder dúvidas de política", "preparar memorandos de decisão"],
-           "manager": mgr_email, "team": team, "systems": ["ERP"], "llm": {"connection": CONN},
+           "manager": mgr_email, "team": team, "systems": ["ERP"], "llm": {"connection": CONN, "max_steps": 30},
            "channels": ["portal"], "accept_default_authority": True,
            "tools": [{"type": "http", "name": "send_email", "url": f"{wf.ECHO}/send", "method": "POST"}],
            "probation_tasks": [{"title": "Quanto é 2 + 2?", "body": "Responda só o número.", "expected": "4"},
@@ -68,16 +68,22 @@ ANSWER = ("Não temos política formal sobre isso; use o seu julgamento com os d
           "e deixe as premissas claras.")
 
 
-def finish(dev, mgr, tid, statuses=("done", "failed"), secs=400):
-    """Espera a tarefa terminar respondendo, como a gestora, as perguntas que o funcionário fizer no caminho."""
+def finish(dev, mgr, tid, statuses=("done", "failed"), secs=400, approve: list | None = None):
+    """Espera a tarefa terminar respondendo, como a gestora, as perguntas que o funcionário fizer no caminho. Com
+    approve (uma lista), aprova os pedidos de alçada e guarda cada um nela."""
     def step():
         t = wf.task(dev, tid)
         if t["status"] in statuses:
             return t
         if t["status"] == "waiting_human":
             for d in ok(mgr.get("/api/decisions")):
-                if d["kind"] == "question" and d["task"] and d["task"]["id"] == tid:
+                if not d["task"] or d["task"]["id"] != tid:
+                    continue
+                if d["kind"] == "question":
                     ok(mgr.post(f"/api/decisions/{d['id']}", json={"decision": "answer", "reason": ANSWER}))
+                elif d["kind"] == "approval" and approve is not None:
+                    approve.append(d)
+                    ok(mgr.post(f"/api/decisions/{d['id']}", json={"decision": "approve"}))
         return None
     return wf.wait(step, secs, 3)
 
@@ -202,6 +208,44 @@ def ouro(dev, mgr, team, slug):
     print(f"{'ok  ' if REPORT[-1]['ok'] else 'FALHA'} tarefa de ouro com juiz  {REPORT[-1]['note']}", flush=True)
 
 
+def _erp_rows() -> list[str]:
+    import subprocess
+    r = subprocess.run(["docker", "compose", "exec", "-T", "desktop", "sh", "-c", "cat /home/*/erp/baixas.csv 2>/dev/null"],
+                       capture_output=True, text=True, encoding="utf-8")
+    return [x for x in r.stdout.splitlines() if x.strip()]
+
+
+@case
+def desktop_baixa(dev, mgr, team, slug):
+    if not ok(mgr.get(f"/api/employees/{slug}"))["desktop_apps"]:
+        REPORT.append({"case": "desktop: baixa no ERP legado", "ok": None, "note": "desktop desligado"})
+        print("--    desktop (perfil desktop desligado)", flush=True)
+        return
+    before = len(_erp_rows())
+    approvals: list = []
+    tid = ask(dev, slug, "Baixa da fatura 91", "No ERP Legado (aplicativo de desktop), dê baixa na fatura 91: o cliente pagou "
+              "R$ 980,40 em 10/10/2026. Confira o cliente na tela antes de confirmar.")
+    t = finish(dev, mgr, tid, secs=900, approve=approvals)
+    rows = _erp_rows()[before:]
+    hit = [r for r in rows if r.startswith("91,") and "10/10/2026" in r and "980" in r]
+    record("desktop: baixa no ERP legado (só pela tela, com alçada)", bool(hit) and any(
+        "Tela: tela-" in (a.get("rationale") or "") for a in approvals), t,
+        f"linhas novas={rows} pedidos={len(approvals)} imagens_vistas={sum(1 for e in (t or {}).get('events', []) if e['kind'] == 'desktop')}")
+
+
+@case
+def desktop_consulta(dev, mgr, team, slug):
+    if not ok(mgr.get(f"/api/employees/{slug}"))["desktop_apps"]:
+        return
+    before = len(_erp_rows())
+    tid = ask(dev, slug, "Quem deve a fatura 102?", "Consulte no ERP Legado (aplicativo de desktop) a fatura 102 e me diga o "
+              "cliente e o valor em aberto. Só consulta: não dê baixa.")
+    t = finish(dev, mgr, tid, secs=600, approve=[])
+    r = (t or {}).get("result") or ""
+    record("desktop: consulta no ERP legado (lê a tela, não grava)", "Gama" in r and "12.000" in r.replace("12000", "12.000")
+           and len(_erp_rows()) == before, t)
+
+
 def main():
     only = [a for a in sys.argv[1:] if not a.startswith("-")]
     team = ok(admin.post("/api/teams", json={"name": f"Piloto LLM {RUN}"}))["slug"]
@@ -209,6 +253,8 @@ def main():
     mgr, mgr_email, _ = wf.person("mgr", "maintainer", team)
     dev, _, _ = wf.person("dev", "developer", team)
     slug = hire(dev, mgr_email, team)
+    if os.environ.get("PILOT_DESKTOP_APPS"):  # perfil desktop no ar: os apps que ele pode abrir
+        ok(mgr.put(f"/api/employees/{slug}/desktop-apps", json={"apps": os.environ["PILOT_DESKTOP_APPS"].split(",")}))
     try:
         wf.activate(dev, mgr, slug)
     except SystemExit:

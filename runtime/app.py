@@ -59,6 +59,7 @@ MODE = contextvars.ContextVar("mode", default="full")
 # Imagens devolvidas por tools MCP (ex.: preview_file) na rodada atual: vão ao LLM como mensagem de visão.
 TOOL_IMAGES: contextvars.ContextVar = contextvars.ContextVar("tool_images", default=None)
 MAX_TOOL_IMAGES = 4
+KEEP_TOOL_IMAGES = int(os.environ.get("KEEP_TOOL_IMAGES", "3"))  # capturas recentes que seguem na conversa
 PROGRESS_STREAM = os.environ.get("PROGRESS_STREAM", "reasoning")  # "off" desliga
 # Digital employee: o cargo vem na spec; cada ferramenta passa pelo gate da central antes de executar (a alçada é da
 # plataforma, não do prompt). TASK = a tarefa da rodada atual (cabeçalho X-Hangar-Task enviado pela central).
@@ -744,8 +745,24 @@ async def _chat(messages: list[dict], client_tools: list | None = None, tool_cho
         return f"[[HANGAR_WAITING:{w.request_id}]] {w.message}", usage, trace, []
 
 
+def _prune_images(msgs, keep: int = KEEP_TOOL_IMAGES):
+    """Numa tarefa de desktop cada passo traz uma captura: só as últimas `keep` mensagens com imagem de ferramenta
+    seguem inteiras; as anteriores viram uma nota (o modelo age sobre a tela atual)."""
+    seen = 0
+    for m in reversed(msgs):
+        parts = m.get("content")
+        if m.get("role") != "user" or not isinstance(parts, list) or not any(p.get("type") == "image_url" for p in parts):
+            continue
+        if not str((parts[0] or {}).get("text", "")).startswith("Imagens devolvidas pelas ferramentas"):
+            continue  # imagens que a pessoa mandou ficam
+        seen += 1
+        if seen > keep:
+            m["content"] = "[capturas de tela anteriores omitidas]"
+
+
 async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, trace, start, tool_choice):
     for _ in range(MAX_STEPS):
+        _prune_images(msgs)
         payload = {"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}
         if llm_tools or ctools:
             payload["tools"] = [t.schema() for t in llm_tools] + ctools
@@ -829,6 +846,9 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
                 args = g["args"]
             if "result" in g:  # a própria plataforma executou (plano, repasse): o resultado vem do gate
                 out = str(g["result"])
+                images = TOOL_IMAGES.get()  # capturas de tela (desktop governado): vão ao modelo como imagem
+                if images is not None:
+                    images.extend((m, b) for m, b in (g.get("images") or []))
                 trace.append({"tool": name, "args": {k: str(v)[:200] for k, v in args.items()}, "result": out[:300]})
                 msgs.append({"role": "tool", "tool_call_id": call["id"], "content": out})
                 return

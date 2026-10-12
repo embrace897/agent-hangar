@@ -173,6 +173,28 @@ For systems without an API, a Digital employee can drive an isolated browser (`d
   `screenshot`) with `{{variables}}`, run by `run_procedure`. A task that went well can be **saved as a procedure**
   from its page (secrets stay as `secret://`).
 
+## Governed desktop (experimental)
+
+For desktop applications with no API and no web page — a legacy ERP, a spreadsheet, an installed system — the
+employee works in an isolated Linux desktop (compose profile `desktop`, built on [Cua](https://github.com/trycua/cua),
+MIT) and **looks at the screen**: `desktop_open`, `desktop_look`, `desktop_click`, `desktop_type`, `desktop_key`,
+`desktop_scroll`, `desktop_screenshot`.
+
+- **Allowed apps** per employee (*Settings → Platform tools*): it only opens and operates those.
+- **The model sees the window:** each action returns the window's screenshot (sent to the model as an image, never
+  stored on the timeline) and the accessibility elements with a number. Apps without accessibility (Tk, painted
+  screens) are operated by `x,y` on the screenshot — the model needs vision.
+- **Clicks and shortcuts that confirm something** (save, confirm, post, send, pay; `ctrl+s`) go through the
+  authority with the screenshot in the request; the approved call carries the exact position, and after approval the
+  employee returns to the same window, with what it had filled in.
+- **Secrets:** `text: "secret://name"` types the vault's value; the model never sees it.
+- The Cua token never leaves the desktop container: the central talks to a small gateway (`mcp-servers/desktop`)
+  that keeps one desktop session per task. The desktop network has no internet access.
+
+`docker compose --profile desktop up -d desktop` starts it with two sample apps (Gnumeric and a Tk "legacy ERP");
+add your own applications in `mcp-servers/desktop/Dockerfile`. Pilot with deepseek-v4.1-flash: posting a payment in
+the Tk ERP by vision alone (one approval, ~US$ 0.003) and a read-only lookup (~US$ 0.001), both correct.
+
 ## Data governance
 
 *Organization → Data governance* (admins and auditors):
@@ -302,6 +324,7 @@ or go back to the previous version of the role.
 | GET / PUT | `/api/procedures` | Browser procedures (and whether the browser is up) / create or change |
 | POST | `/api/procedures/from-task` | `{task_id, name}`: save the path a task took |
 | PUT | `/api/employees/{slug}/browser-domains` | `{domains}`: what the browser may open |
+| PUT | `/api/employees/{slug}/desktop-apps` | `{apps}`: the desktop apps it may open (experimental) |
 | GET / PUT | `/api/governance` | DLP and retention policy (and LLM connections' levels) |
 | PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
 | PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |

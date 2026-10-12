@@ -26,6 +26,7 @@ GROUPS = {
     "calendar": "Agenda e reuniões",
     "knowledge": "Base de conhecimento",
     "browser": "Navegador governado",
+    "desktop": "Desktop governado (experimental)",
     "documents": "Propor alterações em documentos",
     "memo": "Memorando de decisão",
 }
@@ -68,7 +69,7 @@ def _load():
     if _LOADED:
         return
     from . import analysis, calculators, extraction  # noqa: F401
-    for mod in ("work_queues", "correspondence", "meetings", "knowledge", "browser", "doc_changes", "decision_memos"):
+    for mod in ("work_queues", "correspondence", "meetings", "knowledge", "browser", "desktop", "doc_changes", "decision_memos"):
         try:
             __import__(f"app.services.{mod}")
         except ModuleNotFoundError as ex:
@@ -127,7 +128,8 @@ def run(db, agent: Agent, task_id: int | None, name: str, args: dict, rationale:
         return {"status": "allowed", "result": f"erro: {ex}"}
     if isinstance(out, dict) and out.get("status") in ("waiting", "denied", "simulated"):
         return out  # a alçada segurou um efeito
+    images = out.pop("_images", None) if isinstance(out, dict) else None  # capturas: vão ao modelo, não à linha do tempo
     text = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str)
     tasksmod.event(db, task, "tool", {"tool": name, "platform": True, "result": text[:300]})
     db.commit()
-    return {"status": "allowed", "result": text}
+    return {"status": "allowed", "result": text, **({"images": images} if images else {})}

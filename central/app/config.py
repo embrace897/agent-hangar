@@ -116,6 +116,8 @@ DATA_STUDIO_URL = _env("DATA_STUDIO_URL", "http://data-studio:8000/mcp")
 DATA_STUDIO_FILES_URL = _env("DATA_STUDIO_FILES_URL", "http://data-studio:8001")
 # navegador governado (perfil browser): sistemas sem API, pela alçada (vazio = desligado)
 BROWSER_URL = _env("BROWSER_URL", "http://browser:8000/mcp")
+# desktop governado (perfil desktop, experimental): apps de desktop sem API, olhando a tela, pela alçada
+DESKTOP_URL = _env("DESKTOP_URL", "http://desktop:8000/mcp")
 INBOX_POLL_S = int(_env("INBOX_POLL_S", "60"))  # de quanto em quanto tempo a caixa de e-mail de um funcionário é lida
 DECISION_LINK_TTL_H = int(_env("DECISION_LINK_TTL_H", "48"))  # validade do link assinado de decisão (Teams/e-mail)
 # e-mail das decisões e do resumo diário (opcional): sem SMTP_HOST, o canal e-mail fica desligado

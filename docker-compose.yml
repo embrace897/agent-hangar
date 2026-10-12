@@ -106,6 +106,8 @@ services:
       DATA_STUDIO_FILES_URL: ${DATA_STUDIO_FILES_URL:-http://data-studio:8001}
       # navegador governado (perfil browser): sistemas sem API, pela alçada
       BROWSER_URL: ${BROWSER_URL:-http://browser:8000/mcp}
+      # desktop governado (perfil desktop, experimental): apps de desktop olhando a tela, pela alçada
+      DESKTOP_URL: ${DESKTOP_URL:-http://desktop:8000/mcp}
       REPLICA_ID: central  # nome estável: ao recriar o container, a central recupera os próprios jobs órfãos
       OAUTH_ENABLED: ${OAUTH_ENABLED:-1}
       OAUTH_REDIRECT_HOSTS: ${OAUTH_REDIRECT_HOSTS:-claude.ai,claude.com,chatgpt.com,chat.openai.com,platform.openai.com}
@@ -174,7 +176,7 @@ services:
       - "${CENTRAL_PORT:-8090}:8080"
     # agents_net: containers dos agentes (chat) e Postgres. jobs_net: callback dos containers de job, que
     # NÃO estão em agents_net. docker_api: só a central alcança o proxy do Docker.
-    networks: [agents_net, jobs_net, plugins_net, docker_api, db_net, memory_net, browser_net]
+    networks: [agents_net, jobs_net, plugins_net, docker_api, db_net, memory_net, browser_net, desktop_net]
     restart: unless-stopped
 
   # MCP server de análise de dados e entregáveis (Python/DuckDB/PPTX/dashboards) — opcional:
@@ -226,6 +228,20 @@ services:
     pids_limit: 512
     cap_drop: [ALL]
     security_opt: [no-new-privileges]
+    restart: unless-stopped
+
+  # Desktop governado (experimental): um desktop Linux isolado (Cua) com os apps liberados; a central fala com o
+  # portão em :8000/mcp e o token da Cua nunca sai do container
+  desktop:
+    profiles: [desktop]
+    image: ${HANGAR_REGISTRY:-agent-hangar}/desktop:${HANGAR_VERSION:-latest}
+    build: { context: mcp-servers/desktop }
+    environment:
+      DESKTOP_IDLE_MIN: ${DESKTOP_IDLE_MIN:-20}
+    networks: [desktop_net]
+    mem_limit: ${DESKTOP_MEM:-4g}
+    shm_size: 1g
+    pids_limit: 1024
     restart: unless-stopped
 
   # Docker (via proxy restrito a containers) só para o Data Studio criar os sandboxes por sessão (SANDBOX=container)
@@ -519,3 +535,6 @@ networks:
     internal: true
   browser_net:
     name: hangar_browser       # navegador governado: só a central o alcança; ele sai para a internet
+  desktop_net:
+    name: hangar_desktop       # desktop governado: só a central o alcança; sem saída para a internet
+    internal: true

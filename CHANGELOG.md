@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Governed desktop (experimental):** Digital employees operate desktop applications with no API (legacy ERP,
+  spreadsheet) in an isolated Linux desktop built on Cua (compose profile `desktop`), looking at the screen: allowed
+  apps per employee, the window's screenshot sent to the model as an image, accessibility elements when the app has
+  them, authority with the screenshot on clicks and shortcuts that confirm something, vault secrets when typing.
+  Platform tools can now return images to the model; the runtime keeps only the latest screenshots in the
+  conversation (`KEEP_TOOL_IMAGES`).
+
 ## [0.26.0] — 2026-10-11
 
 ### Added

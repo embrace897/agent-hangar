@@ -16,6 +16,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       correspondence,
                       decision_kinds,
                       decision_memos,
+                      desktop,
                       doc_changes,
                       docx_lite,
                       employee_dashboard,

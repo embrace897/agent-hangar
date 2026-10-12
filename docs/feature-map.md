@@ -56,6 +56,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Company calendar, invites, briefings, minutes and actions | Digital employees → Meetings | [analyst.md](analyst.md#calendar-and-meetings) |
 | Knowledge base with inherited permissions, citations, outdated documents and gaps | Build → Knowledge base | [analyst.md](analyst.md#knowledge-base) |
 | Governed browser and procedures for systems without an API | Build → Browser procedures; employee settings | [analyst.md](analyst.md#governed-browser) |
+| Governed desktop (experimental): desktop apps operated by looking at the screen | Employee settings; compose profile `desktop` | [analyst.md](analyst.md#governed-desktop-experimental) |
 | Classification, DLP, retention, data subject requests, information barriers | Organization → Data governance | [analyst.md](analyst.md#data-governance) |
 | Document change proposals with per-passage acceptance and DOCX redlines | Decisions | [analyst.md](analyst.md#document-change-proposals) |
 | Decision memos with weighted criteria, critical reviewer, decision and outcome | Digital employees → Decision memos | [analyst.md](analyst.md#decision-memos) |

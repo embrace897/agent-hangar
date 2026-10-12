@@ -564,6 +564,15 @@ def browser_domains(slug: str, body: DomainsBody, request: Request, db=Depends(d
     return guard(lambda: svc.browser.set_domains(db, acc(request, db), slug, body.domains))
 
 
+class AppsBody(BaseModel):
+    apps: list[str] = Field(default_factory=list)
+
+
+@router.put("/employees/{slug}/desktop-apps")
+def desktop_apps(slug: str, body: AppsBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.desktop.set_apps(db, acc(request, db), slug, body.apps))
+
+
 # ------------------------------------------------------------------ governança de dados
 class PolicyBody(BaseModel):
     dlp: dict | None = None

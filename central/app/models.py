@@ -565,6 +565,7 @@ class Employee(OrgScoped, Base):
     worker_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o que o worker contou de si (nome, versão)
     disabled_tools: Mapped[list | None] = mapped_column(JSON, nullable=True)  # grupos de ferramentas da plataforma desligados
     browser_domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # o navegador governado só abre estes domínios
+    desktop_apps: Mapped[list | None] = mapped_column(JSON, nullable=True)  # o desktop governado só abre estes apps
     critic_mode: Mapped[str] = mapped_column(String(8), default="off")  # off | auto: um revisor crítico lê o memorando
     regression_mode: Mapped[str] = mapped_column(String(8), default="auto")  # auto: mudança no cargo roda as tarefas de ouro
     created_by: Mapped[str] = mapped_column(String(254), default="")
