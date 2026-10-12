@@ -41,7 +41,7 @@ from .platform_tools import Ctx, tool
 ROUTINE_MIN, QUEUE_MIN, COLLEAGUE_MIN = 3, 5, 2
 SOURCES = ("portal", "chat", "email", "mcp", "api", "slack", "teams", "telegram", "discord", "whatsapp", "queue")
 _last_run: dict[int, str] = {}
-CHANGES = ("routine", "instruction", "colleague", "queue_route")
+CHANGES = ("routine", "instruction", "colleague", "queue_route", "reports_to")
 
 
 def _norm(title: str) -> str:
@@ -230,6 +230,11 @@ def decide_org_change(db, acc, r: HumanRequest, e: Employee, task, decision: str
             e.colleagues = sorted({*(e.colleagues or []), str(p["to"])})
             db.commit()
             employee_revisions.record(db, e, who, f"colega para repasse: {p['to']} (proposta #{r.id})")
+        elif change == "reports_to":
+            from .org_chart import set_chief
+            set_chief(db, e, p.get("to") or None, who)
+            db.commit()
+            employee_revisions.record(db, e, who, f"passa a reportar a {p.get('to') or 'ninguém'} (proposta #{r.id})")
         elif change == "queue_route":
             q = db.scalar(select(WorkQueue).where(WorkQueue.slug == p.get("queue")))
             if q is None:
@@ -245,3 +250,17 @@ def decide_org_change(db, acc, r: HumanRequest, e: Employee, task, decision: str
     db.commit()
     audit(db, who, f"org_change.{decision}", a.slug, f"{p.get('change')} #{r.id}")
     return request_dict(db, r, e)
+
+
+def propose_reports_to(db, acc, slug: str, to: str, why: str = "") -> dict:
+    """No organograma, quem não gerencia o agente propõe a mudança de chefe; quem gerencia decide."""
+    from .employees import find
+    e, a = find(db, acc, slug, "view")
+    if to:
+        find(db, acc, to, "view")
+    r = propose(db, e, "reports_to", f"reports_to:{to or '-'}",
+                f"{acc.p.name} propõe que {a.name} passe a reportar a {to or 'ninguém'}. {why}".strip(),
+                {"to": to, "evidence": {"by": acc.p.name}}, "person")
+    if r is None:
+        raise PlatformError("essa mudança já foi proposta (ou recusada há pouco)")
+    return {"request": r.id}

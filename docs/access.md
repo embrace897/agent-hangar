@@ -107,6 +107,9 @@ so non-admins never see it; admins return at `/ui/`.
 
 The data comes from `GET /api/me/home`, already filtered by the caller's permissions.
 
+> Since the member workspace, the portal opens on a simpler **Início** (decisions, agents working now, my tasks, month
+> cost), and this page is **Painel completo** under *Avançado*. See [workspace.md](workspace.md).
+
 ## Signing in
 
 The UI opens on a login page. The buttons are the configured providers, plus **Sign in with token**:

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .. import auth, config, sso
+from .. import services as svc
 from ..services import org
 from .deps import acc, actor, db_dep, guard, principal, require_admin
 
@@ -58,12 +59,36 @@ def providers(db=Depends(db_dep)):
     return {"providers": sso.public_providers(db), "token_login": True, "password_login": config.LOCAL_LOGIN}
 
 
+def _client(request: Request) -> dict:
+    return {"user_agent": request.headers.get("user-agent", ""), "ip": request.client.host if request.client else ""}
+
+
 @router.post("/auth/password")
-def password_login(body: PasswordLogin, db=Depends(db_dep)):
+def password_login(body: PasswordLogin, request: Request, db=Depends(db_dep)):
     """Conta local: usuário (ou e-mail) e senha -> sessão em cookie."""
     user = guard(lambda: org.password_login(db, body.username, body.password))
+    guard(lambda: svc.workspace.check_login(db, user, "password"))
     resp = JSONResponse({"ok": True})
-    _set_session(resp, auth.create_session(db, user))
+    _set_session(resp, auth.create_session(db, user, method="password", **_client(request)))
+    return resp
+
+
+class ActivateBody(BaseModel):
+    code: str
+
+
+@router.post("/auth/activate")
+def activate(body: ActivateBody, request: Request, db=Depends(db_dep)):
+    """Código de ativação (a "chave virtual"): uma entrada, sem senha."""
+    try:
+        user = svc.workspace.redeem(db, body.code)
+    except svc.access.Forbidden as e:
+        raise HTTPException(401, str(e)) from None
+    except svc.PlatformError as e:
+        raise HTTPException(403, str(e)) from None
+    org.audit(db, user.email, "auth.activation", user.email, "código de ativação")
+    resp = JSONResponse({"ok": True})
+    _set_session(resp, auth.create_session(db, user, method="activation", **_client(request)))
     return resp
 
 
@@ -92,18 +117,22 @@ def callback(provider: str, request: Request, code: str = "", state: str = "", e
         if error:
             raise sso.AuthError(f"o provedor recusou o login ({error_description or error})")
         user, nxt = sso.finish(db, provider, code, state, request.cookies.get(sso.STATE_COOKIE, ""))
+        try:
+            svc.workspace.check_login(db, user, "sso")
+        except svc.PlatformError as e:
+            raise sso.AuthError(str(e)) from None
     except sso.AuthError as e:
         resp = RedirectResponse("/ui/#/login?error=" + urllib.parse.quote(str(e)[:300]), 303)
         resp.delete_cookie(sso.STATE_COOKIE, path="/api/auth")
         return resp
     resp = RedirectResponse("/ui/" + sso.safe_next(nxt), 303)
     resp.delete_cookie(sso.STATE_COOKIE, path="/api/auth")
-    _set_session(resp, auth.create_session(db, user))
+    _set_session(resp, auth.create_session(db, user, method="sso", **_client(request)))
     return resp
 
 
 @router.post("/auth/token")
-def token_login(body: TokenLogin, db=Depends(db_dep)):
+def token_login(body: TokenLogin, request: Request, db=Depends(db_dep)):
     """Entrar com token: ADMIN_TOKEN (emergência), chave admin ou token pessoal ("user"). Abre uma sessão em
     cookie — o token não fica guardado no navegador."""
     p = auth.authenticate(db, body.token.strip())
@@ -111,7 +140,9 @@ def token_login(body: TokenLogin, db=Depends(db_dep)):
         raise HTTPException(401, "token inválido")
     if p.is_user:
         from ..models import User
-        raw = auth.create_session(db, db.get(User, p.user_id))
+        u = db.get(User, p.user_id)
+        guard(lambda: svc.workspace.check_login(db, u, "key"))
+        raw = auth.create_session(db, u, method="key", **_client(request))
     elif "admin" in p.scopes:
         raw = auth.create_session(db, None, admin=True, label=p.name)
         org.audit(db, p.name, "auth.token_login", "admin", "sessão de emergência")
@@ -392,3 +423,122 @@ def sso_delete_mapping(mid: int, request: Request, db=Depends(db_dep)):
 
 
 __all__ = ["router", "principal"]
+
+
+# ================================================================== workspace do membro
+class PolicyBody(BaseModel):
+    login: dict | None = None
+    personal_agents: dict | None = None
+
+
+class CodeBody(BaseModel):
+    email: str = ""  # vazio: o membro gera para ele mesmo (outro navegador)
+
+
+class PromoteBody(BaseModel):
+    note: str = ""
+
+
+def _current_hash(request: Request) -> str:
+    raw = request.cookies.get(auth.SESSION_COOKIE, "")
+    return auth.hash_key(raw) if raw else ""
+
+
+@router.get("/workspace/policy")
+def workspace_policy(request: Request, db=Depends(db_dep)):
+    acc(request, db)
+    return svc.workspace.policy(db)
+
+
+@router.put("/workspace/policy")
+def workspace_policy_set(body: PolicyBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.set_policy(db, acc(request, db), body.model_dump(exclude_none=True)))
+
+
+@router.get("/workspace/sessions")
+def workspace_sessions(request: Request, user_id: int | None = None, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.org_sessions(db, acc(request, db), user_id))
+
+
+@router.delete("/workspace/sessions/{session_id}")
+def workspace_session_revoke(session_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.revoke_org(db, acc(request, db), session_id=session_id))
+
+
+@router.post("/workspace/users/{user_id}/sessions/revoke")
+def workspace_user_revoke(user_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.revoke_org(db, acc(request, db), user_id=user_id))
+
+
+@router.post("/workspace/activation-codes")
+def workspace_activation_code(body: CodeBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.issue_code(db, acc(request, db), body.email))
+
+
+@router.get("/me/sessions")
+def my_sessions(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.my_sessions(db, acc(request, db), _current_hash(request)))
+
+
+@router.delete("/me/sessions/{session_id}")
+def my_session_revoke(session_id: int, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.revoke_mine(db, acc(request, db), session_id=session_id))
+
+
+@router.post("/me/sessions/revoke-others")
+def my_sessions_revoke_others(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.revoke_mine(db, acc(request, db), others_than=_current_hash(request)))
+
+
+@router.post("/me/activation-code")
+def my_activation_code(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.issue_code(db, acc(request, db)))
+
+
+@router.get("/me/workspace")
+def my_workspace(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.home(db, acc(request, db)))
+
+
+@router.post("/employees/{slug}/promote-to-team")
+def promote_personal(slug: str, body: PromoteBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.promote(db, acc(request, db), slug, body.note))
+
+
+
+class ReportsToBody(BaseModel):
+    to: str = ""
+    why: str = ""
+
+
+@router.post("/employees/{slug}/propose-reports-to")
+def propose_reports_to(slug: str, body: ReportsToBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.self_org.propose_reports_to(db, acc(request, db), slug, body.to, body.why))
+
+
+
+# ------------------------------------------------------------------ notificações do navegador (PWA + Web Push)
+class PushBody(BaseModel):
+    endpoint: str
+    keys: dict = {}
+
+
+@router.get("/me/push")
+def my_push(request: Request, db=Depends(db_dep)):
+    a = acc(request, db)
+    return {"public_key": svc.webpush.public_key(db), "subscriptions": svc.webpush.mine(db, a)}
+
+
+@router.post("/me/push")
+def my_push_subscribe(body: PushBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.webpush.subscribe(db, acc(request, db), body.model_dump(), request.headers.get("user-agent", "")))
+
+
+@router.post("/me/push/remove")
+def my_push_remove(body: PushBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.webpush.unsubscribe(db, acc(request, db), body.endpoint))
+
+
+@router.post("/me/push/test")
+def my_push_test(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.webpush.test_mine(db, acc(request, db)))

@@ -16,7 +16,7 @@ const MODE_LABEL = { auto: ['Sozinho', 'ok'], notify: ['Faz e avisa', 'info'], a
   approve_2: ['Duas aprovações', 'warn'], never: ['Nunca', 'bad'] };
 const LEVEL_LABEL = { intern: 'Estagiário', junior: 'Júnior', pleno: 'Pleno', senior: 'Sênior' };
 const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão',
-  review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão', learning: 'aprendizado', org_change: 'mudança na organização' };
+  review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão', learning: 'aprendizado', org_change: 'mudança na organização', promote_personal: 'promover agente pessoal' };
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',
@@ -95,7 +95,9 @@ const HIRE_PROMPT = () => window.LANG === 'en'
 
 async function employeeHirePage() {
   const teams = ME.teams || [];
-  main.innerHTML = `<a href="#/employees" class="mute small">← Digital employees</a><h1>Contratar um Digital employee</h1>
+  const personal = qsOf().get('personal') === '1';  // agente pessoal do membro: só ele vê, com as regras do workspace
+  main.innerHTML = `<a href="#/employees" class="mute small">← Digital employees</a><h1>${personal ? 'Novo agente pessoal' : 'Contratar um Digital employee'}</h1>
+  ${personal ? '<div class="card hero">Agente <b>pessoal</b>: só você (e a auditoria) vê. Você é o gestor. Segue as regras do workspace (limite de agentes, conexões de LLM e orçamento do mês). Quando o time quiser usar, peça a promoção em <a href="#/mine">Meus agentes</a>.</div>' : ''}
   <div class="sub">O cargo só é criado quando estiver completo: missão, responsabilidades, gestor, sistemas, alçada, canais e as tarefas do período de experiência.</div>
   <div class="card hero"><h2>${icon('chat')} Pela sua ferramenta de IA (modo self, recomendado)</h2>
     <div class="mute small">No Claude, ChatGPT, Codex ou Cursor conectados ao Hangar (MCP), peça a contratação. A IA chama <code class="inline">plan_employee</code>,
@@ -106,7 +108,7 @@ async function employeeHirePage() {
     <div class="mute small">Clique em <b>Verificar</b> a qualquer momento: o Hangar diz o que falta (com a pergunta) e o que dá para reaproveitar do catálogo.</div>
     <div class="grid g2 mt">
       <label>Cargo<input id="h-title" placeholder="ex.: Analista de renovações"></label>
-      <label>Gestor (e-mail)<input id="h-manager" placeholder="quem aprova e recebe os relatórios"></label>
+      <label>Gestor (e-mail)<input id="h-manager" placeholder="${personal ? 'você (deixe em branco)' : 'quem aprova e recebe os relatórios'}"></label>
       <label style="grid-column:1/-1">Missão<input id="h-mission" placeholder="o resultado pelo qual ele responde"></label>
       <label>Responsabilidades (uma por linha, 3 ou mais)<textarea id="h-resp" rows="4"></textarea></label>
       <label>Sistemas e ferramentas (uma por linha)<textarea id="h-systems" rows="4" placeholder="ex.: CRM&#10;e-mail"></textarea></label>
@@ -148,6 +150,7 @@ async function employeeHirePage() {
       channels: [...document.querySelectorAll('.h-ch:checked')].map(c => c.value), accept_default_authority: $('#h-accept').checked, shadow: $('#h-shadow').checked,
       probation_tasks: [...document.querySelectorAll('.h-pt')].map(r => ({ title: $('.pt-title', r).value.trim(), body: $('.pt-body', r).value.trim(), expected: $('.pt-exp', r).value.trim() }))
         .filter(t => t.title),
+      personal,
       kpis: lines($('#h-kpis').value).map(k => ({ name: k })), report_webhook: $('#h-hook').value.trim(), working_hours: $('#h-hours').value.trim(),
       task_budget_usd: num('#h-budget'), task_time_limit_min: num('#h-limit'), report_hour: num('#h-hour'),
     };

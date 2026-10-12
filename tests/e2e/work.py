@@ -1,4 +1,4 @@
-"""E2E do trabalho do dia a dia (fases A a L), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
+"""E2E do trabalho do dia a dia (fases A a M), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py [--keep FILE]
 
@@ -455,13 +455,56 @@ def phase_l(dev, mgr, team, slug):
           and s is not None and s["mode"] == "maximizer" and s["done"] >= 1 and "Projeto" in s["last_report"], s)
 
 
+def phase_m(dev, dev_pat, mgr, team, dev_email):
+    """Workspace do membro: código de ativação, acessos (aparelhos), agente pessoal e promoção, o cartão do
+    organograma e a IA do membro (MCP) vendo o próprio workspace."""
+    import asyncio
+
+    import httpx
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+    code = ok(admin.post("/api/workspace/activation-codes", json={"email": dev_email}))["code"]
+    other = httpx.Client(base_url=wf.URL, timeout=60, headers={"user-agent": "Mozilla/5.0 (Macintosh) Firefox/131.0"})
+    ok(other.post("/api/auth/activate", json={"code": code}))
+    check("ativação: entra com o código, uma vez só", ok(other.get("/api/me"))["user"]["email"] == dev_email
+          and httpx.post(wf.URL + "/api/auth/activate", json={"code": code}).status_code == 401)
+    mine = ok(dev.get("/api/me/sessions"))
+    act = next((x for x in mine if x["method"] == "activation"), None)
+    check("acessos: o aparelho novo aparece para o membro", act is not None and act["device"] == "Firefox · macOS", mine)
+    ok(dev.delete(f"/api/me/sessions/{act['id']}"))
+    check("acessos: encerrado pelo membro, o outro navegador sai", other.get("/api/me").status_code == 401)
+    job = {"name": f"My helper {RUN}", "title": "My helper", "mission": "Keep my week organised.", "personal": True,
+           "responsibilities": ["sort my inbox", "draft replies", "remind me"], "team": team, "systems": ["e-mail"],
+           "llm": {"model": "mock/echo"}, "channels": ["portal", "mcp"], "accept_default_authority": True,
+           "probation_tasks": [{"title": f"P {i}", "body": f"answer {i}", "expected": f"answer {i}"} for i in range(3)]}
+    slug = ok(dev.post("/api/employees", json=job))["employee"]["slug"]
+    wf.created["agents"].append(slug)
+    check("pessoal: o time não vê", mgr.get(f"/api/employees/{slug}").status_code == 403
+          and ok(dev.get("/api/me/workspace"))["personal_count"] == 1)
+    node = next(n for n in ok(dev.get("/api/org-chart"))["nodes"] if n["slug"] == slug)
+    check("organograma: o cartão (modelo, harness, pessoal)", node["model"] == "mock/echo" and node["harness"] == "hangar"
+          and node["personal"] and node["can_manage"], node)
+    req = ok(dev.post(f"/api/employees/{slug}/promote-to-team", json={"note": "the team wants it"}))["request"]
+    ok(mgr.post(f"/api/decisions/{req}", json={"decision": "approve"}))
+    check("pessoal: promovido, o time passa a ver", ok(mgr.get(f"/api/employees/{slug}"))["personal"] is False)
+
+    async def ask():
+        async with streamablehttp_client(wf.URL + "/mcp", headers={"Authorization": f"Bearer {dev_pat}"}) as (r, w, _):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                res = await s.call_tool("my_workspace", {})
+                return json.loads("\n".join(c.text for c in res.content if getattr(c, "type", "") == "text"))
+    ws = asyncio.run(ask())
+    check("MCP: a IA do membro vê o workspace dele", any(a["slug"] == slug for a in ws["agents"]), ws.get("agents"))
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
     team = ok(admin.post("/api/teams", json={"name": f"E2E work {RUN}"}))["slug"]
     wf.created["team"] = team
     mgr, mgr_email, _ = wf.person("mgr", "maintainer", team)
-    dev, _, _ = wf.person("dev", "developer", team)
+    dev, dev_email, dev_pat = wf.person("dev", "developer", team)
     slug, _, _ = phase_a(dev, mgr, mgr_email, team)
     phase_b(dev, mgr, slug)
     phase_c(dev, mgr, mgr_email, team, slug)
@@ -474,6 +517,7 @@ def main():
     phase_j(dev, mgr, team, slug)
     phase_k(dev, mgr, team, slug)
     phase_l(dev, mgr, team, slug)
+    phase_m(dev, dev_pat, mgr, team, dev_email)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

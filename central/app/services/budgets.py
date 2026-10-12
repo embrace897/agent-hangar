@@ -346,6 +346,12 @@ def stopped(db: Session, agent: Agent | None, project_id: int | None = None) -> 
     if hit and time.monotonic() - hit[0] < CACHE_S:
         return hit[1]
     out = None
+    if agent is not None and agent.personal_owner_id:
+        from . import workspace
+        out = workspace.personal_stop(db, agent)
+        if out is not None:
+            _cache[key] = (time.monotonic(), out)
+            return out
     for p in _policies_for(db, agent, project_id):
         k = window_key(p.window)
         stop = db.scalar(select(BudgetIncident).where(BudgetIncident.policy_id == p.id, BudgetIncident.window_key == k,

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Agent Hangar · Meu espaço</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F4B400' stroke-width='2.2' stroke-linejoin='round'><path d='M2.5 20.5V11L12 3.5 21.5 11v9.5'/><path d='M6.5 20.5v-6h11v6'/></svg>">
+<link rel="manifest" href="/app/manifest.webmanifest">
+<meta name="theme-color" content="#1C2530">
+<link rel="apple-touch-icon" href="/app/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -18,17 +21,28 @@
   <div class="gsearch"><input id="gsearch" type="search" placeholder="Buscar… (Ctrl+K)" aria-label="Buscar"></div>
   <nav aria-label="Principal">
     <div class="nav-group">
-      <div class="nav-title">Meu espaço</div>
+      <div class="nav-title">Meu workspace</div>
       <a href="#/" data-r="" data-i="gauge">Início</a>
+      <a href="#/mine" data-r="mine" data-i="bot">Meus agentes</a>
+      <a href="#/org" data-r="org" data-i="briefcase">Organograma</a>
+      <a href="#/decisions" data-r="decisions" data-i="approve">Decisões <span id="dec-badge" class="badge" hidden></span></a>
       <a href="#/inbox" data-r="inbox" data-i="inbox">Caixa de entrada <span id="inbox-badge" class="badge" hidden></span></a>
-      <a href="#/agents" data-r="agents" data-i="bot">Meus agentes</a>
+      <a href="#/connect-ai" data-r="connect-ai" data-i="plug">Conectar minha IA</a>
+      <a href="#/access" data-r="access" data-i="lock">Meus acessos</a>
+      <a href="#/workspace" data-r="workspace" data-need="auditor" data-i="userCog">Acesso dos membros</a>
+      <button type="button" id="nav-adv-btn" class="nav-adv-btn" aria-controls="nav-adv" aria-expanded="false">Avançado</button>
+    </div>
+    <div id="nav-adv" hidden>
+    <div class="nav-group">
+      <div class="nav-title">Meu espaço</div>
+      <a href="#/overview" data-r="overview" data-i="gauge">Painel completo</a>
+      <a href="#/agents" data-r="agents" data-i="bot">Agentes (MCP e API)</a>
       <a href="#/agents/catalog" data-r="agents/catalog" data-i="globe">Catálogo da empresa</a>
       <a href="#/approvals" data-r="approvals" data-i="approve">Pedidos e aprovações <span id="appr-badge" class="badge" hidden></span></a>
     </div>
     <div class="nav-group">
       <div class="nav-title">Digital employees</div>
       <a href="#/employees" data-r="employees" data-i="briefcase">Meus Digital employees</a>
-      <a href="#/decisions" data-r="decisions" data-i="approve">Decisões <span id="dec-badge" class="badge" hidden></span></a>
       <a href="#/live" data-r="live" data-i="gauge">Ao vivo</a>
       <a href="#/work" data-r="work" data-i="inbox">Meu trabalho</a>
       <a href="#/queues" data-r="queues" data-i="team">Filas</a>
@@ -68,13 +82,13 @@
     <div class="nav-group">
       <div class="nav-title">Organização</div>
       <a href="#/teams" data-r="teams" data-i="team">Meus times</a>
-      <a href="#/org" data-r="org" data-i="briefcase">Organograma</a>
       <a href="#/secrets" data-r="secrets" data-i="lock">Segredos</a>
       <a href="#/orgs" data-r="orgs" data-need="instance" data-i="globe">Empresas</a>
       <a href="#/announcements" data-r="announcements" data-need="admin" data-i="chat">Avisos</a>
       <a href="#/governance" data-r="governance" data-need="auditor" data-i="shield">Governança de dados</a>
       <a href="#/audit" data-r="audit" data-need="auditor" data-i="scroll">Auditoria</a>
       <a href="#/users" data-r="users" data-need="auditor" data-i="userCog">Usuários</a>
+    </div>
     </div>
   </nav>
   <div class="side-foot"><div id="whoami"></div><div class="row between"><span id="ver" class="small"></span><button id="logout" class="ghost on-dark" title="Sair"><span data-i="logout"></span>Sair</button></div></div>
@@ -92,6 +106,7 @@
 <script src="/ui/ux.js?v=__V__"></script>
 <script src="/ui/analyst.js?v=__V__"></script>
 <script src="/ui/home.js?v=__V__"></script>
+<script src="/ui/member.js?v=__V__"></script>
 <script src="/ui/app.js?v=__V__"></script>
 </body>
 </html>

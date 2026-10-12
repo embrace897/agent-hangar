@@ -1,6 +1,6 @@
 /* Página antiga em cache carregando este arquivo novo (sem icons.js/org.js): recarrega na versão atual. */
 const USER_MODE = window.HANGAR_MODE === 'user';  // portal do usuário (/app) x console de admin (/ui)
-if (typeof icon !== 'function' || typeof boot !== 'function' || typeof decisionsPage !== 'function' || (USER_MODE && typeof homePage !== 'function')) {
+if (typeof icon !== 'function' || typeof boot !== 'function' || typeof decisionsPage !== 'function' || typeof workspaceAdminPage !== 'function' || (USER_MODE && typeof homePage !== 'function')) {
   // recarrega uma vez só: se o problema não for cache (ex.: erro num script), não entra em loop
   let again = false;
   try { again = Date.now() - Number(sessionStorage.getItem('hangar_reload') || 0) < 15000; sessionStorage.setItem('hangar_reload', String(Date.now())); } catch (e) { again = true; }
@@ -985,6 +985,7 @@ async function route() {
   const navKey = r === 'agents' && ['catalog', 'new'].includes(a) ? `agents/${a}` : r;
   const links = [...document.querySelectorAll('nav a')], key = links.some(x => x.dataset.r === navKey) ? navKey : r;
   links.forEach(x => x.classList.toggle('on', x.dataset.r === key));
+  if (USER_MODE) memberNavSync(key);
   try {
     if (r === 'agents' && a === 'new') await newAgentPage();
     else if (r === 'agents' && a === 'catalog') await agentsPage('catalog');
@@ -1000,7 +1001,12 @@ async function route() {
     else if (r === 'goals') await goalsPage();
     else if (r === 'budgets') await budgetsPage();
     else if (r === 'files') await filesPage();
-    else if (r === 'org') await orgChartPage();
+    else if (r === 'org') await orgVisualPage();
+    else if (r === 'mine') await myAgentsPage();
+    else if (r === 'connect-ai') await connectAiPage();
+    else if (r === 'access') await myAccessPage();
+    else if (r === 'workspace') await workspaceAdminPage();
+    else if (r === 'overview') await (USER_MODE ? homePage : dashboard)();
     else if (r === 'skills' && a) await skillDetail(decodeURIComponent(a));
     else if (r === 'skills') await skillsPage();
     else if (r === 'packages') await packagesPage();
@@ -1036,7 +1042,7 @@ async function route() {
     else if (r === 'workforce') await workforcePage(a);
     else if (r === 'teams' && a === 'new') await teamsPage(true);
     else if (r === 'teams' && a) await teamDetail(a);
-    else await ({ '': USER_MODE ? homePage : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
+    else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, users: usersPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos
   } catch (e) { if (!(e instanceof AuthError)) main.innerHTML = `<div class="card"><h2>Erro</h2>${esc(e.message)}</div>`; }
@@ -1050,7 +1056,7 @@ const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisio
 setInterval(() => {
   const parts = location.hash.split('/');
   if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs', 'extraction', 'calculators', 'playbooks', 'message-templates',
-    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets'].includes(parts[1])) return;
+    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets', 'connect-ai', 'access', 'workspace', 'org'].includes(parts[1])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

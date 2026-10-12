@@ -194,6 +194,9 @@ def _guide_text(e: Employee, a: Agent, manager: User, summary: list[dict], pt: b
 
 def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
     """Contrata um Digital employee. Se faltar campo obrigatório, NÃO cria nada e devolve as perguntas para o dono."""
+    if f.get("personal") and not f.get("manager") and acc.p.user_id:  # agente pessoal: o gestor é o próprio dono
+        u = db.get(User, acc.p.user_id)
+        f["manager"] = u.email if u else ""
     miss = missing_fields(f)
     manager = _user(db, f.get("manager") or "")
     if f.get("manager") and manager is None and "manager" not in miss:
@@ -207,6 +210,11 @@ def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
                             "Para trabalho de código, ponha um agente com harness em specialists: cada job dele passa "
                             "pela alçada como run_code")
     pt = _pt(" ".join([request, f["title"], f["mission"]]))
+    personal = bool(f.get("personal"))
+    if personal:  # agente pessoal: as regras do workspace, o time da pessoa, invisível para o resto do time
+        from . import workspace
+        workspace.check_personal(db, acc, f.get("llm"))
+        f["team"] = workspace.personal_team(db, acc, f.get("team"))
     rules = [gatemod.validate_rule(r) for r in f.get("authority") or []]
     backups = []
     for b in f.get("backups") or []:
@@ -226,8 +234,11 @@ def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
                   "Cada tarefa concluída, com o resultado." if pt else "Each task completed, with its result.",
                   _instructions(f, pt), f.get("team") or "", f.get("visibility") or "", f.get("specialists"),
                   f.get("base") or "", f.get("skills"), f.get("new_skills"), f.get("mcps"), f.get("tools"), tests,
-                  None, True, True, f.get("llm"), f.get("memory"), f.get("plan_id") or "")
+                  None, True, True, f.get("llm"), f.get("memory"), f.get("plan_id") or "", personal=personal)
     a = get_agent(db, out["slug"])
+    if personal:
+        from . import workspace
+        workspace.make_personal(db, a, acc.p.user_id)
     e = Employee(agent_id=a.id, team_id=a.team_id, title=f["title"].strip(), mission=f["mission"].strip(),
                  responsibilities=[str(r).strip() for r in f["responsibilities"] if str(r).strip()],
                  kpis=workmod.validate_kpis(f.get("kpis")), systems=f.get("systems") or [],
@@ -378,7 +389,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  webhook=workmod.webhook_info(e, a.slug), career=workmod.career_status(db, e),
                  quality=qualitymod.stats(db, e),
                  colleagues=teamwork.colleagues_of(db, e), plan_policy=e.plan_policy or "auto", recall=bool(e.recall), review_policy=e.review_policy or "off",
-                 reports_to=_chief_slug(db, e), browser_domains=e.browser_domains or [], desktop_apps=e.desktop_apps or [], learning_mode=e.learning_mode or "on", critic_mode=e.critic_mode or "off",
+                 reports_to=_chief_slug(db, e), browser_domains=e.browser_domains or [], desktop_apps=e.desktop_apps or [], personal=bool(a.personal_owner_id), learning_mode=e.learning_mode or "on", critic_mode=e.critic_mode or "off",
                  decision_record=memosmod.record(db, e),
                  external=externalmod.info(e),
                  inbox=teamwork.inbox_view(e),

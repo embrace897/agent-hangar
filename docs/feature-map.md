@@ -7,7 +7,9 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 
 | Feature | Where | Docs |
 |---|---|---|
-| Home: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
+| Member workspace: simple menu, home (decisions, agents working now, my tasks, month cost), personal agents, visual org chart with drag-and-drop, *Connect my AI*, my sign-ins, installable app with notifications | Portal → Início, Meus agentes, Organograma, Conectar minha IA, Meus acessos | [workspace.md](workspace.md) |
+| Member access policy (sign-in methods, personal-agent rules), activation codes, everyone's open sign-ins | Console / Portal → Acesso dos membros | [workspace.md](workspace.md#admin-member-access) |
+| Full dashboard: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
 | Inbox: decisions, tasks I asked for, stuck work I manage, budget stops (read / archived) | Portal → Inbox | [work.md](work.md#inbox-and-search) |
 | Search everything I can see (`Ctrl+K`) | Top of every page | [work.md](work.md#inbox-and-search) |
 | Favorites (☆ on a title) and recently viewed | Sidebar, Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |

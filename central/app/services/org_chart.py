@@ -104,5 +104,37 @@ def chart(db: Session, acc: Access, team: str | None = None) -> dict:
         chief = db.get(Employee, e.reports_to_id) if e.reports_to_id else None
         nodes.append({"slug": a.slug, "name": a.name, "title": e.title, "status": e.status, "level": e.autonomy_level,
                       "team": teams.get(e.team_id), "manager": people.get(e.manager_user_id, ""),
-                      "reports_to": _slug(db, chief)})
+                      "reports_to": _slug(db, chief), **card(db, acc, e, a, people)})
     return {"nodes": nodes}
+
+
+def card(db: Session, acc: Access, e: Employee, a: Agent, people: dict) -> dict:
+    """O que o cartão do organograma mostra: o modelo, o harness dos especialistas, se é pessoal, o que faz agora."""
+    from ..models import EmployeeTask
+    from .common import spec_of
+    from .employees import find
+    spec = spec_of(a) or {}
+    llm = spec.get("llm") or {}
+    specialists = []
+    for s in spec.get("sub_agents") or []:
+        sa = db.scalar(select(Agent).where(Agent.slug == s))
+        if sa is not None:
+            h = (spec_of(sa) or {}).get("harness") or {}
+            specialists.append({"slug": sa.slug, "name": sa.name, "harness": h.get("id") or h.get("name") or ""})
+    running = db.scalar(select(EmployeeTask).where(EmployeeTask.employee_id == e.id, EmployeeTask.status == "in_progress")
+                        .order_by(EmployeeTask.id.desc()))
+    try:
+        find(db, acc, a.slug, "manage")
+        manage = True
+    except Exception:  # noqa: BLE001
+        manage = False
+    model = llm.get("model") or ""
+    if not model and llm.get("connection"):  # o modelo da conexão (o mesmo que o deploy usa)
+        from ..models import LlmConnection
+        conn = db.scalar(select(LlmConnection).where(LlmConnection.name == llm["connection"]))
+        model = conn.model_name if conn else ""
+    from .. import config
+    return {"model": model or config.DEFAULT_MODEL, "connection": llm.get("connection") or "",
+            "harness": ((spec.get("harness") or {}).get("id") or "hangar"), "specialists": specialists,
+            "personal": bool(a.personal_owner_id), "owner": people.get(a.personal_owner_id, "") if a.personal_owner_id else "",
+            "can_manage": manage, "working_on": {"id": running.id, "title": running.title} if running else None}

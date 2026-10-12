@@ -66,7 +66,9 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       value,
                       vscode,
                       watchers,
+                      webpush,
                       work_queues,
+                      workspace,
 )
 from .catalog import (  # noqa: F401
                       HARNESS_PROTOCOL,

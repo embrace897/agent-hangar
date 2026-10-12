@@ -152,11 +152,13 @@ def clear_fails(key: str):
 
 
 # ------------------------------------------------------------------ sessões da UI
-def create_session(db: Session, user: User | None = None, admin: bool = False, label: str = "") -> str:
+def create_session(db: Session, user: User | None = None, admin: bool = False, label: str = "", method: str = "",
+                   user_agent: str = "", ip: str = "") -> str:
     raw = SESSION_PREFIX + secrets.token_urlsafe(32)
     db.add(UserSession(token_hash=hash_key(raw), user_id=user.id if user else None, admin=admin,
                        label=label[:200] or (user.email if user else "admin"),
-                       expires_at=now() + timedelta(hours=config.SESSION_TTL_HOURS)))
+                       expires_at=now() + timedelta(hours=config.SESSION_TTL_HOURS), method=method[:12],
+                       user_agent=(user_agent or "")[:300], ip=(ip or "")[:64], last_seen_at=now()))
     db.commit()
     return raw
 
@@ -222,6 +224,9 @@ def authenticate(db: Session, token: str) -> Principal | None:
     elif token.startswith(SESSION_PREFIX):
         s = db.scalar(select(UserSession).where(UserSession.token_hash == h))
         if s and s.revoked_at is None and _aware(s.expires_at) > now():
+            if s.last_seen_at is None or _aware(s.last_seen_at) < now() - timedelta(minutes=1):
+                s.last_seen_at = now()  # o "último acesso" que o membro e o admin veem
+                db.commit()
             if s.user_id:
                 principal = _user_principal(db.get(User, s.user_id), "session")
             elif s.admin:

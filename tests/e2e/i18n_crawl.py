@@ -30,11 +30,12 @@ DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/ap
                   "/api/plugins", "/api/teams", "/api/remote-mcps", "/api/connect", "/api/deployments", "/api/tests",
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
 PAGES_APP = ["", "live", "announcements", "inbox", "search?q=e2e", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "calculators/_nova", "work", "queues", "playbooks", "playbooks/_novo", "meetings", "message-templates", "knowledge", "procedures", "governance", "memos", "watchers", "learning", "value", "tickets", "learned", "agents", "agents/catalog", "agents/new", "approvals",
-             "employees", "employees/new", "manager", "decisions",
+             "employees", "employees/new", "manager", "decisions", "overview", "mine", "org?view=tree", "connect-ai", "access",
+             "workspace", "employees/new?personal=1",
              "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit", "users"]
 PAGES_UI = ["", "live", "announcements", "inbox", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "agents", "approvals", "workforce/overview", "workforce/brand", "workforce/calendar", "workforce/catalog", "workforce/floor", "workforce/notify",
             "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
-            "audit", "teams", "users", "keys", "sso"]
+            "audit", "teams", "users", "keys", "sso", "workspace"]
 
 LEFTOVERS_JS = """() => {
   const SKIP = 'script,style,code,pre,textarea,input,select,[data-noi18n],.msg,.run-out,.chat,.md';

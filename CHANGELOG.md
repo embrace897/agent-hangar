@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Member workspace** (the company account is the workspace; no desktop app to install):
+  - a simple portal menu (*Início, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos*), with the rest under *Avançado*;
+  - a member home (decisions, agents working now, my tasks, month cost);
+  - personal agents: visible only to their owner, within the workspace rules (who creates, how many, allowed LLM connections, monthly budget per member), promoted to the team with four eyes;
+  - a visual org chart: cards with model, harness, level, status and current task; drag to change who reports to whom, or propose it when you don't manage the agent;
+  - *Conectar minha IA*: a personal key plus ready configs for Claude Code/Desktop, Codex, Cursor, Gemini CLI, VS Code and OpenCode, and OAuth for Claude.ai/ChatGPT;
+  - MCP: `hire_employee(personal=true)`, `promote_personal_agent`, `my_workspace`.
+- **Access policy and sign-ins:**
+  - the admin chooses how members sign in (password, SSO, activation code, personal token);
+  - activation codes, the "virtual key": single use, 24 hours, issued by the admin or by the member for another browser;
+  - every sign-in shows browser and system, method, IP and last use, and the member or the admin can end it (*Meus acessos*, *Acesso dos membros*).
+- **Installable portal (PWA) with device notifications:**
+  - Web Push (VAPID + aes128gcm, no new dependency) delivers new, escalated and expiring decision requests to the member's subscribed browsers;
+  - a click opens the decision.
+
 ## [0.28.0] — 2026-10-12
 
 ### Added

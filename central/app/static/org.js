@@ -68,6 +68,9 @@ async function showLogin() {
       <button class="mt" type="submit" style="width:100%">Entrar</button></form>${providers.length ? '<div class="or"><span>ou</span></div>' : ''}` : ''}
     <div class="sso-list">${providers.map(p => `<a class="sso-btn" href="/api/auth/login/${encodeURIComponent(p.id)}?next=${encodeURIComponent(next)}">${providerIcon(p.id)}Entrar com ${esc(p.label)}</a>`).join('')
       || (pwLogin ? '' : '<div class="mute small">Nenhum login corporativo configurado ainda. Entre com o token de admin e configure em <b>SSO e SCIM</b>.</div>')}</div>
+    <details class="mt" id="lg-act-box" ${params.get('code') ? 'open' : ''}><summary>Entrar com código de ativação</summary>
+      <div class="row mt"><input id="lg-code" placeholder="XXXX-XXXX-XXXX" style="flex:1" autocomplete="one-time-code" value="${esc(params.get('code') || '')}"><button id="lg-act">Entrar</button></div>
+      <div class="mute small mt">O código vem do admin do workspace ou de outro navegador seu (Meus acessos). Vale uma vez, por 24 horas.</div></details>
     <details class="mt" ${providers.length || pwLogin ? '' : 'open'}><summary>Entrar com token (emergência, chave admin ou token pessoal)</summary>
       <div class="row mt"><input id="lg-token" type="password" placeholder="ADMIN_TOKEN ou ah_…" style="flex:1" autocomplete="off"><button id="lg-go">Entrar</button></div>
       <div class="mute small mt">O token vira uma sessão (cookie seguro) e não fica salvo no navegador.</div></details></div></div>`;
@@ -77,6 +80,13 @@ async function showLogin() {
     location.hash = next; location.reload();
   };
   $('#lg-go').onclick = go;
+  const activate = async () => {
+    const r = await fetch('/api/auth/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#lg-code').value.trim() }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || 'Código inválido', true); return; }
+    location.hash = next; location.reload();
+  };
+  $('#lg-act').onclick = activate;
+  $('#lg-code').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); activate(); } };
   $('#lg-token').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   const pf = $('#lg-pw');
   if (pf) pf.onsubmit = async e => {

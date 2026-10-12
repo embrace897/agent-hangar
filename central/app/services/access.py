@@ -69,6 +69,10 @@ class Access:
             return "admin"
         if not self.p.is_user:
             return None
+        if a.personal_owner_id:  # agente pessoal: o dono cuida; o time não vê (o auditor vê)
+            if a.personal_owner_id == self.p.user_id:
+                return "maintainer"
+            return "auditor" if self.p.is_auditor else None
         role = self.teams.get(a.team_id)
         if role:
             return role
@@ -117,12 +121,12 @@ class Access:
             t = self.team_rows.get(team_id)
             raise Forbidden(f"É preciso ser {min_role} do time '{t.slug if t else team_id}'")
 
-    def team_for_new_agent(self, team: str | int | None) -> Team:
+    def team_for_new_agent(self, team: str | int | None, any_role: bool = False) -> Team:
         """Time de um agente novo: o pedido explícito, senão o único onde a pessoa é developer+ (admin sem time
         → Plataforma). Só developers e maintainers criam agentes."""
         if team not in (None, "", 0):
             t = find_team(self.db, team)
-            self.require_team(t.id, "developer")
+            self.require_team(t.id, "consumer" if any_role else "developer")
             return t
         if self.p.is_admin:
             return self.team_rows.get(1) or next(iter(self.team_rows.values()))

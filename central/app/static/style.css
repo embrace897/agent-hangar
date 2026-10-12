@@ -324,3 +324,40 @@ details.inline summary{cursor:pointer}
 @media(max-width:860px){.g2,.g3,.g4{grid-template-columns:minmax(0,1fr)}}
 /* conferência de campos extraídos: o que está em dúvida aparece primeiro e destacado */
 .rf-doubt td{background:color-mix(in srgb,var(--warn,#C99A06) 10%,transparent)}.rf-v{min-width:160px}
+
+/* ---------- workspace do membro: menu "Avançado", organograma visual, acessos ---------- */
+.nav-adv-btn{display:block;width:calc(100% - 12px);margin:6px 6px 0;background:transparent;border:1px dashed var(--tarmac-2);color:var(--tarmac-mute);
+  font-size:13px;padding:6px 12px;text-align:left;min-height:32px}
+.nav-adv-btn:hover{color:#fff;border-color:var(--tarmac-mute);background:transparent}
+.oc-wrap{overflow-x:auto;padding:18px 8px}
+.oc-tree,.oc-tree ul{list-style:none;margin:0;padding:18px 0 0;display:flex;justify-content:center;position:relative}
+.oc-tree{padding-top:0;width:max-content;min-width:100%;margin:0 auto}
+.oc-tree li{position:relative;padding:18px 8px 0;display:flex;flex-direction:column;align-items:center}
+.oc-tree>li{padding-top:0}
+.oc-tree li::before,.oc-tree li::after{content:"";position:absolute;top:0;width:50%;height:18px;border-top:1px solid var(--line)}
+.oc-tree li::before{right:50%}.oc-tree li::after{left:50%;border-left:1px solid var(--line)}
+.oc-tree li:only-child::before,.oc-tree li:only-child::after{display:none}
+.oc-tree li:only-child{padding-top:18px}
+.oc-tree>li:only-child{padding-top:0}
+.oc-tree li:first-child::before,.oc-tree li:last-child::after{border:0}
+.oc-tree li:last-child::before{border-right:1px solid var(--line);border-radius:0 6px 0 0}
+.oc-tree li:first-child::after{border-radius:6px 0 0 0}
+.oc-tree ul::before{content:"";position:absolute;top:0;left:50%;height:18px;border-left:1px solid var(--line)}
+.oc-tree li:only-child>ul::before,.oc-tree li>ul:only-child::before{display:block}
+.oc-card{width:236px;border:1px solid var(--line);border-radius:var(--r-lg);padding:10px 12px;background:var(--panel);text-align:left;cursor:grab;
+  display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
+.oc-card.personal{border-style:dashed}
+.oc-card.st-paused{opacity:.7}
+.oc-card.dragging{opacity:.4}
+.oc-card.drop,.oc-root.drop{outline:2px solid var(--mark);outline-offset:2px;background:var(--mark-soft)}
+.oc-chips{display:flex;flex-wrap:wrap;gap:4px}.oc-chips .chip{font-size:12px}
+.oc-spec{display:flex;flex-wrap:wrap;gap:8px;color:var(--mute)}.oc-spec span{display:inline-flex;align-items:center;gap:3px}
+.oc-card .av,.agent-card .av{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--panel-2);align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.oc-root{border:1px dashed var(--line);border-radius:var(--r);padding:8px 12px;margin-bottom:10px;color:var(--mute);font-size:13px;text-align:center}
+.work-on{border-color:var(--go);background:var(--go-bg);text-decoration:none;font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot-live{width:8px;height:8px;border-radius:50%;background:var(--go);display:inline-block;flex-shrink:0;animation:live 1.6s ease-in-out infinite}
+@keyframes live{50%{opacity:.3}}
+.agent-card{margin-top:10px}
+.code-big{font:600 20px/1.2 var(--f-mono);letter-spacing:.08em;padding:4px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel-2)}
+.ai-tab.on{font-weight:600}
+.ai-tabs{flex-wrap:wrap;overflow:visible}

@@ -43,6 +43,7 @@ class Agent(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     # private (só o time) | org (catálogo da empresa, uso sob pedido) | open (qualquer um da empresa usa)
     visibility: Mapped[str] = mapped_column(String(10), default="org")
+    personal_owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # agente pessoal de um membro
     expose_spec: Mapped[bool] = mapped_column(Boolean, default=False)  # quem é de fora vê instruções/spec
     # draft | tested | test_failed | stage | production
     status: Mapped[str] = mapped_column(String(20), default="draft")
@@ -238,6 +239,7 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     slug: Mapped[str] = mapped_column(String(80), default="")
     domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails desses domínios entram nesta empresa (SSO)
+    access_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # como os membros entram e o que podem criar
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | suspended
     brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # identidade visual dos entregáveis: theme, accent, footer
     calendar: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # dias úteis, expediente e feriados da empresa
@@ -303,6 +305,10 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    method: Mapped[str] = mapped_column(String(12), default="")  # password | sso | activation | key
+    user_agent: Mapped[str] = mapped_column(String(300), default="")  # o navegador (e o sistema) desta sessão
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AccessRequest(OrgScoped, Base):
@@ -1597,3 +1603,31 @@ class LearnedArtifact(OrgScoped, Base):
     decided_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ActivationCode(OrgScoped, Base):
+    """Código de ativação (a "chave virtual"): entra no portal uma vez, sem senha — gerado pelo admin para um membro
+    ou pelo próprio membro para outro navegador. Uso único, curta duração; só o hash fica guardado."""
+    __tablename__ = "activation_codes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PushSubscription(OrgScoped, Base):
+    """Um navegador do membro inscrito nas notificações (Web Push): o portal instalado como app recebe os pedidos
+    mesmo fechado. A chave de autenticação do navegador fica cifrada."""
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    endpoint_hash: Mapped[str] = mapped_column(String(64), index=True)
+    endpoint: Mapped[str] = mapped_column(Text, default="")
+    p256dh: Mapped[str] = mapped_column(String(200), default="")
+    auth: Mapped[str] = mapped_column(String(300), default="")
+    user_agent: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

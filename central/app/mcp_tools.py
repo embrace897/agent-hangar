@@ -482,7 +482,7 @@ async def hire_employee(ctx: Context, request: str = "", title: str = "", missio
                         kpis: list[dict] | None = None, working_hours: str = "", task_budget_usd: float | None = None,
                         task_time_limit_min: int | None = None, report_webhook: str = "", report_hour: int | None = None,
                         name: str = "", visibility: str = "", plan_id: str = "", routines: list[dict] | None = None,
-                        report_weekday: int | None = None, shadow: bool = False) -> dict:
+                        report_weekday: int | None = None, shadow: bool = False, personal: bool = False) -> dict:
     """Digital employee, passo 2: contrata. Se faltar um campo obrigatório, NÃO cria nada e devolve created=false com
     as perguntas (pergunte ao dono). Cria o agente (montado do catálogo), o cargo, a alçada, as tarefas de experiência
     e o guia. Depois: start_probation.
@@ -493,12 +493,28 @@ async def hire_employee(ctx: Context, request: str = "", title: str = "", missio
     action_type: read|delegate|write_internal|send_external|speak_for_company|publish|financial|delete|prod_change;
     mode: auto|notify|approve|approve_2|never) ou accept_default_authority=true, autonomy_level (intern|junior|pleno|
     senior), probation_tasks ([{title, body, expected}], 3+), kpis, working_hours, task_budget_usd,
-    task_time_limit_min, report_webhook, report_hour."""
+    task_time_limit_min, report_webhook, report_hour. personal=true: agente pessoal de quem pede (só a pessoa vê; o
+    gestor é ela; vale a política do workspace: limite, conexões de LLM e orçamento) — o time usa depois de promovido
+    (promote_personal_agent)."""
     f = _employee_fields(title, mission, responsibilities, manager, backups, team, systems, specialists, base, skills,
                          new_skills, mcps, tools, instructions, llm, memory, channels, authority, accept_default_authority,
                          autonomy_level, probation_tasks, kpis, working_hours, task_budget_usd, task_time_limit_min,
                          report_webhook, report_hour, name, visibility, plan_id, routines, report_weekday, shadow)
+    f["personal"] = personal
     return await _run(ctx, lambda db, acc: svc.employees.hire(db, acc, request, **f))
+
+
+@mcp.tool()
+async def promote_personal_agent(ctx: Context, slug: str, note: str = "") -> dict:
+    """Pede para o agente pessoal virar do time: quem mantém o time decide (o dono não aprova o próprio pedido)."""
+    return await _run(ctx, lambda db, acc: svc.workspace.promote(db, acc, slug, note))
+
+
+@mcp.tool()
+async def my_workspace(ctx: Context) -> dict:
+    """O resumo do membro: decisões para tomar, os agentes dele (pessoais e que gerencia) e o que fazem agora, as
+    tarefas que pediu, o custo do mês e as regras dos agentes pessoais."""
+    return await _run(ctx, lambda db, acc: svc.workspace.home(db, acc))
 
 
 

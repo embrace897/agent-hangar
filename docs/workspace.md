@@ -1,0 +1,126 @@
+# Member workspace
+
+The company account is the **workspace**. The admin (the company's owner) sets how members sign in and what they
+can create on their own. Each member gets a simple portal at `/app` for their own agents.
+
+There is no desktop app to install. The portal installs as an app (PWA) on Windows, macOS, Linux, Android and
+iPhone, and it can show decision requests as device notifications. The member's own AI (Claude, ChatGPT, Codex,
+Cursor, Gemini, VS Code, OpenCode) keeps connecting through the platform MCP, exactly as before.
+
+## What the member sees
+
+The menu shows the essentials. **Advanced** reveals everything else, and the choice is remembered per browser.
+
+| Page | What it does |
+|---|---|
+| **Início** | Shows decisions waiting for you, your agents working right now (and on what), the tasks you asked for, and this month's cost. |
+| **Meus agentes** | Lists your personal agents and the team agents you manage. Each one shows its model, harness, level and specialists. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
+| **Organograma** | The visual org chart: cards with model, harness, level, status, manager and the current task. Drag a card onto another to change who it reports to (see below). The tree view is still under *List*. |
+| **Decisões** | Unchanged. |
+| **Caixa de entrada** | Unchanged. |
+| **Conectar minha IA** | Generates a personal key and gives the ready-made config for Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, VS Code and OpenCode (copy or download). Claude.ai and ChatGPT use OAuth, with no key. |
+| **Meus acessos** | Shows where your account is signed in (browser and system, how you signed in, last use, IP). You can end one sign-in or all the others. Also: an activation code for another browser, installing the app, and turning notifications on. |
+| **Acesso dos membros** | Admins and auditors only. See [Admin](#admin-member-access). |
+
+Dragging on the org chart:
+- If you manage the agent, the change is saved.
+- If you don't, it becomes an `org_change` proposal. The agent's manager decides it in *Decisões*.
+
+The previous home page (agents, calls, production) is still there as **Painel completo** (`#/overview`).
+
+## Signing in
+
+A member signs in with one of:
+- **SSO:** Microsoft Entra ID, Google, GitHub or generic OAuth2 (see [access.md](access.md#signing-in)).
+- **Username and password**, for a local account.
+- **Activation code** (the "virtual key"): `XXXX-XXXX-XXXX`, single use, valid for 24 hours. Only its hash is stored. It comes from:
+  - the admin (*Acesso dos membros*), for a member who has no SSO or password yet;
+  - the member (*Meus acessos*), to open another browser. This creates a link like `/app/#/login?code=…`.
+- **Personal token** on the sign-in screen.
+
+The workspace **policy** turns each method on or off. At least one method always stays on. The policy covers
+signing in to the portal only: the MCP keeps accepting personal keys and OAuth tokens.
+
+Each sign-in records how it happened, the browser and system, the IP and the last use. The admin sees every open
+sign-in in the workspace and can end one, or all of a member's.
+
+## Personal agents
+
+A personal agent is a Digital employee that belongs to one member:
+- Only its owner sees and manages it. Admins and auditors also see it; the rest of the team does not.
+- Its manager is the owner, and it lives in the owner's team.
+- It follows the workspace rules. The admin sets in the policy:
+  - who may create one (any member, or developers and maintainers);
+  - how many each member may have;
+  - which LLM connections they may use;
+  - a monthly budget per member. When it's reached, the member's personal agents stop with the scope *agentes pessoais do membro*.
+- Authority, the company floor, audit and shadow mode are the same as for any Digital employee.
+
+**Promotion to the team:**
+1. The owner asks (*Promover para o time*).
+2. Another maintainer of the team decides. The owner can't approve their own request.
+3. On approval, the agent stops being personal and takes the company's default visibility.
+
+From your AI, through the platform MCP:
+- `hire_employee` with `personal=true` creates a personal agent;
+- `promote_personal_agent` asks for the promotion;
+- `my_workspace` returns the summary from *Início*.
+
+## App and notifications (PWA + Web Push)
+
+The portal has:
+- a manifest;
+- icons;
+- a service worker scoped to `/app/`. It shows notifications and, offline, a simple page. It caches no API data.
+
+To install it:
+- in Chrome or Edge, use the install icon in the address bar;
+- on iPhone, use *Share → Add to Home Screen*. iOS only delivers notifications to the installed app.
+
+**Notifications:**
+1. The member turns them on in *Meus acessos*.
+2. The browser subscribes, and the subscription is stored per member. The browser's auth key is encrypted.
+3. Every new, escalated or expiring decision request goes to all of the member's subscribed browsers. This is in addition to Slack, Teams or e-mail.
+4. Clicking the notification opens the decision.
+5. A subscription the push service reports as gone (404/410) is deleted.
+
+**How it's built:**
+- Web Push uses VAPID (RFC 8292) and the `aes128gcm` content encoding (RFC 8291), implemented with `cryptography`. There is no new dependency.
+- The VAPID key pair belongs to the installation. It is generated on first use and stored encrypted with `HANGAR_SECRET_KEY`. You can set it instead with `WEBPUSH_VAPID_PRIVATE_KEY` (PEM).
+- `WEBPUSH_SUBJECT` (a `mailto:`) identifies the sender to the push services.
+- Browsers only allow service workers and notifications over HTTPS. `localhost` also works, for testing.
+
+## Admin: member access
+
+*Acesso dos membros* is in both the console (`/ui/#/workspace`) and the portal. It has:
+- **How members sign in:** password, SSO, activation code, personal token.
+- **Personal agents:** on/off, who creates them, maximum per member, monthly budget per member, allowed LLM connections.
+- **Activation code for a member.**
+- **Open sign-ins** across the workspace, with *End* and *All of this member's*.
+
+Auditors see the page but can't change anything.
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/auth/activate` | `{code}` → session cookie (activation code, single use) |
+| GET / PUT | `/api/workspace/policy` | `{login: {password, sso, activation, key}, personal_agents: {enabled, who, max_per_member, llm_connections, monthly_budget_usd}}`. PUT is admin only |
+| GET | `/api/workspace/sessions?user_id=` | Open sign-ins in the workspace (admin, auditor) |
+| DELETE | `/api/workspace/sessions/{id}` | Ends one sign-in (admin) |
+| POST | `/api/workspace/users/{id}/sessions/revoke` | Ends all of a member's sign-ins (admin) |
+| POST | `/api/workspace/activation-codes` | `{email}` → `{code, user, expires_at}` (admin) |
+| GET | `/api/me/workspace` | The member's home: `to_decide`, `agents` (with `personal`, `working_on`), `my_tasks`, `month_cost_usd`, personal-agent counters and caps |
+| GET | `/api/me/sessions` | My sign-ins (`device`, `method`, `ip`, `last_seen_at`, `current`) |
+| DELETE | `/api/me/sessions/{id}` | Ends one of my sign-ins |
+| POST | `/api/me/sessions/revoke-others` | Ends all my sign-ins except this one |
+| POST | `/api/me/activation-code` | A code for another browser of mine |
+| POST | `/api/employees` | With `personal: true`: a personal agent (`manager` optional, the owner) |
+| POST | `/api/employees/{slug}/promote-to-team` | `{note}` → a `promote_personal` request for another maintainer |
+| POST | `/api/employees/{slug}/propose-reports-to` | `{to, why}` → an `org_change` proposal (for whoever doesn't manage the agent) |
+| GET | `/api/org-chart` | Each node also has `model`, `connection`, `harness`, `specialists`, `personal`, `owner`, `can_manage`, `working_on` |
+| GET | `/api/me/push` | `{public_key, subscriptions}` |
+| POST | `/api/me/push` | The browser's `PushSubscription.toJSON()` |
+| POST | `/api/me/push/remove` | `{endpoint}` |
+| POST | `/api/me/push/test` | Sends a test notification to my browsers |
+| GET | `/app/manifest.webmanifest`, `/app/sw.js`, `/app/icon-192.png`, `/app/icon-512.png` | The PWA |

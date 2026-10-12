@@ -484,9 +484,14 @@ def _deliver_request(db, request_id: int, user_id: int, why: str):
         return
     cfg = org_cfg(db)
     via = route(cfg, u)
+    c = content(db, r, why)
+    try:  # o portal instalado (PWA) avisa no aparelho, além do canal escolhido
+        from . import webpush
+        webpush.send(db, u.id, c["title"], " · ".join(c["lines"][:2]), f"/app/#/decisions?open={r.id}", f"req-{r.id}")
+    except Exception:  # noqa: BLE001 — aviso nunca derruba o fluxo
+        log.exception("falha no push do pedido #%s", r.id)
     if not via:
         return
-    c = content(db, r, why)
     if via == "slack":
         res = _slack(cfg, "chat.postMessage", {"channel": slack_user(db, cfg, u), "text": c["title"],
                                                "blocks": _blocks(db, r, c)})

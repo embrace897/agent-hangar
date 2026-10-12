@@ -16,6 +16,7 @@ what the caller can see. Admins see everything.
 | GET | `/api/auth/login/{provider}?next=#/…` | Redirects to Google, Microsoft, GitHub or generic OAuth2 (authorization code + PKCE) |
 | GET | `/api/auth/callback/{provider}` | Provider callback; opens the session and redirects to the UI |
 | POST | `/api/auth/token` | `{token}` → session cookie (ADMIN_TOKEN, admin key or personal token) |
+| POST | `/api/auth/activate` | `{code}` → session cookie (activation code, single use; see [workspace.md](workspace.md#signing-in)) |
 | POST | `/api/auth/logout` | Ends the session |
 | GET | `/api/me` | Who am I: company role, teams, pending approvals |
 
@@ -219,7 +220,8 @@ Goals, projects, the task's conversation, budgets, the inbox and search: see [wo
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/me/home` | The portal's Início page: `attention`, `agents`, `counts`, `to_decide`, `my_requests`, `teams` (budget), `my_usage` (30 days), `schedules`, `keys`, `memory`, `catalog_news`. Filtered by the caller's permissions |
+| — | — | Member workspace (policy, sign-ins, activation codes, personal agents, notifications): see [workspace.md](workspace.md#api) |
+| GET | `/api/me/home` | The portal's former Início page (now *Painel completo*): `attention`, `agents`, `counts`, `to_decide`, `my_requests`, `teams` (budget), `my_usage` (30 days), `schedules`, `keys`, `memory`, `catalog_news`. Filtered by the caller's permissions |
 
 ## Agent memory
 

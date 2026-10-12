@@ -292,6 +292,19 @@ def portal_index():
     return HTMLResponse(_PORTAL, headers={"Cache-Control": "no-cache"})
 
 
+PWA = {"manifest.webmanifest": "application/manifest+json", "sw.js": "text/javascript", "icon-192.png": "image/png",
+       "icon-512.png": "image/png"}
+
+
+@app.get("/app/{name}")
+def portal_pwa(name: str):
+    """O portal instalável (PWA): manifesto, ícones e o service worker no escopo /app/ (notificações dos pedidos)."""
+    if name not in PWA:
+        return JSONResponse({"error": "não encontrado"}, 404)
+    with open(os.path.join(STATIC, name), "rb") as f:
+        return Response(f.read(), media_type=PWA[name], headers={"Cache-Control": "no-cache"})
+
+
 DOWNLOADS = os.environ.get("DOWNLOADS_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads"))
 
 

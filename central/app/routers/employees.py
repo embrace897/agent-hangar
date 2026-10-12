@@ -46,6 +46,7 @@ class HireBody(BaseModel):
     report_weekday: int | None = None
     routines: list[dict] = Field(default_factory=list)
     shadow: bool = False
+    personal: bool = False  # agente pessoal do membro (as regras do workspace)
     plan_id: str = ""
 
 
