@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-10-12
+
 ### Added
 - **Member workspace** (the company account is the workspace; no desktop app to install):
   - a simple portal menu (*Início, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos*), with the rest under *Avançado*;

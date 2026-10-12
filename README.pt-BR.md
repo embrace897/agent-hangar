@@ -18,7 +18,7 @@ Claude um Assistente Comercial, que é criado, testado e publicado pelo MCP do H
 agente, o Playground, a memória do time, o resumo diário agendado, as conexões e o catálogo da empresa"></p>
 <p align="center"><sub>O portal do usuário, gravado numa instalação local · <a href="docs/assets/portal-tour.mp4">versão MP4</a></sub></p>
 
-> **Status: alpha (v0.28).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
+> **Status: alpha (v0.29).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
 > sua rede até ler [docs/security.md](docs/security.md).
 
 ## Por que o Agent Hangar
@@ -81,7 +81,7 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Governança e custo | SSO, SCIM, papéis, auditoria, orçamento mensal por time com corte opcional, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
-| Maturidade | Alpha (v0.28), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
+| Maturidade | Alpha (v0.29), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
 
 ## Exemplo: do pedido no Claude ao agente funcionando
 
