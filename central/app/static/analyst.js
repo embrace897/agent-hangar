@@ -257,7 +257,8 @@ async function workItemPage(id) {
     <div class="sub">${wiPill(i.status)} ${i.queue ? `<a href="#/queues/${esc(i.queue)}" data-noi18n>${esc(i.queue_name)}</a>` : ''} ${i.category ? `· <span data-noi18n>${esc(i.category)}</span>` : ''}
       ${i.handled_by ? `· <span class="chip">${esc(window.t(HANDLED[i.handled_by] || i.handled_by))}</span>` : ''}
       ${i.employee_task ? ` · <a href="#/tasks/${i.employee_task}">${window.t('tarefa do Digital employee')} #${i.employee_task}</a>` : ''}
-      ${i.playbook_run ? ` · <a href="#/runs/${i.playbook_run}">${window.t('execução do playbook')}</a>` : ''}</div>
+      ${i.playbook_run ? ` · <a href="#/runs/${i.playbook_run}">${window.t('execução do playbook')}</a>` : ''}
+      ${i.ticket ? ` · <a href="${esc(i.ticket.url)}" target="_blank" rel="noopener"><span class="chip">${esc(TK_KIND[i.ticket.kind] || i.ticket.kind)}</span> <span data-noi18n>${esc(i.ticket.key)}</span></a>` : ''}</div>
     <div class="grid g2"><div class="card"><h2>Pedido</h2><dl class="kv"><dt>Com</dt><dd data-noi18n>${esc(i.assignee || '—')}</dd>
         <dt>Pedido por</dt><dd data-noi18n>${esc(i.requester || '—')}</dd><dt>Prazo</dt><dd>${dtLocal(i.due_at)}</dd>
         <dt>SLA</dt><dd>${dtLocal(i.sla_due_at)}${i.sla_breached ? ' <span class="pill bad">estourado</span>' : ''}</dd>
@@ -893,4 +894,100 @@ async function itemReviewBox(id) {
     <div class="row mt" style="gap:6px"><select id="ir-emp">${emps.map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('')}</select><button class="ghost" id="ir-go">Pedir revisão</button></div></div>`);
   $('#ir-go').onclick = ev => act(ev.target, () => api(`/work-items/${id}/review-request`, { method: 'POST', body: { employee: $('#ir-emp').value } })
     .then(r => { location.hash = '#/tasks/' + r.task; }), 'Revisão pedida');
+}
+
+/* ================================================================== sistemas de chamados (Jira, Linear, Asana, ServiceNow) */
+const TK_KIND = { jira: 'Jira', linear: 'Linear', asana: 'Asana', servicenow: 'ServiceNow' };
+const TK_FILTER = { jira: ['jql', 'JQL (ex.: project = OPS AND resolution = Unresolved)'], linear: ['team', 'Time (key, ex.: OPS)'],
+  asana: ['project', 'Projeto (gid)'], servicenow: ['query', 'Consulta (ex.: active=true^assignment_group.name=Service Desk)'] };
+const TK_STATE = { received: 'recebido', employee: 'com o Digital employee', person: 'com uma pessoa', handed: 'repassado a uma pessoa',
+  done: 'concluído', cancelled: 'cancelado' };
+
+async function ticketsPage() {
+  const [cs, qs] = await Promise.all([api('/tickets/connectors'), api('/queues').catch(() => [])]);
+  main.innerHTML = `<h1>Sistemas de chamados</h1><div class="sub">Jira, Linear, Asana ou ServiceNow como porta de entrada de uma fila: os chamados
+    viram itens da fila, e o andamento, o resultado e os anexos voltam ao chamado. A credencial fica no cofre; o conector só entra no ar
+    depois de outra pessoa aprovar.</div>
+    <div class="card">${cs.length ? `<table class="small"><tr><th>Conector</th><th>Sistema</th><th>Fila</th><th>Situação</th><th>Recebidos</th><th>Atualizações enviadas</th><th>Última leitura</th><th></th></tr>
+      ${cs.map(c => `<tr data-c="${esc(c.name)}"><td><b data-noi18n>${esc(c.title)}</b><div class="mute" data-noi18n>${esc(c.name)}</div></td>
+        <td>${esc(TK_KIND[c.kind] || c.kind)}</td><td data-noi18n>${esc(c.queue || '—')}</td>
+        <td><span class="pill ${c.status === 'active' ? 'ok' : c.status === 'paused' ? '' : 'warn'}">${esc(window.t({ active: 'no ar', paused: 'pausado', draft: 'aguardando aprovação' }[c.status] || c.status))}</span>
+          ${c.last_error ? `<div class="pill bad mt" data-noi18n>${esc(c.last_error.slice(0, 120))}</div>` : ''}</td>
+        <td>${(c.stats || {}).received || 0}</td><td>${(c.stats || {}).pushed || 0}</td><td>${c.last_sync_at ? ago(c.last_sync_at) : '—'}</td>
+        <td class="row" style="gap:4px;flex-wrap:wrap">${c.can_approve ? '<button class="small tk-ok">Aprovar</button>' : ''}
+          ${c.can_manage ? `<button class="ghost small tk-test">Testar</button>${c.status === 'active' ? '<button class="ghost small tk-sync">Sincronizar</button><button class="ghost small tk-pause">Pausar</button>' : ''}
+          ${c.status === 'paused' ? '<button class="ghost small tk-on">Retomar</button>' : ''}<button class="ghost small tk-hook">Webhook</button>
+          <button class="ghost small tk-links">Chamados</button><button class="ghost small danger tk-del">×</button>` : ''}</td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum conector ainda.</div>'}<div id="tk-out"></div></div>
+    <div class="card mt"><h2>Novo conector</h2><div class="grid g2">
+      <label>Sistema<select id="tk-kind">${Object.entries(TK_KIND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+      <label>Nome<input id="tk-name" placeholder="jira_suporte"></label>
+      <label>Fila de destino<select id="tk-queue">${qs.map(q => `<option value="${esc(q.slug)}">${esc(q.name)}</option>`).join('')}</select></label>
+      <label class="tk-base">Endereço<input id="tk-base" data-noi18n placeholder="https://suaempresa.atlassian.net"></label>
+      <label class="tk-jira">Jira<select id="tk-dep"><option value="cloud">Cloud (e-mail + token de API)</option><option value="server">Server / Data Center (token pessoal)</option></select></label>
+      <label class="tk-user">Usuário (e-mail no Jira Cloud; usuário no ServiceNow)<input id="tk-user" data-noi18n></label>
+      <label>Credencial no cofre<input id="tk-secret" data-noi18n placeholder="secret://jira-token"></label>
+      <label><span id="tk-flabel"></span><input id="tk-filter" data-noi18n></label>
+      <label class="tk-sn">Tabela (ServiceNow)<input id="tk-table" data-noi18n placeholder="incident"></label>
+      <label>Ler a cada (minutos)<input id="tk-poll" type="number" value="5"></label>
+      <label style="grid-column:1/-1">Categorias (uma regra por linha: campo=valor → categoria; campo = type, label ou priority)
+        <textarea id="tk-rules" rows="3" class="code" data-noi18n placeholder="label=nota → Nota fiscal&#10;type=Bug → Suporte"></textarea></label>
+      <label>Estado no sistema quando o Digital employee pega<input id="tk-t-emp" data-noi18n placeholder="In Progress"></label>
+      <label>Estado no sistema quando conclui<input id="tk-t-done" data-noi18n placeholder="Done"></label></div>
+      <div class="mute small mt">A credencial vai no cofre (Organização → Segredos). O conector entra como rascunho: outra pessoa que mantém o time aprova.</div>
+      <div class="row mt"><button id="tk-go">Salvar conector</button></div></div>`;
+  const kindUi = () => {
+    const k = $('#tk-kind').value;
+    $('#tk-flabel').textContent = window.t(TK_FILTER[k][1]);
+    main.querySelectorAll('.tk-base').forEach(e => { e.style.display = ['jira', 'servicenow'].includes(k) ? '' : 'none'; });
+    main.querySelectorAll('.tk-jira').forEach(e => { e.style.display = k === 'jira' ? '' : 'none'; });
+    main.querySelectorAll('.tk-user').forEach(e => { e.style.display = ['jira', 'servicenow'].includes(k) ? '' : 'none'; });
+    main.querySelectorAll('.tk-sn').forEach(e => { e.style.display = k === 'servicenow' ? '' : 'none'; });
+  };
+  $('#tk-kind').onchange = kindUi;
+  kindUi();
+  $('#tk-go').onclick = ev => {
+    const k = $('#tk-kind').value;
+    const rules = lines($('#tk-rules').value).map(l => {
+      const m = l.match(/^\s*(\w+)\s*=\s*(.+?)\s*(?:→|->)\s*(.+)$/);
+      return m ? { field: m[1], value: m[2], category: m[3] } : null;
+    }).filter(Boolean);
+    const cfg = { [TK_FILTER[k][0]]: $('#tk-filter').value.trim(), category_rules: rules,
+      transitions: Object.fromEntries([['employee', $('#tk-t-emp').value.trim()], ['done', $('#tk-t-done').value.trim()]].filter(x => x[1])) };
+    if (k === 'jira') cfg.deployment = $('#tk-dep').value;
+    if (k === 'servicenow' && $('#tk-table').value.trim()) cfg.table = $('#tk-table').value.trim();
+    act(ev.target, () => api('/tickets/connectors', { method: 'PUT', body: { name: $('#tk-name').value.trim(), kind: k, queue: $('#tk-queue').value,
+      base_url: $('#tk-base').value.trim(), auth: { user: $('#tk-user').value.trim(), secret: $('#tk-secret').value.trim() }, config: cfg,
+      poll_minutes: Number($('#tk-poll').value) } }).then(ticketsPage), 'Conector salvo: falta a aprovação de outra pessoa');
+  };
+  main.querySelectorAll('tr[data-c]').forEach(tr => {
+    const n = tr.dataset.c, out = $('#tk-out');
+    const b = (sel, fn, msg) => { const el = $(sel, tr); if (el) el.onclick = ev => act(ev.target, fn, msg); };
+    b('.tk-ok', () => api(`/tickets/connectors/${n}/approve`, { method: 'POST' }).then(ticketsPage), 'Conector no ar');
+    b('.tk-pause', () => api(`/tickets/connectors/${n}/status`, { method: 'PUT', body: { status: 'paused' } }).then(ticketsPage));
+    b('.tk-on', () => api(`/tickets/connectors/${n}/status`, { method: 'PUT', body: { status: 'active' } }).then(ticketsPage));
+    b('.tk-del', () => confirm(window.t('Remover este conector? Os itens da fila ficam.')) && api(`/tickets/connectors/${n}`, { method: 'DELETE' }).then(ticketsPage));
+    b('.tk-test', async () => {
+      const r = await api(`/tickets/connectors/${n}/test`, { method: 'POST' });
+      out.innerHTML = `<div class="card mt">${r.ok ? `<span class="pill ok">${window.t('conectou como')} <span data-noi18n>${esc(r.as)}</span></span>
+        <div class="small mt">${r.sample.length ? r.sample.map(s => `<div data-noi18n>${esc(s.key)} — ${esc(s.title)}${s.closed ? ' ✓' : ''}</div>`).join('') : window.t('Nenhum chamado no filtro nos últimos 7 dias.')}</div>`
+        : `<span class="pill bad" data-noi18n>${esc(r.error)}</span>`}</div>`;
+    });
+    b('.tk-sync', async () => {
+      const r = await api(`/tickets/connectors/${n}/sync`, { method: 'POST' });
+      toast(`${r.created} ${window.t('novo(s)')} · ${r.updated} ${window.t('atualizado(s)')} · ${r.pushed} ${window.t('enviado(s)')}`);
+      return ticketsPage();
+    });
+    b('.tk-hook', async () => {
+      const r = await api(`/tickets/connectors/${n}/webhook-token`, { method: 'POST' });
+      out.innerHTML = `<div class="card mt"><b>Webhook</b> <span class="mute small">${window.t('(mostrado uma vez só)')}</span>${copyable(r.url)}
+        <div class="mute small">${window.t('Cadastre esta URL no sistema de chamados (Jira: Configurações → Sistema → Webhooks; Linear: Settings → API → Webhooks; Asana: API de webhooks; ServiceNow: regra de negócio com REST message). Sem webhook, o conector lê de tempos em tempos.')}</div></div>`;
+    });
+    b('.tk-links', async () => {
+      const r = await api(`/tickets/connectors/${n}/links`);
+      out.innerHTML = `<div class="card mt"><table class="small"><tr><th>Chamado</th><th>Item</th><th>Situação do item</th><th>Último aviso enviado</th></tr>${r.map(x => `<tr>
+        <td><a href="${esc(x.url)}" target="_blank" rel="noopener" data-noi18n>${esc(x.key)}</a></td><td><a href="#/work/${x.item}">#${x.item}</a></td>
+        <td>${wiPill(x.item_status)}</td><td>${esc(window.t(TK_STATE[x.pushed] || x.pushed || '—'))}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">—</td></tr>'}</table></div>`;
+    });
+  });
 }

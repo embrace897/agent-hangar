@@ -236,6 +236,8 @@ def item_dict(db, i: WorkItem, detail: bool = False) -> dict:
          "evidence": i.evidence, "playbook_run": i.playbook_run_id, "step": i.step_key,
          "created_at": iso(i.created_at), "done_at": iso(i.done_at) if i.done_at else None}
     if detail:
+        from . import tickets
+        d.update(ticket=tickets.item_ticket(db, i.id))
         d.update(body=i.body, prepared=i.prepared, result=i.result, approved_by=i.approved_by,
                  files=[{"id": f.id, "name": f.name, "size": f.size, "by": f.uploaded_by, "at": iso(f.created_at)}
                         for f in db.scalars(select(WorkItemFile).where(WorkItemFile.item_id == i.id).order_by(WorkItemFile.id))])

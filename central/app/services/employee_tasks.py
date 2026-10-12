@@ -735,6 +735,8 @@ def tick() -> list[int]:
             from . import decision_memos, watchers
             watchers.sweep(db)  # vigias: só agem quando algo muda
             decision_memos.sweep(db)  # "como foi a decisão?"
+            from . import tickets
+            tickets.sweep(db)  # Jira, Linear, Asana, ServiceNow: chamados novos entram, o andamento volta
             if retention_now:
                 from . import governance, knowledge
                 governance.retention_sweep(db)  # conteúdo vencido pela política de retenção

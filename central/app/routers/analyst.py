@@ -870,3 +870,86 @@ def golden_mode(slug: str, body: ModeBody, request: Request, db=Depends(db_dep))
 @router.delete("/golden/{golden_id}")
 def golden_remove(golden_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.regression.remove(db, acc(request, db), golden_id))
+
+
+# ================================================================== sistemas de chamados (Jira, Linear, Asana, ServiceNow)
+class ConnectorBody(BaseModel):
+    name: str
+    kind: str
+    queue: str
+    base_url: str = ""
+    auth: dict = Field(default_factory=dict)  # {user, secret: "secret://nome"}
+    config: dict = Field(default_factory=dict)
+    title: str = ""
+    poll_minutes: int = 5
+
+
+class ConnStatusBody(BaseModel):
+    status: str  # active | paused
+
+
+@router.get("/tickets/connectors")
+def ticket_connectors(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.list_connectors(db, acc(request, db)))
+
+
+@router.put("/tickets/connectors")
+def ticket_connector_save(body: ConnectorBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.save_connector(db, acc(request, db), body.name, body.kind, body.queue, body.base_url,
+                                                    body.auth, body.config, body.title, body.poll_minutes))
+
+
+@router.delete("/tickets/connectors/{name}")
+def ticket_connector_delete(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.delete(db, acc(request, db), name))
+
+
+@router.post("/tickets/connectors/{name}/approve")
+def ticket_connector_approve(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.approve(db, acc(request, db), name))
+
+
+@router.put("/tickets/connectors/{name}/status")
+def ticket_connector_status(name: str, body: ConnStatusBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.set_status(db, acc(request, db), name, body.status))
+
+
+@router.post("/tickets/connectors/{name}/test")
+def ticket_connector_test(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.test(db, acc(request, db), name))
+
+
+@router.post("/tickets/connectors/{name}/sync")
+def ticket_connector_sync(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.sync_now(db, acc(request, db), name))
+
+
+@router.post("/tickets/connectors/{name}/webhook-token")
+def ticket_connector_webhook_token(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.webhook_token(db, acc(request, db), name))
+
+
+@router.get("/tickets/connectors/{name}/links")
+def ticket_connector_links(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.tickets.links(db, acc(request, db), name))
+
+
+@hooks.post("/tickets/{org_id}/{name}")
+async def ticket_webhook(org_id: int, name: str, request: Request, token: str = "", db=Depends(db_dep)):
+    """Webhook do sistema de chamados. O Asana confirma o webhook com X-Hook-Secret: devolvemos o mesmo cabeçalho."""
+    from fastapi.concurrency import run_in_threadpool
+    secret = request.headers.get("x-hook-secret")
+    if secret:
+        return Response(status_code=200, headers={"X-Hook-Secret": secret})
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    try:
+        out = await run_in_threadpool(svc.tickets.webhook, db, org_id, name, token, payload, headers)
+    except svc.access.Forbidden as e:
+        raise HTTPException(401, str(e)) from None
+    except svc.PlatformError as e:
+        raise HTTPException(400, str(e)) from None
+    return out

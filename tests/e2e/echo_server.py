@@ -7,6 +7,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>"""
+JIRA = {"issues": {}, "comments": [], "transitions": [], "attachments": []}
 
 
 class Echo(BaseHTTPRequestHandler):
@@ -36,11 +37,55 @@ class Echo(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _json(self, data, code: int = 200):
+        out = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _jira(self, body: str):
+        """Um Jira Cloud de mentira (API v3): /jira/_seed cria chamados, /jira/_state mostra o que a central mandou."""
+        path = self.path.split("?")[0][len("/jira"):]
+        if path == "/_seed":
+            for i in json.loads(body or "{}").get("issues", []):
+                JIRA["issues"][i["key"]] = i
+            return self._json({"ok": True})
+        if path == "/_state":
+            return self._json({k: v for k, v in JIRA.items() if k != "issues"})
+        if path == "/rest/api/3/myself":
+            return self._json({"emailAddress": "bot@acme.test"})
+        if path == "/rest/api/3/search/jql":
+            return self._json({"issues": list(JIRA["issues"].values()), "isLast": True})
+        parts = path.strip("/").split("/")  # rest api 3 issue KEY [comment|transitions|attachments]
+        i = JIRA["issues"].get(parts[4]) if len(parts) > 4 else None
+        if i is None:
+            return self._json({"errorMessages": ["não existe"]}, 404)
+        if len(parts) == 5:
+            return self._json(i)
+        if parts[5] == "comment":
+            JIRA["comments"].append({"key": i["key"], "body": json.loads(body)["body"]})
+            return self._json({"id": str(len(JIRA["comments"]))}, 201)
+        if parts[5] == "transitions" and self.command == "GET":
+            return self._json({"transitions": [{"id": "21", "name": "Start", "to": {"name": "In Progress"}},
+                                               {"id": "31", "name": "Resolve", "to": {"name": "Done"}}]})
+        if parts[5] == "transitions":
+            JIRA["transitions"].append({"key": i["key"], "id": json.loads(body)["transition"]["id"]})
+            return self._json({}, 204)
+        if parts[5] == "attachments":
+            name = body.split('filename="', 1)[1].split('"', 1)[0] if 'filename="' in body else "?"
+            JIRA["attachments"].append({"key": i["key"], "name": name})
+            return self._json([{"id": "1"}])
+        return self._json({}, 404)
+
     def _reply(self):
         n = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(n).decode(errors="replace") if n else ""
         if self.path.startswith("/portal") and self._portal(body):
             return
+        if self.path.startswith("/jira/"):
+            return self._jira(body)
         out = json.dumps({"method": self.command, "path": self.path, "headers": dict(self.headers), "body": body}).encode()
         code = int(self.path.split("/status/", 1)[1].split("?")[0]) if "/status/" in self.path else 200
         self.send_response(code)

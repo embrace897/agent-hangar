@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Ticket systems as on-ramps** (Jira Cloud and Server/Data Center, Linear, Asana, ServiceNow): tickets in a filter
+  become queue items (category by rules, priority mapped, by polling and by webhook); progress, the result and the
+  deliverables go back to the ticket as comments, status changes and attachments; new comments on the ticket reach
+  the Digital employee's conversation; a ticket closed outside cancels the item. The credential is a vault secret and
+  a connector goes live only after someone else approves it.
+
 ## [0.27.0] — 2026-10-12
 
 ### Added

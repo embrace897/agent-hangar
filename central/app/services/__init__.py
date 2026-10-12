@@ -58,6 +58,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       task_files,
                       task_flow,
                       task_thread,
+                      tickets,
                       ux,
                       value,
                       vscode,

@@ -52,6 +52,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Business calendar and business-day schedules | Console → Digital employees → Calendar | [analyst.md](analyst.md#business-calendar) |
 | Playbooks: recurring processes with people and employees, deadlines, evidence, run board | Digital employees → Playbooks | [analyst.md](analyst.md#playbooks) |
 | Team queues, SLA, take the next one, hand-off to a person, My work | Digital employees → Queues, My work | [analyst.md](analyst.md#team-queues-and-work-for-people) |
+| Jira, Linear, Asana and ServiceNow as on-ramps for queues, with progress and results back on the ticket | Build → Ticket systems | [analyst.md](analyst.md#ticket-systems-as-on-ramps) |
 | Conversations with people outside (e-mail, WhatsApp), approved templates, reminders, promises | Task page; Build → Message templates | [analyst.md](analyst.md#conversations-with-people-outside-the-company) |
 | Company calendar, invites, briefings, minutes and actions | Digital employees → Meetings | [analyst.md](analyst.md#calendar-and-meetings) |
 | Knowledge base with inherited permissions, citations, outdated documents and gaps | Build → Knowledge base | [analyst.md](analyst.md#knowledge-base) |

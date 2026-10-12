@@ -1531,3 +1531,46 @@ class RegressionRun(OrgScoped, Base):
     request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TicketConnector(OrgScoped, Base):
+    """Um sistema de chamados (Jira, Linear, Asana, ServiceNow) como porta de entrada de uma fila: os chamados viram
+    itens da fila, e o andamento, o resultado e os anexos voltam para o chamado. A credencial fica no cofre."""
+    __tablename__ = "ticket_connectors"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_ticketconnector_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(20))  # jira | linear | asana | servicenow
+    base_url: Mapped[str] = mapped_column(String(300), default="")
+    auth: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, secret: "secret://nome"}
+    config: Mapped[dict] = mapped_column(JSON, default=dict)  # filtro, categorias, prioridades, o que volta ao chamado
+    queue_id: Mapped[int] = mapped_column(Integer, index=True)
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | active | paused
+    poll_minutes: Mapped[int] = mapped_column(Integer, default=5)
+    cursor: Mapped[str] = mapped_column(String(40), default="")  # até onde já leu (ISO)
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(500), default="")
+    webhook_token_hash: Mapped[str] = mapped_column(String(64), default="")
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)  # {received, pushed, errors}
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    approved_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TicketLink(OrgScoped, Base):
+    """Um chamado ligado a um item da fila: o que já foi mandado de volta (estado, resultado, anexos) e os comentários
+    do chamado que já entraram."""
+    __tablename__ = "ticket_links"
+    __table_args__ = (UniqueConstraint("connector_id", "external_id", name="uq_ticketlink_connector_ext"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connector_id: Mapped[int] = mapped_column(ForeignKey("ticket_connectors.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str] = mapped_column(String(120))
+    external_key: Mapped[str] = mapped_column(String(120), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    work_item_id: Mapped[int] = mapped_column(Integer, index=True)
+    pushed: Mapped[dict] = mapped_column(JSON, default=dict)  # {state, result_hash, files: [], comments_seen: []}
+    remote_updated: Mapped[str] = mapped_column(String(40), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

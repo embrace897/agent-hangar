@@ -173,6 +173,25 @@ For systems without an API, a Digital employee can drive an isolated browser (`d
   `screenshot`) with `{{variables}}`, run by `run_procedure`. A task that went well can be **saved as a procedure**
   from its page (secrets stay as `secret://`).
 
+## Ticket systems as on-ramps
+
+*Build → Ticket systems*: **Jira** (Cloud or Server/Data Center), **Linear**, **Asana** or **ServiceNow** feed a team
+queue, while execution, authority and audit stay here.
+
+- **In:** every few minutes (and at once with the system's webhook) the tickets in the filter — a JQL, a Linear team,
+  an Asana project, a ServiceNow query — become queue items, with the link, the description and the reporter. The
+  category comes from rules (`label=nota → Nota fiscal`, by type, label or priority) or from the queue's keywords;
+  the ticket's priority becomes the item's. Tickets already closed don't come in.
+- **Back:** each change in the item becomes a comment on the ticket (received, with the Digital employee, with a
+  person, handed to a person, done with the result) and, if configured, a status change (`In Progress`, `Done`);
+  the deliverables go back as attachments (Jira, Asana and ServiceNow). Comments written by the platform carry
+  `[Agent Hangar]` and are never read back.
+- **The conversation continues:** a new comment on the ticket goes to the conversation of the Digital employee's task
+  (or to the item, when a person has it); a ticket closed in the system cancels the open item.
+- **Governance:** the credential is a vault secret (`secret://…`), never stored in the connector. A connector starts
+  as a draft and only goes live after **someone else** who maintains the team approves it; any change sends it back
+  to draft. Hosts on the internal network need `PLUGIN_ALLOW_PRIVATE=1`, like plugins.
+
 ## Governed desktop
 
 For desktop applications with no API and no web page — a legacy ERP, a spreadsheet, an installed system — the
@@ -342,6 +361,10 @@ or go back to the previous version of the role.
 | POST | `/api/procedures/from-task` | `{task_id, name}`: save the path a task took |
 | PUT | `/api/employees/{slug}/browser-domains` | `{domains}`: what the browser may open |
 | PUT | `/api/employees/{slug}/desktop-apps` | `{apps}`: the desktop apps it may open |
+| GET / PUT / DELETE | `/api/tickets/connectors`, `/api/tickets/connectors/{name}` | Ticket connectors / create or change (`name, kind, queue, base_url, auth: {user, secret}, config, poll_minutes`) / remove |
+| POST | `/api/tickets/connectors/{name}/approve` · `/test` · `/sync` · `/webhook-token` | Approve (someone else) · test · sync now · webhook URL |
+| PUT · GET | `/api/tickets/connectors/{name}/status` · `/links` | `{status: active, paused}` · linked tickets |
+| POST | `/hooks/tickets/{org}/{name}?token=` | The ticket system's webhook |
 | GET / PUT | `/api/governance` | DLP and retention policy (and LLM connections' levels) |
 | PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
 | PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |

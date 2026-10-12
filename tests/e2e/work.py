@@ -1,4 +1,4 @@
-"""E2E do trabalho do dia a dia (fases A a H), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
+"""E2E do trabalho do dia a dia (fases A a I), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py [--keep FILE]
 
@@ -7,6 +7,7 @@ agente), a conversa da tarefa (entregue ao agente e reabrindo uma tarefa conclu�
 busca. Apaga tudo no fim; com --keep FILE, mantém os dados e grava em FILE o usuário e a senha (de teste) da gestora,
 para conferir as telas no navegador — apague o arquivo e rode sem --keep depois.
 """
+import json
 import os
 import sys
 
@@ -357,6 +358,56 @@ def phase_h(dev, mgr, mgr_email, team, slug):
     check("valor: ROI por Digital employee", row is not None and row["done"] > 0 and row["hours_saved"] > 0, row)
 
 
+def _jira(path: str, body: dict | None = None) -> dict:
+    """O Jira de mentira roda no e2e-echo (só na rede dos containers): fala com ele por dentro do container."""
+    import json
+    import subprocess
+    py = ("import json,sys,urllib.request as u;d=sys.stdin.read().encode() or None;"
+          f"r=u.urlopen(u.Request('http://127.0.0.1:8080/jira{path}',data=d,headers={{'content-type':'application/json'}}));"
+          "print(r.read().decode())")
+    out = subprocess.run(["docker", "exec", "-i", "e2e-echo", "python", "-c", py], input=json.dumps(body) if body else "",
+                         capture_output=True, text=True, check=True).stdout
+    return json.loads(out)
+
+
+def phase_i(dev, mgr, team, slug):
+    mt2, _, _ = wf.person("mt2", "maintainer", team)
+    q = ok(mgr.put("/api/queues", json={"name": f"Suporte {RUN}", "team": team, "categories": [
+        {"name": "ERP", "keywords": ["erp"], "sla_hours": 8, "route": {"type": "employee", "refs": [slug]}},
+        {"name": "Geral", "keywords": [], "sla_hours": 24, "route": {"type": "people"}}], "default_category": "Geral"}))["slug"]
+    LEFTOVERS.append(("DELETE", f"/api/queues/{q}"))
+    ok(admin.put("/api/secrets", json={"name": f"jira-{RUN}", "value": "tok-e2e"}))
+    LEFTOVERS.append(("DELETE", f"/api/secrets/{next(x['id'] for x in ok(admin.get('/api/secrets'))['secrets'] if x['name'] == f'jira-{RUN}')}"))
+    key = f"OPS-{RUN}"
+    _jira("/_seed", {"issues": [{"id": f"9{RUN}", "key": key, "fields": {
+        "summary": "Usuário sem acesso ao ERP", "labels": ["erp"], "priority": {"name": "High"},
+        "description": {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [
+            {"type": "text", "text": "A Ana não consegue entrar no ERP desde ontem."}]}]},
+        "issuetype": {"name": "Task"}, "reporter": {"emailAddress": "ana@cliente.test"},
+        "status": {"statusCategory": {"key": "new"}}, "updated": "2026-10-12T10:00:00.000+0000", "comment": {"comments": []}}}]})
+    c = ok(mgr.put("/api/tickets/connectors", json={
+        "name": f"jira_{RUN}", "kind": "jira", "queue": q, "base_url": "http://e2e-echo:8080/jira",
+        "auth": {"user": "bot@acme.test", "secret": f"secret://jira-{RUN}"},
+        "config": {"jql": "project = OPS", "category_rules": [{"field": "label", "value": "erp", "category": "ERP"}],
+                   "transitions": {"employee": "In Progress", "done": "Done"}}}))
+    LEFTOVERS.append(("DELETE", f"/api/tickets/connectors/{c['name']}"))
+    check("chamados: quem configura não aprova", mgr.post(f"/api/tickets/connectors/{c['name']}/approve").status_code == 403)
+    ok(mt2.post(f"/api/tickets/connectors/{c['name']}/approve"))
+    t = ok(mgr.post(f"/api/tickets/connectors/{c['name']}/test"))
+    r = ok(mgr.post(f"/api/tickets/connectors/{c['name']}/sync"))
+    item = next(i for i in ok(mgr.get("/api/work-items", params={"queue": q})) if i["title"] == "Usuário sem acesso ao ERP")
+    check("chamados: o chamado do Jira vira item da fila, com o Digital employee", t["ok"] and r["created"] == 1
+          and item["category"] == "ERP" and item["status"] in ("employee", "done"), (t, r, item["status"]))
+    done = wf.wait(lambda: (lambda i: i if i["status"] == "done" else None)(ok(mgr.get(f"/api/work-items/{item['id']}"))))
+    ok(mgr.post(f"/api/tickets/connectors/{c['name']}/sync"))
+    st = _jira("/_state")
+    said = [json.dumps(x["body"], ensure_ascii=False) for x in st["comments"] if x["key"] == key]
+    moved = [x["id"] for x in st["transitions"] if x["key"] == key]
+    check("chamados: andamento, resultado e transições voltam ao Jira", done is not None and done["ticket"]["key"] == key
+          and any("Em atendimento por" in x for x in said) and any("Concluído por" in x for x in said) and moved == ["21", "31"],
+          (said, moved))
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -372,6 +423,7 @@ def main():
     phase_f(dev, mgr, mgr_email, team, slug)
     phase_g(dev, mgr, mgr_email, team, slug)
     phase_h(dev, mgr, mgr_email, team, slug)
+    phase_i(dev, mgr, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:
