@@ -29,6 +29,7 @@ from .usage import record_usage
 
 log = logging.getLogger("hangar.employees")
 WAIT_MARK = re.compile(r"^\[\[HANGAR_WAITING:(\d+)\]\]\s*", re.S)
+CONTINUE_MARK = re.compile(r"^\[\[HANGAR_CONTINUE\]\]\s*", re.S)  # passos da rodada esgotados: segue numa nova
 JOB_MARK = re.compile(r"\[job #(\d+)")  # resultado de um job de código (runtime: _a2a_call)
 TERMINAL = ("done", "failed", "cancelled", "expired")
 BLOCKING = ("approval", "question", "capability", "plan", "review_fields", "doc_change", "message")  # pausam a tarefa até alguém decidir
@@ -836,7 +837,8 @@ def _run_task(task_id: int) -> EmployeeTask | None:
             if int(jid) not in seen:
                 event(db, task, "job", {"job": int(jid)})
         m = WAIT_MARK.match(content)
-        note = WAIT_MARK.sub("", content)
+        cont = CONTINUE_MARK.match(content)
+        note = CONTINUE_MARK.sub("", WAIT_MARK.sub("", content))
         # o checkpoint guarda o que foi FEITO na rodada, não só a fala final: sem isso, a rodada que retoma depois de
         # uma aprovação recomeça do zero e repete ações (uma baixa lançada duas vezes)
         said = "\n\n".join(x for x in (journal(data.get("x_trace") or [], task.runs), note) if x)
@@ -844,6 +846,11 @@ def _run_task(task_id: int) -> EmployeeTask | None:
         checkpoint(db, task, messages)
         from . import task_thread
         task_thread.agent_said(db, task, note)
+        if cont:  # a rodada usou todos os passos: volta para a fila e continua (o registro já está no checkpoint)
+            task.status = "new"
+            event(db, task, "note", {"continue": f"rodada {task.runs}: limite de passos, continua na próxima"})
+            db.commit()
+            return task
         if m:
             open_req = db.scalar(select(HumanRequest.id).where(HumanRequest.task_id == task.id, HumanRequest.status == "open",
                                                                HumanRequest.kind.in_(BLOCKING)))

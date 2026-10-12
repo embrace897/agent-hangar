@@ -106,7 +106,7 @@ services:
       DATA_STUDIO_FILES_URL: ${DATA_STUDIO_FILES_URL:-http://data-studio:8001}
       # navegador governado (perfil browser): sistemas sem API, pela alçada
       BROWSER_URL: ${BROWSER_URL:-http://browser:8000/mcp}
-      # desktop governado (perfil desktop, experimental): apps de desktop olhando a tela, pela alçada
+      # desktop governado (perfil desktop): apps de desktop olhando a tela, pela alçada
       DESKTOP_URL: ${DESKTOP_URL:-http://desktop:8000/mcp}
       REPLICA_ID: central  # nome estável: ao recriar o container, a central recupera os próprios jobs órfãos
       OAUTH_ENABLED: ${OAUTH_ENABLED:-1}
@@ -230,7 +230,7 @@ services:
     security_opt: [no-new-privileges]
     restart: unless-stopped
 
-  # Desktop governado (experimental): um desktop Linux isolado (Cua) com os apps liberados; a central fala com o
+  # Desktop governado: um desktop Linux isolado (Cua) com os apps liberados; a central fala com o
   # portão em :8000/mcp e o token da Cua nunca sai do container
   desktop:
     profiles: [desktop]

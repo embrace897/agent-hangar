@@ -5,14 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-10-12
+
 ### Added
-- **Governed desktop (experimental):** Digital employees operate desktop applications with no API (legacy ERP,
-  spreadsheet) in an isolated Linux desktop built on Cua (compose profile `desktop`), looking at the screen: allowed
-  apps per employee, the window's screenshot sent to the model as an image, accessibility elements when the app has
-  them, authority with the screenshot on clicks and shortcuts that confirm something, vault secrets when typing.
-  Platform tools can now return images to the model; the runtime keeps only the latest screenshots in the
-  conversation (`KEEP_TOOL_IMAGES`). Approvals show what will be confirmed and what already was, and a repeated
-  confirmation with the same fields is held back.
+- **Governed desktop:** Digital employees operate desktop applications with no API (legacy ERP, spreadsheet) in an
+  isolated Linux desktop built on Cua (compose profile `desktop`), looking at the screen: allowed apps per employee,
+  the window's screenshot sent to the model as an image, accessibility elements when the app has them, authority with
+  the screenshot on clicks and shortcuts that confirm something, vault secrets when typing, block typing (`\t` and
+  `\n` fill several cells or fields in one call). Approvals show what will be confirmed and what already was; a
+  repeated confirmation with the same fields is held back; the "Yes/OK" of the confirmation dialog right after an
+  approved click, and retries of an approved confirmation that had no effect in the same dialog, are covered by that
+  approval. Platform tools can now return images to the model; the runtime keeps only the latest screenshots in the
+  conversation (`KEEP_TOOL_IMAGES`).
+- **Releases publish the governed browser (`mcp-browser`) and governed desktop (`desktop`) images**, for amd64 and
+  arm64, signed like the others.
+- **Long tasks continue across rounds:** a round that uses all its steps no longer ends the task — the central keeps
+  the log of what was done and starts a new round, up to the round limit and the budget.
+- **Pilot with a real model for the desktop:** `tests/e2e/pilot_llm.py desk_*`, 8 cases (login with a vault password,
+  validation errors, a nonexistent record, a confirmation dialog, menu + second window + scrolling, a spreadsheet with
+  a formula saved through "Save as", opening a file, two postings in one task).
 
 ### Fixed
 - A task that resumed after an approval only remembered the model's final text, not what it had done in the round,

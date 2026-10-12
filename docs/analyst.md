@@ -173,7 +173,7 @@ For systems without an API, a Digital employee can drive an isolated browser (`d
   `screenshot`) with `{{variables}}`, run by `run_procedure`. A task that went well can be **saved as a procedure**
   from its page (secrets stay as `secret://`).
 
-## Governed desktop (experimental)
+## Governed desktop
 
 For desktop applications with no API and no web page — a legacy ERP, a spreadsheet, an installed system — the
 employee works in an isolated Linux desktop (compose profile `desktop`, built on [Cua](https://github.com/trycua/cua),
@@ -195,13 +195,19 @@ MIT) and **looks at the screen**: `desktop_open`, `desktop_look`, `desktop_click
 - The employee works on the **top window** of the app — a dialog, an open menu, a report — and the elements it can
   click or fill come first in the list.
 - **Secrets:** `text: "secret://name"` types the vault's value; the model never sees it.
+- **Block typing:** a `\t` (Tab) and `\n` (Enter) in the text fill several cells or fields in one call — an
+  Enter typed into a save or confirmation dialog is a confirmation and goes through the authority.
+- **Retries:** shortcuts that only open a dialog (`ctrl+shift+s`, `ctrl+o`) never ask; retrying, in the same
+  save/confirm dialog, an approved confirmation that had no effect (and with nothing typed since) is covered
+  by the same approval — in a system's own screen, confirming again always asks.
+- **Long tasks** that use all the steps of a round continue in the next one, with the log of what was done.
 - The Cua token never leaves the desktop container: the central talks to a small gateway (`mcp-servers/desktop`)
   that keeps one desktop session per task. The desktop network has no internet access.
 
 `docker compose --profile desktop up -d desktop` starts it with two sample apps (Gnumeric and a Tk "legacy ERP" with
 login, menus, a confirmation dialog and a long report); add your own applications in `mcp-servers/desktop/Dockerfile`.
 
-**Battery with deepseek-v4.1-flash** (`tests/e2e/pilot_llm.py desk_*`, 8 cases on the Tk ERP — vision only — and on
+**Battery with deepseek-v4.1-flash** (`tests/e2e/pilot_llm.py desk_*`, 8 of 8 cases on the Tk ERP — vision only — and on
 Gnumeric): login with a vault password, a date in another format, a nonexistent invoice (nothing written), a
 confirmation dialog, menu + second window + scrolling, a spreadsheet with a formula saved through the "Save as"
 dialog, opening a CSV and reading it, and two payments in one task without duplicates.
@@ -335,7 +341,7 @@ or go back to the previous version of the role.
 | GET / PUT | `/api/procedures` | Browser procedures (and whether the browser is up) / create or change |
 | POST | `/api/procedures/from-task` | `{task_id, name}`: save the path a task took |
 | PUT | `/api/employees/{slug}/browser-domains` | `{domains}`: what the browser may open |
-| PUT | `/api/employees/{slug}/desktop-apps` | `{apps}`: the desktop apps it may open (experimental) |
+| PUT | `/api/employees/{slug}/desktop-apps` | `{apps}`: the desktop apps it may open |
 | GET / PUT | `/api/governance` | DLP and retention policy (and LLM connections' levels) |
 | PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
 | PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |

@@ -130,7 +130,7 @@ Policies only take effect if the CNI enforces them:
 
 ## 6. Air-gapped / private registry
 
-Mirror the images (`central`, `agent-runtime`, `harness-*`, `mcp-memory`) to your registry, answer its address in
+Mirror the images (`central`, `agent-runtime`, `harness-*`, `mcp-memory`, and `mcp-data-studio`, `mcp-browser` and `desktop` if you use them) to your registry, answer its address in
 the installer and, if it needs credentials, create a pull secret and set it in your values:
 
 ```yaml

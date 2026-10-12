@@ -1,4 +1,4 @@
-# Desktop governado (experimental): um desktop Linux isolado da Cua (https://github.com/trycua/cua, MIT) com o
+# Desktop governado: um desktop Linux isolado da Cua (https://github.com/trycua/cua, MIT) com o
 # daemon cua-spacesd (as ferramentas de desktop por MCP, com token, só dentro do container) e o nosso portão
 # (app/gateway.py, :8000/mcp), que a central usa. O Digital employee nunca recebe o token.
 #

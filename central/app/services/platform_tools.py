@@ -26,7 +26,7 @@ GROUPS = {
     "calendar": "Agenda e reuniões",
     "knowledge": "Base de conhecimento",
     "browser": "Navegador governado",
-    "desktop": "Desktop governado (experimental)",
+    "desktop": "Desktop governado",
     "documents": "Propor alterações em documentos",
     "memo": "Memorando de decisão",
 }

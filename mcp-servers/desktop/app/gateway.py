@@ -1,4 +1,4 @@
-"""Desktop governado (experimental): o portão entre a central e o desktop isolado da Cua.
+"""Desktop governado: o portão entre a central e o desktop isolado da Cua.
 
 O cua-spacesd (no mesmo container) serve ~60 ferramentas de desktop por MCP, com token. Este portão:
 - guarda o token (lido de /run/cua/env-token; nunca sai do container);

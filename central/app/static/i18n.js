@@ -1009,7 +1009,7 @@
     'Autenticação': 'Authentication',
     'Ações': 'Actions',
     'Segredos': 'Secrets',
-    "Desktop governado (experimental)": "Governed desktop (experimental)",
+    "Desktop governado": "Governed desktop",
     "Apps de desktop que ele pode abrir (separados por vírgula)": "Desktop apps it may open (comma-separated)",
     "Salvar apps": "Save apps",
     "Apps salvos": "Apps saved",

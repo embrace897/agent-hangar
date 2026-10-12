@@ -18,7 +18,7 @@ PNG = base64.b64encode(b"\x89PNG tela").decode()
 
 class FakeDesktop:
     def __init__(self):
-        self.calls, self.window = [], "ERP Legado 7.2"
+        self.calls, self.window, self.then = [], "ERP Legado 7.2", None  # then: a janela depois do próximo clique
 
     def __enter__(self):
         return self
@@ -36,6 +36,8 @@ class FakeDesktop:
             return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"isError": True, "content": [
                 {"type": "text", "text": f"Error executing tool open: o app '{args['app']}' não está liberado"}]}},
                 request=httpx.Request("POST", url))
+        if name in ("click", "key", "type_text") and self.then:
+            self.window, self.then = self.then, None
         out = {"window": self.window, "app": "Tk", "size": [760, 460], "elements": ["[0] window \"ERP Legado 7.2\""],
                "dica": "sem árvore de acessibilidade: clique por x,y", "screenshot": PNG}
         if name != "open" and name != "look":
@@ -78,10 +80,12 @@ def test_governed_desktop_apps_images_secrets_and_commit_gate(client, env, rt, m
     g = _gate(slug, tid, "desktop_click", {"label": "Confirmar baixa", "x": 413, "y": 361})  # o modelo repete uns pixels ao lado
     assert g["status"] == "allowed" and fake.calls[-1][0] == "click" and (fake.calls[-1][1]["x"], fake.calls[-1][1]["y"]) == (408, 365)
     fake.window = "Confirmação"  # o ERP abre o diálogo "Confirma a baixa?": o Sim é parte da ação já aprovada
+    fake.then = "ERP Legado 7.2"  # o Sim fecha o diálogo
     g = _gate(slug, tid, "desktop_click", {"label": "Sim", "x": 130, "y": 125})
     assert g["status"] == "allowed" and fake.calls[-1][0] == "click"
     ev = [e for e in task(client, env, tid)["events"] if e["kind"] == "desktop"][-1]["payload"]
     assert ev["target"] == "Sim" and ev["covered_by"] == req["id"]
+    fake.window = "Confirmação"  # um diálogo novo, depois de o primeiro fechar
     assert _gate(slug, tid, "desktop_click", {"label": "Sim", "x": 130, "y": 125})["status"] == "waiting"  # um segundo Sim: pede de novo
     fake.window = "ERP Legado 7.2"
     g = _gate(slug, tid, "desktop_key", {"key": "s", "modifiers": ["ctrl"]})  # salvar por atalho também passa pela alçada
@@ -155,3 +159,78 @@ def test_desktop_approval_shows_the_fields_and_blocks_a_repeated_confirmation(cl
     fill("91", "980,40")  # outra fatura: segue normal, e o pedido lista o que já foi confirmado
     assert _gate(slug, tid, "desktop_click", {"label": "Confirmar baixa", "x": 408, "y": 365})["status"] == "waiting"
     assert f"Já confirmado nesta tarefa: #{req['id']} Confirmar baixa (número da fatura=88" in open_request(client, env, tid)["rationale"]
+
+
+def test_block_typing_enter_in_a_save_dialog_is_a_confirmation(client, env, rt, monkeypatch):
+    fake = FakeDesktop()
+    monkeypatch.setattr(desktop, "HTTP", lambda timeout=120: fake)
+    monkeypatch.setattr(desktop, "_UP", (0.0, False))
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    client.put(f"/api/employees/{slug}/desktop-apps", headers=env["h"]["own"], json={"apps": ["ERP Legado"]})
+    tid = assign(client, env, slug, "planilha")
+    fake.window = "Book1.gnumeric - Gnumeric"
+    g = _gate(slug, tid, "desktop_type", {"text": "Item\tValor\nHotel\t400\n"})  # várias células de uma vez
+    assert g["status"] == "allowed" and fake.calls[-1][1]["text"] == "Item\tValor\nHotel\t400\n"
+    fake.window = "Save the current workbook as"  # o mesmo Enter, num diálogo de salvar, confirma: passa pela alçada
+    g = _gate(slug, tid, "desktop_type", {"text": "/home/cua/despesas.gnumeric\n"})
+    assert g["status"] == "waiting" and fake.calls[-1][0] == "look"
+    assert _gate(slug, tid, "desktop_type", {"text": "/home/cua/despesas.gnumeric"})["status"] == "allowed"  # sem Enter: só digita
+
+
+def test_a_round_that_runs_out_of_steps_continues_in_a_new_one(client, env, rt, monkeypatch):
+    """Achado da bateria: a rodada que gastava todos os passos encerrava a tarefa como concluída, sem terminar."""
+    from app.models import EmployeeTask
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    orig, n = rt.post, {"calls": 0}
+
+    def post(url, headers=None, json=None, timeout=None):
+        n["calls"] += 1
+        if n["calls"] == 1:
+            body = {"choices": [{"message": {"role": "assistant", "content": "[[HANGAR_CONTINUE]] Limite de passos desta rodada."}}],
+                    "usage": {"total_tokens": 10, "cost_usd": 0.01},
+                    "x_trace": [{"tool": "desktop_type", "args": {"text": "Item"}, "result": "ok"}]}
+            return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+        return orig(url, headers, json, timeout)
+    monkeypatch.setattr(rt, "post", post)
+    tid = assign(client, env, slug, "tarefa longa")
+    work()
+    assert task(client, env, tid)["status"] == "new"  # não encerrou: voltou para a fila
+    work()
+    t = task(client, env, tid)
+    assert t["status"] == "done" and t["runs"] == 2 and n["calls"] == 2  # continuou numa segunda rodada
+    assert any(e["kind"] == "note" and "continue" in e["payload"] for e in t["events"])
+    with SessionLocal() as db:
+        from app.services import employee_tasks as tasksmod
+        msgs = tasksmod.last_checkpoint(db, db.get(EmployeeTask, tid)).messages
+    assert any("[Registro da rodada 1" in str(m.get("content")) for m in msgs)
+
+
+def test_save_dialog_retries_and_dialog_shortcuts_dont_ask_again(client, env, rt, monkeypatch):
+    """Achado da bateria: salvar uma planilha pedia 5 aprovações. Atalho que só abre o diálogo não pede; repetir no
+    mesmo diálogo uma confirmação aprovada que não teve efeito não pede de novo; na tela de um sistema, pede."""
+    fake = FakeDesktop()
+    monkeypatch.setattr(desktop, "HTTP", lambda timeout=120: fake)
+    monkeypatch.setattr(desktop, "_UP", (0.0, False))
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    client.put(f"/api/employees/{slug}/desktop-apps", headers=env["h"]["own"], json={"apps": ["ERP Legado"]})
+    tid = assign(client, env, slug, "salvar")
+    fake.window = "Book1.gnumeric - Gnumeric"
+    assert _gate(slug, tid, "desktop_key", {"key": "s", "modifiers": ["ctrl", "shift"], "commit": True})["status"] == "allowed"
+    fake.window = "Save the current workbook as"
+    assert _gate(slug, tid, "desktop_click", {"label": "Save", "element": "204"})["status"] == "waiting"
+    client.post(f"/api/decisions/{open_request(client, env, tid)['id']}", headers=env["h"]["mgr"], json={"decision": "approve"})
+    assert _gate(slug, tid, "desktop_click", {"label": "Save", "element": "204"})["status"] == "allowed"
+    # o diálogo continua aberto (o clique não pegou): tentar de novo — clique ou Return — vale pela mesma aprovação
+    assert _gate(slug, tid, "desktop_click", {"label": "Save", "element": "204"})["status"] == "allowed"
+    assert _gate(slug, tid, "desktop_key", {"key": "Return"})["status"] == "allowed"
+    ev = [e for e in task(client, env, tid)["events"] if e["kind"] == "desktop"][-1]["payload"]
+    assert ev["covered_by"]
+    # digitou algo depois: é outra confirmação, pede de novo
+    _gate(slug, tid, "desktop_type", {"text": "/home/cua/outro.gnumeric"})
+    assert _gate(slug, tid, "desktop_key", {"key": "Return"})["status"] == "waiting"
+    # na tela do sistema (não é diálogo), confirmar de novo sem digitar nada não é coberto
+    fake.window = "ERP Legado 7.2"
+    assert desktop._retry_of.__doc__ and _gate(slug, tid, "desktop_click", {"label": "Confirmar baixa", "x": 1, "y": 1})["status"] == "waiting"

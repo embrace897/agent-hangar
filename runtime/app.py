@@ -59,6 +59,7 @@ MODE = contextvars.ContextVar("mode", default="full")
 # Imagens devolvidas por tools MCP (ex.: preview_file) na rodada atual: vão ao LLM como mensagem de visão.
 TOOL_IMAGES: contextvars.ContextVar = contextvars.ContextVar("tool_images", default=None)
 MAX_TOOL_IMAGES = 4
+CONTINUE_MARK = "[[HANGAR_CONTINUE]]"  # a tarefa segue numa rodada nova (passos esgotados)
 KEEP_TOOL_IMAGES = int(os.environ.get("KEEP_TOOL_IMAGES", "3"))  # capturas recentes que seguem na conversa
 PROGRESS_STREAM = os.environ.get("PROGRESS_STREAM", "reasoning")  # "off" desliga
 # Digital employee: o cargo vem na spec; cada ferramenta passa pelo gate da central antes de executar (a alçada é da
@@ -808,6 +809,10 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
             parts += [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
                       for mime, b64 in step_images[:MAX_TOOL_IMAGES]]
             msgs.append({"role": "user", "content": parts})
+    if EMPLOYEE and TASK.get():
+        # Digital employee: passos da rodada esgotados não encerram a tarefa — a central guarda o registro do que foi
+        # feito e chama uma rodada nova, que continua de onde parou (até o limite de rodadas e o orçamento)
+        return CONTINUE_MARK + " Limite de passos desta rodada: continuo na próxima.", usage, trace, []
     # passos esgotados: uma última chamada SEM tools para o modelo resumir o que já tem
     msgs.append({"role": "user", "content": "Limite de passos atingido. Responda agora com o que já foi obtido, "
                                             "incluindo links de arquivos gerados, e diga o que ficou pendente."})
