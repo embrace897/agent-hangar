@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-12
+
 ### Added
 - **Ticket systems as on-ramps** (Jira Cloud and Server/Data Center, Linear, Asana, ServiceNow): tickets in a filter
   become queue items (category by rules, priority mapped, by polling and by webhook); progress, the result and the
