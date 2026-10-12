@@ -566,6 +566,7 @@ class Employee(OrgScoped, Base):
     disabled_tools: Mapped[list | None] = mapped_column(JSON, nullable=True)  # grupos de ferramentas da plataforma desligados
     browser_domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # o navegador governado só abre estes domínios
     desktop_apps: Mapped[list | None] = mapped_column(JSON, nullable=True)  # o desktop governado só abre estes apps
+    learning_mode: Mapped[str] = mapped_column(String(4), default="on")  # on | off: propor artigos e procedimentos
     critic_mode: Mapped[str] = mapped_column(String(8), default="off")  # off | auto: um revisor crítico lê o memorando
     regression_mode: Mapped[str] = mapped_column(String(8), default="auto")  # auto: mudança no cargo roda as tarefas de ouro
     created_by: Mapped[str] = mapped_column(String(254), default="")
@@ -865,6 +866,7 @@ class Project(Base):
     legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)  # a retenção não apaga nada deste projeto
     confidential: Mapped[bool] = mapped_column(Boolean, default=False)  # barreira de informação: só os membros
     members: Mapped[list | None] = mapped_column(JSON, nullable=True)  # e-mails de quem passa a barreira
+    autonomy: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # modo maximizador: {mode, extra_rounds, max_steps…}
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -1574,3 +1576,24 @@ class TicketLink(OrgScoped, Base):
     pushed: Mapped[dict] = mapped_column(JSON, default=dict)  # {state, result_hash, files: [], comments_seen: []}
     remote_updated: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LearnedArtifact(OrgScoped, Base):
+    """O que a empresa aprendeu com uma tarefa que deu certo: um artigo para a base de conhecimento (a pergunta que a
+    base não respondia, com a resposta que a tarefa encontrou) ou um procedimento (o caminho num sistema sem API).
+    Uma pessoa aprova (com edição); aprovado, vira versão, e cada reaproveitamento é contado."""
+    __tablename__ = "learned_artifacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(12))  # article | procedure
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    content: Mapped[dict] = mapped_column(JSON, default=dict)  # article: {question, text}; procedure: {steps, domains}
+    status: Mapped[str] = mapped_column(String(10), default="proposed")  # proposed | approved | rejected
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target: Mapped[str] = mapped_column(String(160), default="")  # kb:<doc id> | procedure:<nome>
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    decided_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

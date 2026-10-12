@@ -129,6 +129,7 @@ SMTP_FROM = _env("SMTP_FROM") or SMTP_USER or "hangar@localhost"  # vazio no com
 SMTP_SECURITY = (_env("SMTP_SECURITY") or "starttls").lower()  # starttls | ssl | none
 EMPLOYEE_RETRY_BASE_S = int(_env("EMPLOYEE_RETRY_BASE_S", "30"))  # espera entre tentativas: 30 s, 60 s, 120 s… (até 10 min)
 EMPLOYEE_DEDUPE_DAYS = int(_env("EMPLOYEE_DEDUPE_DAYS", "7"))  # janela de deduplicação do webhook de entrada
+LEARN_AFTER_MIN = int(_env("LEARN_AFTER_MIN", "2"))  # aprendizado: espera o juiz dar nota antes de propor
 LEARN_MIN_APPROVALS = int(_env("LEARN_MIN_APPROVALS", "8"))  # aprovações sem edição para sugerir afrouxar a alçada
 LEARN_MIN_CORRECTIONS = int(_env("LEARN_MIN_CORRECTIONS", "3"))  # edições/recusas na mesma ferramenta para sugerir lição
 JOB_WORKERS = int(_env("JOB_WORKERS", "8"))

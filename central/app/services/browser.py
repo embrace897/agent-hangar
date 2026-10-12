@@ -302,6 +302,8 @@ def run_procedure(ctx: Ctx, args: dict):
     values = args.get("values") or {}
     allowed = _domains(ctx, p.domains)
     tasksmod.event(ctx.db, ctx.task, "browser", {"action": "procedure", "target": p.name, "version": p.version, "domains": p.domains})
+    from . import org_learning
+    org_learning.used_procedure(ctx.db, p.name)
     ctx.db.commit()
 
     def fill_vars(s: str) -> str:

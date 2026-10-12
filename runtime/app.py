@@ -66,6 +66,7 @@ PROGRESS_STREAM = os.environ.get("PROGRESS_STREAM", "reasoning")  # "off" deslig
 # plataforma, não do prompt). TASK = a tarefa da rodada atual (cabeçalho X-Hangar-Task enviado pela central).
 EMPLOYEE = SPEC.get("employee") or None
 TASK = contextvars.ContextVar("task", default="")
+STEPS = contextvars.ContextVar("steps", default=0)  # 0 = MAX_STEPS; a central pode pedir mais (projeto maximizador)
 
 
 class WaitingHuman(Exception):
@@ -763,7 +764,7 @@ def _prune_images(msgs, keep: int = KEEP_TOOL_IMAGES):
 
 async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, trace, start, tool_choice):
     nudged = False
-    for _ in range(MAX_STEPS):
+    for _ in range(STEPS.get() or MAX_STEPS):
         _prune_images(msgs)
         payload = {"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}
         if llm_tools or ctools:
@@ -932,6 +933,10 @@ def set_session(req: Request, body: dict | None = None):
     CHANNEL.set(h.get("x-channel", "").lower())
     TASK.set(h.get("x-hangar-task", "").strip())
     MODE.set("lite" if h.get("x-hangar-mode", "").lower() == "lite" else "full")
+    try:
+        STEPS.set(max(0, min(int(h.get("x-hangar-max-steps") or 0), 100)))
+    except ValueError:
+        STEPS.set(0)
 
 
 @app.post("/v1/chat/completions")

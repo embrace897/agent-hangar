@@ -202,6 +202,8 @@ def project_dict(db: Session, p: Project, acc: Access | None = None, detail: boo
     if detail:
         from .employees import task_dict
         d["instructions"] = p.instructions
+        from . import maximizer
+        d["autonomy"] = maximizer.settings(p) or {"mode": "normal"}
         d["goal_chain"] = [{"id": x.id, "title": x.title, "status": x.status} for x in chain(db, p.goal_id)]
         rows = db.scalars(select(EmployeeTask).where(EmployeeTask.project_id == p.id).order_by(EmployeeTask.id.desc()).limit(200))
         d["task_list"] = []
@@ -292,6 +294,10 @@ def task_context(db: Session, task: EmployeeTask, en: bool = False) -> str:
         lines.append(f"{'Project' if en else 'Projeto'}: {p.name}" + (f" — {p.description}" if p.description else ""))
         if p.instructions.strip():
             lines.append(("Project instructions:\n" if en else "Instruções do projeto:\n") + p.instructions.strip()[:4000])
+        from . import maximizer
+        mx = maximizer.prompt(db, task, en)
+        if mx:
+            lines.append(mx)
     if goals:
         head = "This work serves these goals (closest first):" if en else "Este trabalho serve a estas metas (da mais próxima à da empresa):"
         lines.append(head + "\n" + "\n".join(f"- {g.title}" + (f": {g.description[:300]}" if g.description else "")

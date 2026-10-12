@@ -471,6 +471,8 @@ def search_knowledge(ctx: Ctx, args: dict):
     _gap(ctx.db, q, res, t.id, t.requester or "")
     from . import employee_tasks as tasksmod
     tasksmod.event(ctx.db, t, "knowledge", {"query": q[:200], "results": [r["doc"] for r in res]})
+    from . import org_learning
+    org_learning.used_docs(ctx.db, [r["doc"] for r in res])  # um artigo aprendido foi reaproveitado
     ctx.db.commit()
     if not res:
         return "Nada na base de conhecimento que você (e quem pediu) pode ler cobre isso. Diga que não encontrou; não invente."

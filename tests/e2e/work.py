@@ -1,4 +1,4 @@
-"""E2E do trabalho do dia a dia (fases A a I), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
+"""E2E do trabalho do dia a dia (fases A a L), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py [--keep FILE]
 
@@ -379,6 +379,7 @@ def phase_i(dev, mgr, team, slug):
     ok(admin.put("/api/secrets", json={"name": f"jira-{RUN}", "value": "tok-e2e"}))
     LEFTOVERS.append(("DELETE", f"/api/secrets/{next(x['id'] for x in ok(admin.get('/api/secrets'))['secrets'] if x['name'] == f'jira-{RUN}')}"))
     key = f"OPS-{RUN}"
+    _jira("/_reset", {"all": True})  # o Jira de mentira guarda os chamados de rodadas anteriores
     _jira("/_seed", {"issues": [{"id": f"9{RUN}", "key": key, "fields": {
         "summary": "Usuário sem acesso ao ERP", "labels": ["erp"], "priority": {"name": "High"},
         "description": {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [
@@ -408,6 +409,52 @@ def phase_i(dev, mgr, team, slug):
           (said, moved))
 
 
+def phase_j(dev, mgr, team, slug):
+    import json as js
+    q = "prazo de reembolso de despesa internacional " + RUN
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Prazo do reembolso internacional",
+                                                            "body": "use search_knowledge " + js.dumps({"query": q})}))["id"]
+    wf.until(dev, tid, ("done", "failed"))
+    req = wf.wait(lambda: next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "learning"
+                                and d["task"] and d["task"]["id"] == tid), None), 300)
+    check("aprendizado: a lacuna respondida vira proposta de artigo", req is not None and req["payload"]["kind"] == "article", req)
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve_edited", "edit": {
+        "title": f"Reembolso internacional {RUN}", "text": f"O {q} é de 45 dias corridos após a volta."}}))
+    tid2 = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "De novo", "body": "use search_knowledge " + js.dumps({"query": q})}))["id"]
+    t = wf.until(dev, tid2, ("done", "failed"))
+    art = next(a for a in ok(mgr.get("/api/learned")) if a["task"] == tid)
+    check("aprendizado: o artigo guardado responde a próxima tarefa e conta o reaproveitamento",
+          t and "45 dias" in (t["result"] or "") and art["status"] == "approved" and art["uses"] >= 1, (t and t["result"][:200], art))
+
+
+def phase_k(dev, mgr, team, slug):
+    import json as js
+    args = {"change": "instruction", "why": "3 notas voltaram por falta do centro de custo",
+            "text": f"Sempre preencha o centro de custo antes de lançar ({RUN})."}
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Fechamento", "body": "use propose_org_change " + js.dumps(args)}))["id"]
+    wf.until(dev, tid, ("done", "failed"))
+    req = wf.wait(lambda: next((d for d in ok(mgr.get("/api/decisions")) if d["kind"] == "org_change"
+                                and d["task"] and d["task"]["id"] == tid), None))
+    before = ok(mgr.get(f"/api/employees/{slug}"))
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve_edited", "edit": {"text": args["text"] + " E o projeto."}}))
+    after = ok(mgr.get(f"/api/employees/{slug}"))
+    lessons = [x["text"] for x in after.get("lessons") or []]
+    check("auto-organização: a proposta do funcionário só vale depois de aprovada", req["payload"]["source"] == "employee"
+          and not any(RUN in x["text"] for x in before.get("lessons") or []) and any(RUN in x and "E o projeto." in x for x in lessons),
+          lessons)
+
+
+def phase_l(dev, mgr, team, slug):
+    p = ok(mgr.post("/api/projects", json={"name": f"Fechamento {RUN}", "team": team, "default_employee": slug}))
+    check("maximizador: só quem mantém o time liga", dev.put(f"/api/projects/{p['slug']}/autonomy", json={"mode": "maximizer"}).status_code == 403)
+    ok(mgr.put(f"/api/projects/{p['slug']}/autonomy", json={"mode": "maximizer", "report_hours": 1}))
+    tid = ok(dev.post(f"/api/employees/{slug}/tasks", json={"title": "Fechar o mês", "body": "tudo", "project": p["slug"]}))["id"]
+    t = wf.until(dev, tid, ("done", "failed"))
+    s = wf.wait(lambda: (lambda x: x if x.get("last_report") else None)(ok(mgr.get(f"/api/projects/{p['slug']}/supervision"))))
+    check("maximizador: a tarefa vai até o fim e o projeto ganha supervisão e relatório", t and t["status"] == "done"
+          and s is not None and s["mode"] == "maximizer" and s["done"] >= 1 and "Projeto" in s["last_report"], s)
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -424,6 +471,9 @@ def main():
     phase_g(dev, mgr, mgr_email, team, slug)
     phase_h(dev, mgr, mgr_email, team, slug)
     phase_i(dev, mgr, team, slug)
+    phase_j(dev, mgr, team, slug)
+    phase_k(dev, mgr, team, slug)
+    phase_l(dev, mgr, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

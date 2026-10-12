@@ -16,7 +16,7 @@ const MODE_LABEL = { auto: ['Sozinho', 'ok'], notify: ['Faz e avisa', 'info'], a
   approve_2: ['Duas aprovações', 'warn'], never: ['Nunca', 'bad'] };
 const LEVEL_LABEL = { intern: 'Estagiário', junior: 'Júnior', pleno: 'Pleno', senior: 'Sênior' };
 const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão',
-  review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão' };
+  review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão', learning: 'aprendizado', org_change: 'mudança na organização' };
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',

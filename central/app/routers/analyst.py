@@ -953,3 +953,34 @@ async def ticket_webhook(org_id: int, name: str, request: Request, token: str = 
     except svc.PlatformError as e:
         raise HTTPException(400, str(e)) from None
     return out
+
+
+# ================================================================== aprendizado da organização
+class LearningModeBody(BaseModel):
+    mode: str  # on | off
+
+
+@router.get("/learned")
+def learned(request: Request, status: str = "", db=Depends(db_dep)):
+    return guard(lambda: svc.org_learning.list_artifacts(db, acc(request, db), status))
+
+
+@router.get("/learned/summary")
+def learned_summary(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.org_learning.summary(db, acc(request, db)))
+
+
+@router.put("/employees/{slug}/learning-mode")
+def learning_mode(slug: str, body: LearningModeBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.org_learning.set_mode(db, acc(request, db), slug, body.mode))
+
+
+# ================================================================== modo maximizador (por projeto)
+@router.put("/projects/{slug}/autonomy")
+def project_autonomy(slug: str, body: dict, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.maximizer.set_autonomy(db, acc(request, db), slug, body))
+
+
+@router.get("/projects/{slug}/supervision")
+def project_supervision(slug: str, request: Request, days: int = 7, db=Depends(db_dep)):
+    return guard(lambda: svc.maximizer.supervision(db, acc(request, db), slug, days))

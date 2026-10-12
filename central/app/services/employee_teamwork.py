@@ -103,6 +103,9 @@ def check_handoff(db, e: Employee, task: EmployeeTask, args: dict) -> dict | Non
     from .org_chart import handoff_targets
     allowed = handoff_targets(db, e)  # os colegas liberados, o chefe e quem reporta a ele
     if to not in allowed:
+        if task is not None:  # tentativas negadas são evidência para propor o colega (auto-organização)
+            tasksmod.event(db, task, "handoff_denied", {"to": to})
+            db.commit()
         names = ", ".join(allowed) or ("none" if en else "nenhum")
         return {"status": "denied", "message": (f"'{to}' is not one of your colleagues for handoffs ({names}). "
                                                 "Ask your manager." if en else

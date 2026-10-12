@@ -48,6 +48,9 @@ class Echo(BaseHTTPRequestHandler):
     def _jira(self, body: str):
         """Um Jira Cloud de mentira (API v3): /jira/_seed cria chamados, /jira/_state mostra o que a central mandou."""
         path = self.path.split("?")[0][len("/jira"):]
+        if path == "/_reset":
+            JIRA.update(issues={}, comments=[], transitions=[], attachments=[])
+            return self._json({"ok": True})
         if path == "/_seed":
             for i in json.loads(body or "{}").get("issues", []):
                 JIRA["issues"][i["key"]] = i

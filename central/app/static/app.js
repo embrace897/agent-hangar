@@ -1022,6 +1022,7 @@ async function route() {
     else if (r === 'message-templates') await templatesMsgPage();
     else if (r === 'knowledge') await knowledgePage();
     else if (r === 'tickets') await ticketsPage();
+    else if (r === 'learned') await learnedPage();
     else if (r === 'procedures') await proceduresPage();
     else if (r === 'governance') await governancePage();
     else if (r === 'memos' && a) await memoPage(a);

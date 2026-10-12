@@ -848,6 +848,7 @@ async function goldenCard(box, e) {
     se piorar, você decide manter a mudança ou voltar à versão anterior.</div>
     <label class="row small mt" style="gap:6px"><input type="checkbox" id="gd-auto" ${g.mode === 'auto' ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}> ${window.t('Rodar a cada mudança no cargo')}</label>
     <label class="row small" style="gap:6px"><input type="checkbox" id="gd-critic" ${e.critic_mode === 'auto' ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}> ${window.t('Revisor crítico nos memorandos de decisão')}</label>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="gd-learn" ${(e.learning_mode || 'on') === 'on' ? 'checked' : ''} ${e.can_manage ? '' : 'disabled'}> ${window.t('Propor guardar o que deu certo (artigos e procedimentos)')}</label>
     ${(e.decision_record || {}).memos ? `<div class="small mute">${window.t('Memorandos')}: ${e.decision_record.memos} · ${window.t('com resultado')}: ${e.decision_record.with_outcome}
       · ${window.t('acerto quando seguido')}: ${e.decision_record.accuracy == null ? '—' : Math.round(e.decision_record.accuracy * 100) + '%'}</div>` : ''}
     <table class="small mt"><tr><th>Tarefa</th><th>Resposta esperada</th><th>Última nota</th><th></th></tr>${g.golden.filter(x => x.active).map(x => {
@@ -862,6 +863,7 @@ async function goldenCard(box, e) {
   if (!e.can_manage) return;
   const re = () => goldenCard(box, e);
   $('#gd-auto', box).onchange = ev => act(ev.target, () => api(`/employees/${e.slug}/golden/mode`, { method: 'PUT', body: { mode: ev.target.checked ? 'auto' : 'off' } }));
+  $('#gd-learn', box).onchange = ev => act(ev.target, () => api(`/employees/${e.slug}/learning-mode`, { method: 'PUT', body: { mode: ev.target.checked ? 'on' : 'off' } }).then(r => { e.learning_mode = r.learning_mode; }));
   $('#gd-critic', box).onchange = ev => act(ev.target, () => api(`/employees/${e.slug}/critic`, { method: 'PUT', body: { mode: ev.target.checked ? 'auto' : 'off' } }).then(r => { e.critic_mode = r.critic_mode; }));
   $('#gd-add', box).onclick = ev => act(ev.target, () => api(`/employees/${e.slug}/golden`, { method: 'POST', body: { title: $('#gd-title').value.trim(), body: $('#gd-body').value,
     expected: $('#gd-exp').value.trim() } }).then(re), 'Tarefa de ouro adicionada');
@@ -990,4 +992,106 @@ async function ticketsPage() {
         <td>${wiPill(x.item_status)}</td><td>${esc(window.t(TK_STATE[x.pushed] || x.pushed || '—'))}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">—</td></tr>'}</table></div>`;
     });
   });
+}
+
+/* ================================================================== aprendizado da organização */
+const LEARN_KIND = { article: 'artigo para a base de conhecimento', procedure: 'procedimento do navegador' };
+
+DECISION_KINDS.learning = {
+  render(d) {
+    const p = d.payload || {}, c = p.content || {};
+    const body = p.kind === 'article'
+      ? `<label class="mt">Título<input class="ln-title" data-noi18n value="${esc(p.title || '')}"></label>
+         <label class="mt">Artigo<textarea class="ln-text" rows="8" data-noi18n>${esc(c.text || '')}</textarea></label>`
+      : `<div class="small mt">${window.t('Domínios')}: <span data-noi18n>${esc((c.domains || []).join(', ') || '—')}</span></div>
+         <ol class="small" data-noi18n>${(c.steps || []).map(s => `<li><b>${esc(s.action)}</b> ${esc(s.target)}${s.value ? ` = ${esc(s.value)}` : ''}</li>`).join('')}</ol>
+         <label class="mt">Título<input class="ln-title" data-noi18n value="${esc(p.title || '')}"></label>`;
+    return {
+      body: `<div class="mt"><span class="chip">${esc(window.t(LEARN_KIND[p.kind] || p.kind))}</span></div>
+        <div class="small mt" data-noi18n>${esc(d.question || '')}</div>${body}<input class="dc-reason mt" placeholder="Comentário (opcional)">`,
+      btns: '<button class="ghost danger ln-go" data-d="reject">Não guardar</button><button class="ln-go" data-d="approve_edited">Guardar</button>',
+    };
+  },
+  bind(card, id, after) {
+    card.querySelectorAll('.ln-go').forEach(b => b.onclick = ev => {
+      const edit = { title: ($('.ln-title', card) || {}).value || '' };
+      const tx = $('.ln-text', card);
+      if (tx) edit.text = tx.value;
+      act(ev.target, () => decide(id, { decision: b.dataset.d, edit, reason: $('.dc-reason', card).value }).then(after),
+        b.dataset.d === 'reject' ? 'Não guardado' : 'Guardado: as próximas tarefas já usam');
+    });
+  },
+};
+
+async function learnedPage() {
+  const [rows, s] = await Promise.all([api('/learned'), api('/learned/summary')]);
+  main.innerHTML = `<h1>O que a empresa aprendeu</h1><div class="sub">Quando uma tarefa dá certo, o Digital employee propõe guardar o que encontrou:
+    a resposta que a base de conhecimento não tinha vira artigo; o caminho num sistema sem API vira procedimento. Uma pessoa aprova, e as
+    próximas tarefas já começam dali.</div>
+    <div class="board">${kpi(s.approved, 'Guardados')}${kpi(s.proposed, 'Aguardando decisão')}${kpi(s.uses, 'Reaproveitamentos')}${kpi(s.reused, 'Guardados já reaproveitados')}</div>
+    <div class="card mt">${rows.length ? `<table class="small"><tr><th>O quê</th><th>Tipo</th><th>De onde veio</th><th>Situação</th><th>Reaproveitado</th></tr>
+      ${rows.map(a => `<tr><td><b data-noi18n>${esc(a.title)}</b>${a.target ? `<div class="mute" data-noi18n>${esc(a.target)}</div>` : ''}</td>
+        <td>${esc(window.t(LEARN_KIND[a.kind] || a.kind))}</td>
+        <td>${a.task ? `<a href="#/tasks/${a.task}">${window.t('tarefa')} #${a.task}</a>` : '—'} <span class="mute" data-noi18n>${esc(a.employee_name || '')}</span></td>
+        <td><span class="pill ${a.status === 'approved' ? 'ok' : a.status === 'rejected' ? '' : 'warn'}">${esc(window.t({ approved: 'guardado', rejected: 'não guardado', proposed: 'aguardando decisão' }[a.status] || a.status))}</span>
+          ${a.decided_by ? `<div class="mute" data-noi18n>${esc(a.decided_by)}</div>` : ''}</td>
+        <td>${a.uses}×</td></tr>`).join('')}</table>` : '<div class="mute small">Nada guardado ainda.</div>'}</div>`;
+}
+
+/* ================================================================== auto-organização */
+const ORG_CHANGE = { routine: 'nova rotina', instruction: 'instrução para o cargo', colleague: 'colega para repasse', queue_route: 'rota da fila' };
+
+DECISION_KINDS.org_change = {
+  render(d) {
+    const p = d.payload || {}, ev = p.evidence || {};
+    const edit = p.change === 'routine'
+      ? `<label class="mt">Quando (cron)<input class="oc-cron" data-noi18n value="${esc(p.cron || '')}"></label>
+         <div class="small mt" data-noi18n><b>${esc(p.title || '')}</b></div>`
+      : p.change === 'instruction' ? `<label class="mt">Instrução<textarea class="oc-text" rows="3" data-noi18n>${esc(p.text || '')}</textarea></label>`
+      : p.change === 'queue_route' ? `<div class="small mt" data-noi18n>${esc(p.queue)} · ${esc(p.category)} → ${esc(p.to)}</div>`
+      : `<div class="small mt" data-noi18n>→ ${esc(p.to || '')}</div>`;
+    return {
+      body: `<div class="mt"><span class="chip">${esc(window.t(ORG_CHANGE[p.change] || p.change))}</span>
+          <span class="mute small">${p.source === 'employee' ? window.t('proposta pelo Digital employee') : window.t('percebida pela plataforma')}</span></div>
+        <div class="small mt" data-noi18n>${esc(d.question || '')}</div>
+        ${Object.keys(ev).length ? `<div class="mute small mt" data-noi18n>${esc(Object.entries(ev).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' · '))}</div>` : ''}
+        ${edit}<input class="dc-reason mt" placeholder="Comentário (opcional)">`,
+      btns: '<button class="ghost danger oc-go" data-d="reject">Recusar</button><button class="oc-go" data-d="approve_edited">Aprovar</button>',
+    };
+  },
+  bind(card, id, after) {
+    card.querySelectorAll('.oc-go').forEach(b => b.onclick = ev => {
+      const edit = {};
+      if ($('.oc-cron', card)) edit.cron = $('.oc-cron', card).value.trim();
+      if ($('.oc-text', card)) edit.text = $('.oc-text', card).value.trim();
+      act(ev.target, () => decide(id, { decision: b.dataset.d, edit, reason: $('.dc-reason', card).value }).then(after),
+        b.dataset.d === 'reject' ? 'Recusada (não volta por 30 dias)' : 'Aprovada: já vale');
+    });
+  },
+};
+
+/* ================================================================== modo maximizador (página do projeto) */
+async function projectMaximizer(p, slug) {
+  const s = await api(`/projects/${slug}/supervision`).catch(() => null);
+  if (!s) return;
+  const a = p.autonomy || { mode: 'normal' }, on = a.mode === 'maximizer';
+  const st = s.by_status || {};
+  main.insertAdjacentHTML('beforeend', `<div class="card mt"><div class="row between"><h2>Modo maximizador</h2>
+      <span class="pill ${on ? 'ok' : ''}">${window.t(on ? 'ligado' : 'desligado')}</span></div>
+    <div class="mute small">Mais entrega por pessoa que supervisiona: os Digital employees deste projeto vão até o fim (mais rodadas e passos),
+      dividem o trabalho com colegas do organograma, tentam de novo sozinhos quando algo falha por motivo técnico e mandam um relatório.
+      A alçada, o orçamento do projeto e a auditoria não mudam.</div>
+    <div class="board mt">${kpi(s.done, 'Entregues (7 dias)')}${kpi(st.waiting_human || 0, 'Esperando uma pessoa')}${kpi(s.retries, 'Novas tentativas')}
+      ${kpi(s.handoffs, 'Repasses')}${kpi(s.human_decisions, 'Decisões de pessoas')}${kpi(s.done_per_supervisor, 'Entregas por pessoa')}${kpi(usd(s.cost_usd), 'Custo')}</div>
+    ${s.blocked.length ? `<div class="small mt"><b>${window.t('Travadas')}</b>: ${s.blocked.map(b => `<a href="#/tasks/${b.task}" data-noi18n>#${b.task} ${esc(b.title)}</a> (${taskPill(b.status)})`).join(' · ')}</div>` : ''}
+    ${s.last_report ? `<div class="small mt"><b>${window.t('Último relatório')}</b> <span class="mute">${ago(s.last_report_at)}</span><div data-noi18n>${esc(s.last_report)}</div></div>` : ''}
+    ${p.can_edit ? `<div class="grid g3 mt"><label class="row small" style="gap:6px"><input type="checkbox" id="mx-on" ${on ? 'checked' : ''}> ${window.t('Ligar neste projeto')}</label>
+      <label>Rodadas a mais<input id="mx-r" type="number" value="${a.extra_rounds ?? 20}"></label><label>Passos por rodada<input id="mx-s" type="number" value="${a.max_steps ?? 60}"></label>
+      <label>Novas tentativas<input id="mx-t" type="number" value="${a.auto_retry ?? 1}"></label><label>Relatório a cada (horas)<input id="mx-h" type="number" value="${a.report_hours ?? 24}"></label>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="mx-d" ${a.delegate !== false ? 'checked' : ''}> ${window.t('Dividir com colegas do organograma')}</label></div>
+      <div class="row mt"><button class="ghost" id="mx-save">Salvar</button></div>` : ''}</div>`);
+  const b = $('#mx-save');
+  if (b) b.onclick = ev => act(ev.target, () => api(`/projects/${slug}/autonomy`, { method: 'PUT', body: {
+    mode: $('#mx-on').checked ? 'maximizer' : 'normal', extra_rounds: Number($('#mx-r').value), max_steps: Number($('#mx-s').value),
+    auto_retry: Number($('#mx-t').value), report_hours: Number($('#mx-h').value), delegate: $('#mx-d').checked } }).then(route), 'Salvo');
 }

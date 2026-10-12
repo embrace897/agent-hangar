@@ -131,6 +131,8 @@ def test_kpis_are_measured_and_the_weekly_report_compares_them(client, env, rt):
     with SessionLocal() as db:
         e = _emp(db, slug)
         e.report_hour, e.report_weekday, e.last_report_on, e.last_weekly_on = 18, 0, "", ""
+        # o tick do work() pode já ter feito os relatórios de hoje (numa segunda depois das 18h): o teste conta só os dele
+        db.query(EmployeeReport).filter(EmployeeReport.employee_id == e.id).delete()
         db.commit()
         monday = _local(db, 2026, 10, 5, 19)  # uma segunda-feira, depois das 18h
         empmod.daily_reports(db, monday)

@@ -27,6 +27,7 @@ GROUPS = {
     "knowledge": "Base de conhecimento",
     "browser": "Navegador governado",
     "desktop": "Desktop governado",
+    "org": "Propor mudanças na organização (rotina, instrução, colega, rota da fila)",
     "documents": "Propor alterações em documentos",
     "memo": "Memorando de decisão",
 }
@@ -69,7 +70,7 @@ def _load():
     if _LOADED:
         return
     from . import analysis, calculators, extraction  # noqa: F401
-    for mod in ("work_queues", "correspondence", "meetings", "knowledge", "browser", "desktop", "doc_changes", "decision_memos"):
+    for mod in ("work_queues", "correspondence", "meetings", "knowledge", "browser", "desktop", "doc_changes", "decision_memos", "org_learning", "self_org"):
         try:
             __import__(f"app.services.{mod}")
         except ModuleNotFoundError as ex:

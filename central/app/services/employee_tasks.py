@@ -737,6 +737,12 @@ def tick() -> list[int]:
             decision_memos.sweep(db)  # "como foi a decisão?"
             from . import tickets
             tickets.sweep(db)  # Jira, Linear, Asana, ServiceNow: chamados novos entram, o andamento volta
+            from . import org_learning
+            org_learning.sweep(db)  # o que deu certo vira artigo ou procedimento (com aprovação)
+            from . import self_org
+            self_org.sweep(db)  # uma vez por dia: rotinas, rotas e colegas propostos com números
+            from . import maximizer
+            maximizer.sweep(db)  # projetos maximizadores: o relatório periódico para quem criou
             if retention_now:
                 from . import governance, knowledge
                 governance.retention_sweep(db)  # conteúdo vencido pela política de retenção
@@ -774,8 +780,11 @@ def _run_task(task_id: int) -> EmployeeTask | None:
         e = db.get(Employee, task.employee_id)
         a = db.get(Agent, e.agent_id)
         env = "stage" if (task.probation or e.status == "probation") else "prod"
-        if task.runs >= config.EMPLOYEE_MAX_RUNS + (task.extra_runs or 0):
-            return _finish(db, task, "failed", error=f"limite de {config.EMPLOYEE_MAX_RUNS + (task.extra_runs or 0)} rodadas atingido")
+        from . import maximizer
+        limit = config.EMPLOYEE_MAX_RUNS + (task.extra_runs or 0) + maximizer.extra_rounds(db, task)
+        if task.runs >= limit:
+            return _finish(db, task, "failed", error=f"limite de {limit} rodadas atingido")
+        steps = maximizer.max_steps(db, task)  # projeto maximizador: mais passos por rodada
         if task.cost_usd > e.task_budget_usd:
             return _finish(db, task, "failed", error=f"orçamento da tarefa (US$ {e.task_budget_usd}) estourado")
         from . import budgets
@@ -807,7 +816,8 @@ def _run_task(task_id: int) -> EmployeeTask | None:
         with HTTP() as http:
             resp = http.post(deploy.internal_url(slug, env) + "/v1/chat/completions",
                              headers={"X-Channel": "employee", "X-Hangar-Task": str(task_id),
-                                      "X-Session-Id": f"task-{task_id}"},
+                                      "X-Session-Id": f"task-{task_id}",
+                                      **({"X-Hangar-Max-Steps": str(steps)} if steps else {})},
                              json={"messages": messages}, timeout=max(60, limit_min * 60))
         resp.raise_for_status()
         data = resp.json()
@@ -883,6 +893,10 @@ def _run_task(task_id: int) -> EmployeeTask | None:
 
 
 def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", error: str = "") -> EmployeeTask:
+    if status == "failed":
+        from . import maximizer
+        if maximizer.retry(db, task, error):  # projeto maximizador: falha técnica tenta de novo, com o erro na conversa
+            return task
     from . import governance
     result, error = governance.unmask(db, task.id, result), governance.unmask(db, task.id, error)  # as pessoas veem o real
     task.status, task.finished_at = status, now()

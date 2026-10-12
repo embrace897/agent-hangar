@@ -192,6 +192,51 @@ queue, while execution, authority and audit stay here.
   as a draft and only goes live after **someone else** who maintains the team approves it; any change sends it back
   to draft. Hosts on the internal network need `PLUGIN_ALLOW_PRIVATE=1`, like plugins.
 
+## Organizational learning
+
+*Digital employees → What the company learned*: work that went well becomes reusable knowledge.
+
+- A few minutes after a task finishes well (quality score ≥ 4, or no score and no rejected review), the platform
+  proposes **one** artifact from it: an **article** for the knowledge base, when the task searched for something the
+  base didn't answer (a gap) and found the answer — rewritten by the employee's LLM, when there is one — or a
+  **browser procedure**, when the task walked a path through a system with no API (vault secrets stay out of it).
+- The proposal is a decision for whoever answers for the employee: keep (editing the text or the title) or don't.
+  A kept article goes into the team's "Learning" knowledge source and closes the gap; a procedure becomes a version.
+- Every time a task finds the article in a search, or runs the procedure, it counts as a reuse — the page shows
+  what was kept, by whom, and how often it was reused. *Settings → Golden tasks* turns proposals off per employee.
+
+## Self-organization
+
+The company proposes changes to its own structure, backed by numbers, and a person decides:
+
+- **Routine** — the same request comes back at the same pace (3+ times in 5 weeks, on the same weekday or on
+  business days): it becomes a routine of the employee, at the hour it usually arrives.
+- **Queue route** — a category people solve by hand (5+ items in 30 days) starts going to the team's Digital
+  employee that delivered the most (it hands back to people when it can't finish).
+- **Colleague for hand-offs** — the employee tried to hand work to someone outside its list 2+ times.
+- **The employee proposes**, with `propose_org_change` (group *Propose changes to the organization*): a routine, an
+  instruction for its role, a colleague, a queue route — with the reason and numbers.
+
+Each proposal is a decision (approve, adjust the schedule or the text, or reject); nothing changes before it. A
+rejected proposal doesn't come back for 30 days. Role changes (instruction, colleagues) run the golden tasks.
+
+## Maximizer mode
+
+*Project → Maximizer mode* (who maintains the team): more output per supervising person, nothing hidden.
+
+- More **rounds** per task and more **steps** per round, so the employees go all the way instead of stopping
+  halfway; a round that uses all its steps continues in the next one (in every project, not only here).
+- The employees are told to finish the work and to **split** large work with colleagues in the org chart
+  (`handoff_task` with `wait`), following up until it's done.
+- A task that fails for a technical reason is **retried** on its own (with the previous error in the conversation),
+  up to the configured number of times. Failures from a denied authority, the budget or a cancellation are never
+  retried.
+- A **report** every N hours to whoever created the project, and a **supervision** panel: delivered, waiting for a
+  person, retries, hand-offs, decisions by people, deliveries per supervising person, cost, and what is stuck.
+
+What doesn't change: the authority (whatever needs a person still waits for one, and the company's floor applies),
+the project's budget (it stops at the limit) and the audit log.
+
 ## Governed desktop
 
 For desktop applications with no API and no web page — a legacy ERP, a spreadsheet, an installed system — the
@@ -365,6 +410,9 @@ or go back to the previous version of the role.
 | POST | `/api/tickets/connectors/{name}/approve` · `/test` · `/sync` · `/webhook-token` | Approve (someone else) · test · sync now · webhook URL |
 | PUT · GET | `/api/tickets/connectors/{name}/status` · `/links` | `{status: active, paused}` · linked tickets |
 | POST | `/hooks/tickets/{org}/{name}?token=` | The ticket system's webhook |
+| GET | `/api/learned` · `/api/learned/summary` | What the company learned (`?status=`) · totals and reuses |
+| PUT | `/api/employees/{slug}/learning-mode` | `{mode: on, off}`: propose articles and procedures |
+| PUT · GET | `/api/projects/{slug}/autonomy` · `/supervision` | Maximizer mode (`mode, extra_rounds, max_steps, auto_retry, delegate, report_hours`) · the supervision panel (`?days=`) |
 | GET / PUT | `/api/governance` | DLP and retention policy (and LLM connections' levels) |
 | PUT | `/api/governance/llm/{name}` · `/api/tasks/{id}/classification` · `/api/files/{id}/classification` | Classification levels |
 | PUT | `/api/projects/{slug}/governance` · POST `/api/projects/{slug}/break-glass` | Confidential project, members, legal hold · emergency access |

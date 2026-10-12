@@ -144,6 +144,7 @@ async function projectDetail(slug) {
       goal_id: Number($('#pj-goal').value) || null } }).then(route), 'Salvo');
     $('#pj-arch').onclick = ev => act(ev.target, () => api('/projects/' + slug, { method: 'PATCH', body: { status: p.status === 'archived' ? 'active' : 'archived' } }).then(route));
   }
+  projectMaximizer(p, slug);  // modo maximizador e supervisão (analyst.js)
 }
 
 /* ---------- metas ---------- */

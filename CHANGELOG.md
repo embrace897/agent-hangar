@@ -11,6 +11,16 @@ All notable changes to this project are documented here. The format follows
   deliverables go back to the ticket as comments, status changes and attachments; new comments on the ticket reach
   the Digital employee's conversation; a ticket closed outside cancels the item. The credential is a vault secret and
   a connector goes live only after someone else approves it.
+- **Organizational learning:** a task that went well proposes one artifact — a knowledge-base article when it
+  answered a gap, a browser procedure when it walked a path through a system — kept after a person approves (with
+  edits); reuses are counted (*What the company learned*).
+- **Self-organization:** routines for recurring requests, queue routes for categories people solve by hand, and
+  colleagues for repeated denied hand-offs, proposed with numbers; employees propose changes too
+  (`propose_org_change`); nothing changes before a person approves, rejections don't come back for 30 days, role
+  changes run the golden tasks.
+- **Maximizer mode per project:** more rounds and steps, the instruction to finish and split work across the org
+  chart, automatic retry on technical failures, a periodic report and a supervision panel; authority, budget and
+  audit unchanged.
 
 ## [0.27.0] — 2026-10-12
 
