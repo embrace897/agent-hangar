@@ -50,6 +50,28 @@ def event(db: Session, task: EmployeeTask, kind: str, payload: dict | None = Non
     task.updated_at = now()
 
 
+JOURNAL_SKIP = {"list_files", "read_file", "desktop_look", "desktop_screenshot", "browser_read",
+                "browser_screenshot", "list_calculators", "list_extraction_schemas", "list_data_tables"}
+
+
+def journal(trace: list[dict], run: int, limit: int = 40) -> str:
+    """O que a rodada fez, em poucas linhas, para a próxima rodada saber (consultas de leitura ficam de fora)."""
+    lines = []
+    for s in trace:
+        tool = s.get("tool")
+        if not tool or tool in JOURNAL_SKIP:
+            continue
+        lim = 400 if tool == "update_plan" else 60  # o plano é onde o próprio modelo marca o que concluiu
+        args = ", ".join(f"{k}={str(v)[:lim]}" for k, v in (s.get("args") or {}).items() if k not in ("allowed",))
+        res = re.sub(r"\s+", " ", str(s.get("result") or ""))[:120]
+        lines.append(f"- {tool}({args}) → {res}")
+    if not lines:
+        return ""
+    more = f"\n- … e mais {len(lines) - limit} ação(ões)" if len(lines) > limit else ""
+    return (f"[Registro da rodada {run} — o que eu JÁ FIZ; não refaço o que já foi concluído]\n"
+            + "\n".join(lines[-limit:]) + more)
+
+
 def last_checkpoint(db: Session, task: EmployeeTask) -> TaskCheckpoint | None:
     return db.scalar(select(TaskCheckpoint).where(TaskCheckpoint.task_id == task.id).order_by(TaskCheckpoint.seq.desc()))
 
@@ -815,7 +837,10 @@ def _run_task(task_id: int) -> EmployeeTask | None:
                 event(db, task, "job", {"job": int(jid)})
         m = WAIT_MARK.match(content)
         note = WAIT_MARK.sub("", content)
-        messages = messages + ([{"role": "assistant", "content": note}] if note else [])
+        # o checkpoint guarda o que foi FEITO na rodada, não só a fala final: sem isso, a rodada que retoma depois de
+        # uma aprovação recomeça do zero e repete ações (uma baixa lançada duas vezes)
+        said = "\n\n".join(x for x in (journal(data.get("x_trace") or [], task.runs), note) if x)
+        messages = messages + ([{"role": "assistant", "content": said}] if said else [])
         checkpoint(db, task, messages)
         from . import task_thread
         task_thread.agent_said(db, task, note)

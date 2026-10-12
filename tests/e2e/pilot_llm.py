@@ -82,8 +82,11 @@ def finish(dev, mgr, tid, statuses=("done", "failed"), secs=400, approve: list |
                 if d["kind"] == "question":
                     ok(mgr.post(f"/api/decisions/{d['id']}", json={"decision": "answer", "reason": ANSWER}))
                 elif d["kind"] == "approval" and approve is not None:
-                    approve.append(d)
-                    ok(mgr.post(f"/api/decisions/{d['id']}", json={"decision": "approve"}))
+                    if not any(x["id"] == d["id"] for x in approve):
+                        approve.append(d)
+                        r = ok(mgr.post(f"/api/decisions/{d['id']}", json={"decision": "approve"}))
+                        if r.get("status") == "open":  # approve_2: a segunda pessoa
+                            ok(admin.post(f"/api/decisions/{d['id']}", json={"decision": "approve"}))
         return None
     return wf.wait(step, secs, 3)
 
@@ -208,42 +211,142 @@ def ouro(dev, mgr, team, slug):
     print(f"{'ok  ' if REPORT[-1]['ok'] else 'FALHA'} tarefa de ouro com juiz  {REPORT[-1]['note']}", flush=True)
 
 
-def _erp_rows() -> list[str]:
+def _desk(cmd: str) -> str:
     import subprocess
-    r = subprocess.run(["docker", "compose", "exec", "-T", "desktop", "sh", "-c", "cat /home/*/erp/baixas.csv 2>/dev/null"],
-                       capture_output=True, text=True, encoding="utf-8")
-    return [x for x in r.stdout.splitlines() if x.strip()]
+    r = subprocess.run(["docker", "compose", "exec", "-T", "desktop", "sh", "-c", cmd], capture_output=True, text=True,
+                       encoding="utf-8")
+    return r.stdout
 
 
-@case
-def desktop_baixa(dev, mgr, team, slug):
-    if not ok(mgr.get(f"/api/employees/{slug}"))["desktop_apps"]:
-        REPORT.append({"case": "desktop: baixa no ERP legado", "ok": None, "note": "desktop desligado"})
-        print("--    desktop (perfil desktop desligado)", flush=True)
-        return
+def _erp_rows() -> list[str]:
+    return [x for x in _desk("cat /home/*/erp/baixas.csv 2>/dev/null").splitlines() if x.strip()]
+
+
+def _desk_reset():
+    """Cada caso começa com o desktop limpo: sem ERP nem planilha abertos, sem o arquivo salvo por outro caso."""
+    # [e]/[g]: o padrão não casa com a própria linha de comando do sh (senão o pkill derruba o sh antes do resto)
+    _desk("pkill -f '[e]rp_legado.py'; pkill -x gnumeric; rm -f /home/cua/planilhas/despesas.gnumeric; true")
+
+
+SECRET = f"erp-{RUN}"
+LOGIN = f"Entre no ERP Legado (aplicativo de desktop) com o usuário ana; a senha está no cofre: secret://{SECRET}."
+
+
+def _desk_case(fn):
+    """Caso de desktop: só com o perfil desktop no ar e os apps liberados; o desktop é limpo antes."""
+    def run(dev, mgr, team, slug):
+        if not ok(mgr.get(f"/api/employees/{slug}"))["desktop_apps"]:
+            REPORT.append({"case": fn.__name__, "ok": None, "note": "desktop desligado"})
+            print(f"--    {fn.__name__} (perfil desktop desligado)", flush=True)
+            return
+        if not any(s["name"] == SECRET for s in ok(admin.get("/api/secrets"))["secrets"]):
+            ok(admin.put("/api/secrets", json={"name": SECRET, "value": os.environ.get("ERP_TEST_PASSWORD", "erp-teste-123")}))
+            sid = next(s["id"] for s in ok(admin.get("/api/secrets"))["secrets"] if s["name"] == SECRET)
+            LEFTOVERS.append(("DELETE", f"/api/secrets/{sid}"))
+        _desk_reset()
+        fn(dev, mgr, team, slug)
+    run.__name__ = fn.__name__
+    return case(run)
+
+
+def _secret_ok(t) -> bool:
+    """A senha nunca aparece: nem no resultado nem na linha do tempo; a digitação ficou como [segredo]."""
+    pw = os.environ.get("ERP_TEST_PASSWORD", "erp-teste-123")
+    evs = (t or {}).get("events", [])
+    return pw not in json.dumps(t or {}, ensure_ascii=False) and any(
+        e["kind"] == "desktop" and e["payload"].get("value") == "[segredo]" for e in evs)
+
+
+def _baixa(dev, mgr, name, body, expect: list[tuple], secs=900):
     before = len(_erp_rows())
     approvals: list = []
-    tid = ask(dev, slug, "Baixa da fatura 91", "No ERP Legado (aplicativo de desktop), dê baixa na fatura 91: o cliente pagou "
-              "R$ 980,40 em 10/10/2026. Confira o cliente na tela antes de confirmar.")
-    t = finish(dev, mgr, tid, secs=900, approve=approvals)
+    tid = ask(dev, slug_of[0], name, body)
+    t = finish(dev, mgr, tid, secs=secs, approve=approvals)
     rows = _erp_rows()[before:]
-    hit = [r for r in rows if r.startswith("91,") and "10/10/2026" in r and "980" in r]
-    record("desktop: baixa no ERP legado (só pela tela, com alçada)", bool(hit) and any(
-        "Tela: tela-" in (a.get("rationale") or "") for a in approvals), t,
-        f"linhas novas={rows} pedidos={len(approvals)} imagens_vistas={sum(1 for e in (t or {}).get('events', []) if e['kind'] == 'desktop')}")
+    digits = lambda x: re.sub(r"\D", "", x)  # noqa: E731  (2.500,00 / 2500,00 / 2500.00)
+    good = len(rows) == len(expect) and all(any(r.startswith(f"{f},") and d in r and digits(v) in digits(r.split(",", 3)[3])
+                                                for r in rows) for f, d, v in expect)
+    return t, rows, approvals, good
 
 
-@case
-def desktop_consulta(dev, mgr, team, slug):
-    if not ok(mgr.get(f"/api/employees/{slug}"))["desktop_apps"]:
-        return
-    before = len(_erp_rows())
-    tid = ask(dev, slug, "Quem deve a fatura 102?", "Consulte no ERP Legado (aplicativo de desktop) a fatura 102 e me diga o "
-              "cliente e o valor em aberto. Só consulta: não dê baixa.")
+slug_of: list[str] = []
+
+
+@_desk_case
+def desk_login(dev, mgr, team, slug):
+    tid = ask(dev, slug, "Entrar no ERP", f"{LOGIN} Depois me diga a mensagem de boas-vindas que aparece no rodapé.")
     t = finish(dev, mgr, tid, secs=600, approve=[])
+    record("desktop A: login com a senha do cofre", "Bem-vindo, ana" in ((t or {}).get("result") or "") and _secret_ok(t), t)
+
+
+@_desk_case
+def desk_data_formato(dev, mgr, team, slug):
+    slug_of[:] = [slug]
+    t, rows, ap, good = _baixa(dev, mgr, "Baixa da fatura 88", f"{LOGIN} Dê baixa na fatura 88: o cliente pagou R$ 2.500,00 "
+                               "em 2026-10-03 (é a data do extrato do banco).", [("88", "03/10/2026", "2500,00")])
+    record("desktop B: data em outro formato, corrigida na tela", good and len(ap) >= 1 and _secret_ok(t), t,
+           f"linhas={rows} aprovações={len(ap)}")
+
+
+@_desk_case
+def desk_inexistente(dev, mgr, team, slug):
+    slug_of[:] = [slug]
+    t, rows, ap, _ = _baixa(dev, mgr, "Baixa da fatura 999", f"{LOGIN} Dê baixa na fatura 999: pago R$ 300,00 em 05/10/2026.", [])
+    r = ((t or {}).get("result") or "").lower()
+    record("desktop C: fatura inexistente — não grava e avisa", not rows and not ap and ("não existe" in r or "inexistente" in r
+                                                                                        or "não encontrada" in r), t,
+           f"linhas={rows} aprovações={len(ap)}")
+
+
+@_desk_case
+def desk_dialogo(dev, mgr, team, slug):
+    slug_of[:] = [slug]
+    t, rows, ap, good = _baixa(dev, mgr, "Baixa da fatura 102", f"{LOGIN} Dê baixa na fatura 102: pago R$ 12.000,00 em "
+                               "05/10/2026. O sistema pede confirmação numa janela; confirme.", [("102", "05/10/2026", "12000,00")])
+    labels = [((a.get("payload") or {}).get("label") or "") for a in ap]
+    record("desktop D: diálogo de confirmação passa pela alçada", good and any("sim" in x.lower() or "confirm" in x.lower()
+                                                                               for x in labels), t,
+           f"linhas={rows} aprovações={labels}")
+
+
+@_desk_case
+def desk_relatorio(dev, mgr, team, slug):
+    tid = ask(dev, slug, "Fatura 140 no relatório", f"{LOGIN} Abra o relatório de faturas em aberto (menu Relatórios) e me "
+              "diga o cliente e o valor da fatura 140. Só consulta.")
+    before = len(_erp_rows())
+    t = finish(dev, mgr, tid, secs=900, approve=[])
     r = (t or {}).get("result") or ""
-    record("desktop: consulta no ERP legado (lê a tela, não grava)", "Gama" in r and "12.000" in r.replace("12000", "12.000")
-           and len(_erp_rows()) == before, t)
+    record("desktop E: menu, segunda janela e rolagem", "Teta" in r and "7.777,77" in r and len(_erp_rows()) == before, t)
+
+
+@_desk_case
+def desk_planilha_salvar(dev, mgr, team, slug):
+    approvals: list = []
+    tid = ask(dev, slug, "Planilha de despesas", "No Gnumeric (aplicativo de desktop), monte uma planilha: A1 'Item', B1 "
+              "'Valor'; A2 'Hotel', B2 400; A3 'Passagem', B3 1250; A4 'Total' e em B4 a fórmula que soma B2:B3. Salve como "
+              "/home/cua/planilhas/despesas.gnumeric.")
+    t = finish(dev, mgr, tid, secs=1200, approve=approvals)
+    csv = _desk("ssconvert -T Gnumeric_stf:stf_csv /home/cua/planilhas/despesas.gnumeric fd://1 2>/dev/null")
+    ok_ = "Total,1650" in csv.replace('"', "") and "Hotel,400" in csv.replace('"', "")
+    record("desktop F: planilha com fórmula e 'Salvar como'", ok_, t, f"csv={csv.strip()[:120]!r} aprovações={len(approvals)}")
+
+
+@_desk_case
+def desk_planilha_abrir(dev, mgr, team, slug):
+    tid = ask(dev, slug, "Total de vendas", "No Gnumeric (aplicativo de desktop), abra o arquivo /home/cua/planilhas/vendas.csv e "
+              "me diga o total da coluna valor e qual região vendeu mais.")
+    t = finish(dev, mgr, tid, secs=900, approve=[])
+    r = ((t or {}).get("result") or "").replace(".", "").replace(",", ".")
+    record("desktop G: abrir arquivo e ler a planilha", ("6871.5" in r or "687150" in r.replace(".", "")) and "norte" in r.lower(), t)
+
+
+@_desk_case
+def desk_lote(dev, mgr, team, slug):
+    slug_of[:] = [slug]
+    t, rows, ap, good = _baixa(dev, mgr, "Baixa das faturas 88 e 91", f"{LOGIN} Dê baixa em duas faturas, ambas pagas em "
+                               "07/10/2026: a 88 (R$ 2.500,00) e a 91 (R$ 980,40).",
+                               [("88", "07/10/2026", "2500,00"), ("91", "07/10/2026", "980,40")], secs=1200)
+    record("desktop H: duas baixas na mesma tarefa", good, t, f"linhas={rows} aprovações={len(ap)}")
 
 
 def main():

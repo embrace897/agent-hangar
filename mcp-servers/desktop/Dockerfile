@@ -15,6 +15,10 @@ RUN uv venv /opt/gateway/venv --python /usr/bin/python3 \
     && uv pip install --python /opt/gateway/venv/bin/python -r /opt/gateway/requirements.txt
 COPY app /opt/gateway/app
 COPY erp_legado.py /opt/erp/erp_legado.py
+# senha de teste do ERP de exemplo (troque com ERP_TEST_PASSWORD no build) e uma planilha para abrir
+ARG ERP_TEST_PASSWORD=erp-teste-123
+COPY --chown=1000:1000 samples/ /home/cua/planilhas/
+RUN printf '%s' "$ERP_TEST_PASSWORD" > /opt/erp/senha && chmod 644 /opt/erp/senha
 RUN printf '[Desktop Entry]\nType=Application\nName=ERP Legado\nExec=python3 /opt/erp/erp_legado.py\nTerminal=false\nCategories=Office;\n' \
       > /usr/share/applications/erp-legado.desktop \
     && printf '\n[program:hangar-gateway]\ncommand=/opt/gateway/venv/bin/python -m app.gateway\ndirectory=/opt/gateway\nuser=root\nautorestart=true\nstartsecs=2\npriority=60\nstdout_logfile=/var/log/supervisor/hangar-gateway.log\nredirect_stderr=true\n' \

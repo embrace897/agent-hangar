@@ -29,7 +29,13 @@ CUA_URL = os.environ.get("CUA_URL", "http://127.0.0.1:3211/mcp")
 TOKEN_FILE = os.environ.get("CUA_ENV_TOKEN_FILE", "/run/cua/env-token")
 IDLE_MIN = float(os.environ.get("DESKTOP_IDLE_MIN", "20"))
 MAX_IMG = int(os.environ.get("DESKTOP_MAX_IMAGE", "1280"))
-MAX_ELEMENTS = int(os.environ.get("DESKTOP_MAX_ELEMENTS", "80"))
+MAX_ELEMENTS = int(os.environ.get("DESKTOP_MAX_ELEMENTS", "80"))  # quantos vão ao modelo
+MAX_WALK = int(os.environ.get("DESKTOP_MAX_WALK", "400"))  # quantos se leem da árvore de acessibilidade
+# papéis exatos (AT-SPI): "tab" casava com "table cell", e as células de uma lista de arquivos empurravam o botão
+# Salvar para fora da lista
+ACTIONABLE = {"push button", "button", "toggle button", "text", "entry", "password text", "menu", "menu item",
+              "check box", "check menu item", "radio button", "radio menu item", "combo box", "spin button",
+              "page tab", "link", "list item"}
 SKIP = {"xfdesktop", "xfce4-panel", "desktop"}
 
 mcp = FastMCP("desktop", stateless_http=True, json_response=True, streamable_http_path="/mcp",
@@ -130,8 +136,11 @@ async def _target(sess: dict, allowed: list[str], window: str = "") -> dict:
             or w.get("pid") == sess["pid"]]
     if window:
         wins = [w for w in wins if window.lower() in (w.get("title") or "").lower()] or wins
+    # a janela de cima do app: um diálogo ("Confirma?", "Salvar como"), um menu aberto ou um relatório ficam por cima
+    # da principal, e é neles que o próximo clique tem de cair
+    top = lambda ws: sorted(ws, key=lambda w: -(w.get("z_index") or 0))  # noqa: E731
     mine = [w for w in wins if w.get("pid") == sess["pid"]]
-    pick = (mine or sorted(wins, key=lambda w: -(w.get("z_index") or 0)) or [None])[0]
+    pick = (top(mine) or top(wins) or [None])[0]
     if pick is None:
         raise ToolError("nenhuma janela de um app liberado está aberta: use open primeiro")
     sess["pid"], sess["window"] = pick["pid"], pick["window_id"]
@@ -141,12 +150,16 @@ async def _target(sess: dict, allowed: list[str], window: str = "") -> dict:
 async def _look(sess: dict, allowed: list[str], window: str = "") -> dict:
     w = await _target(sess, allowed, window)
     _, imgs, sc = await _call(sess, "get_window_state", {"pid": w["pid"], "window_id": w["window_id"], "include_screenshot": True,
-                                                         "max_image_dimension": MAX_IMG, "max_elements": MAX_ELEMENTS})
+                                                         "max_image_dimension": MAX_IMG, "max_elements": MAX_WALK})
     els = [e for e in sc.get("elements") or [] if e.get("label") or e.get("role") in ("button", "text", "entry", "check box")]
     sess["elements"] = els
+    # o que se clica e preenche vem antes (botões, campos, menus); células de tabela e o resto, depois — num diálogo
+    # "Salvar como" a lista de arquivos tem dezenas de células, e o botão Salvar não pode ficar de fora
+    els = sorted((e for e in els if e.get("element_index") is not None),
+                 key=lambda e: (0 if (e.get("role") or "").lower() in ACTIONABLE else 1, e["element_index"]))
     rows = [f"[{e['element_index']}] {e.get('role', '')} \"{(e.get('label') or '')[:60]}\""
             + (f" = \"{str(e.get('value'))[:40]}\"" if e.get("value") not in (None, "") else "")
-            for e in els if e.get("element_index") is not None]
+            for e in els]
     return {"window": w.get("title"), "app": w.get("app_name"), "size": [w.get("width"), w.get("height")],
             "elements": rows[:MAX_ELEMENTS],
             "dica": ("sem árvore de acessibilidade: clique por x,y na captura (pixels da janela)" if len(rows) <= 1

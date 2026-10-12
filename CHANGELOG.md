@@ -11,7 +11,15 @@ All notable changes to this project are documented here. The format follows
   apps per employee, the window's screenshot sent to the model as an image, accessibility elements when the app has
   them, authority with the screenshot on clicks and shortcuts that confirm something, vault secrets when typing.
   Platform tools can now return images to the model; the runtime keeps only the latest screenshots in the
-  conversation (`KEEP_TOOL_IMAGES`).
+  conversation (`KEEP_TOOL_IMAGES`). Approvals show what will be confirmed and what already was, and a repeated
+  confirmation with the same fields is held back.
+
+### Fixed
+- A task that resumed after an approval only remembered the model's final text, not what it had done in the round,
+  and could redo actions (a payment posted twice in a multi-step task). Each round now leaves a log of the actions
+  taken (and the model's own plan) in the conversation.
+- When a model finished a round with no answer after using tools, the task ended with an empty result; it now gets
+  one nudge to report.
 
 ## [0.26.0] — 2026-10-11
 

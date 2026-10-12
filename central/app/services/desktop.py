@@ -27,7 +27,8 @@ from .platform_tools import Ctx, side_effect, tool
 HTTP = lambda timeout=120: httpx.Client(timeout=timeout)  # noqa: E731  (os testes trocam)
 _UP: tuple[float, bool] = (0.0, False)
 COMMIT = re.compile(r"\b(salvar|confirmar|concluir|finalizar|aprovar|assinar|gravar|emitir|cadastrar|excluir|apagar|"
-                    r"lan[çc]ar|baixar|baixa|registrar|save|confirm|approve|sign|delete|submit|ok)\b", re.I)
+                    r"lan[çc]ar|baixar|baixa|registrar|save|confirm|approve|sign|delete|submit|ok|"
+                    r"sim|yes)\b", re.I)  # "Sim" num diálogo de confirmação é a confirmação
 
 
 def ready() -> bool:
@@ -77,8 +78,9 @@ def call(task, name: str, args: dict) -> dict:
         return {"text": text}
 
 
-def _log(ctx: Ctx, action: str, target: str = "", value: str = "", window: str = ""):
-    tasksmod.event(ctx.db, ctx.task, "desktop", {"action": action, "target": target[:200], "value": value[:200], "window": window[:200]})
+def _log(ctx: Ctx, action: str, target: str = "", value: str = "", window: str = "", **extra):
+    tasksmod.event(ctx.db, ctx.task, "desktop", {"action": action, "target": target[:200], "value": value[:200],
+                                                  "window": window[:200], **extra})
 
 
 def _out(st: dict) -> dict:
@@ -120,7 +122,13 @@ def desktop_look(ctx: Ctx, args: dict):
     return _out(call(ctx.task, "look", {"allowed": ctx.e.desktop_apps or [], "window": str(args.get("window") or "")}))
 
 
+DIALOG = re.compile(r"confirma|salvar|gravar|save|confirm", re.I)  # título de diálogo onde Return confirma
+OPENS = re.compile(r"(\bcomo\b|\bas\b|\.\.\.|…)\s*$", re.I)  # "Salvar como…", "Save As": só abrem um diálogo
+
+
 def _commit_ref(label: str, commit: bool) -> str | None:
+    if OPENS.search(label.strip()) and not commit:
+        return None  # a confirmação é o botão do diálogo que abre, e esse passa pela alçada
     if PAY.search(label):
         return "platform:desktop_pay"
     if SEND.search(label):
@@ -136,26 +144,113 @@ def _commit_ref(label: str, commit: bool) -> str | None:
       "confirmar algo e o texto não deixar claro.",
       {"properties": {"label": {"type": "string", "description": "o texto do botão/campo clicado"},
                       "element": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"},
-                      "double": {"type": "boolean"}, "commit": {"type": "boolean"}},
+                      "double": {"type": "boolean"}, "commit": {"type": "boolean"},
+                      "repeat": {"type": "boolean", "description": "true só para confirmar de novo algo idêntico a uma "
+                                                                    "confirmação já feita nesta tarefa, de propósito"}},
        "required": ["label"]}, "desktop", _avail)
 def desktop_click(ctx: Ctx, args: dict):
     allowed = ctx.e.desktop_apps or []
     label = str(args.get("label") or "")
     where = {k: args[k] for k in ("element", "x", "y") if args.get(k) not in (None, "")}
     ref = _commit_ref(label, bool(args.get("commit")))
+    approved, covered, where_win = None, None, ""
     if ref:
         before = call(ctx.task, "look", {"allowed": allowed})
-        shot = _evidence(ctx, before, f"antes de clicar em '{label}'")
-        why = (f"{ctx.rationale}\nTela: {shot}\nJanela: {before.get('window', '')}").strip()
-        # a alçada libera o clique exato — rótulo, janela e onde —, e a chamada aprovada se repete igual
-        held = side_effect(Ctx(ctx.db, ctx.e, ctx.agent, ctx.task, why), "desktop_click", ref,
-                           {"label": label, "window": before.get("window", ""), **where})
-        if held:
-            return held
+        where_win = before.get("window", "")
+        covered = _covered_dialog(ctx, label, where_win)
+        if covered is None:
+            done, fields = _confirmations(ctx)
+            same = [d for d in done if d["label"].lower() == label.lower() and fields and d["fields"] == fields]
+            if same and not args.get("repeat"):  # parece repetir uma confirmação desta tarefa: confira antes
+                return ("NÃO CONFIRMEI: os campos preenchidos agora (" + _fmt(fields) + f") são os mesmos de '{label}' "
+                        f"que já foi confirmado nesta tarefa (aprovação #{same[-1]['approved']}). Olhe a tela e o "
+                        "registro do que você já fez: se já está feito, siga para o próximo item. Se for mesmo para "
+                        "confirmar de novo, chame desktop_click com repeat=true e diga por quê.")
+            shot = _evidence(ctx, before, f"antes de clicar em '{label}'")
+            why = (f"{ctx.rationale}\nTela: {shot}\nJanela: {where_win}\nOnde: {json.dumps(where)}"
+                   + (f"\nVai confirmar: {_fmt(fields)}" if fields else "")
+                   + ("\nJá confirmado nesta tarefa: " + "; ".join(f"#{d['approved']} {d['label']} ({_fmt(d['fields'])})"
+                                                               for d in done) if done else "")
+                   + ("\nATENÇÃO: o funcionário diz que é uma REPETIÇÃO de propósito." if same else "")).strip()
+            # a alçada libera a AÇÃO (rótulo e janela); o clique acontece onde a pessoa aprovou, na tela que ela viu —
+            # o modelo errar uns pixels ao repetir a chamada não vira outro pedido
+            g = tasksmod._gate(ctx.db, ctx.agent, ctx.task.id, "desktop_click", ref, {"label": label, "window": where_win},
+                               why, "tool")
+            if g.get("status") != "allowed":
+                if g.get("request_id"):
+                    _log(ctx, "pending", label, json.dumps(where), where_win, request=g["request_id"], where=where)
+                    ctx.db.commit()
+                return g
+            approved = g.get("request_id")
+            where = _approved_where(ctx, approved) or where
     st = call(ctx.task, "click", {"allowed": allowed, "double": bool(args.get("double")), **where})
-    _log(ctx, "click", label, json.dumps(where), st.get("window", ""))
+    _log(ctx, "click", label, json.dumps(where), where_win or st.get("window", ""),
+         **({"approved": approved} if approved else {}), **({"covered_by": covered} if covered else {}))
     ctx.db.commit()
     return _out(st)
+
+
+def _fmt(fields: dict) -> str:
+    return ", ".join(f"{k}={v}" for k, v in fields.items()) or "—"
+
+
+def _confirmations(ctx: Ctx) -> tuple[list[dict], dict]:
+    """As confirmações já feitas nesta tarefa, cada uma com os campos digitados antes dela, e os campos digitados
+    desde a última — para mostrar na aprovação e pegar uma confirmação repetida."""
+    from sqlalchemy import select
+
+    from ..models import TaskEvent
+    done, fields = [], {}
+    for ev in ctx.db.scalars(select(TaskEvent).where(TaskEvent.task_id == ctx.task.id, TaskEvent.kind == "desktop")
+                             .order_by(TaskEvent.id)):
+        p = ev.payload or {}
+        if p.get("action") == "type" and p.get("target"):
+            key = re.sub(r"\s*\(.*?\)|:", "", p["target"]).strip().lower()
+            fields[key] = re.sub(r"\s+", "", str(p.get("value") or ""))
+        elif p.get("action") == "click" and p.get("approved"):
+            done.append({"label": p.get("target") or "", "approved": p["approved"], "fields": dict(fields)})
+            fields = {}
+        elif p.get("action") == "click" and p.get("covered_by"):
+            fields = {}
+    return done, fields
+
+
+def _approved_where(ctx: Ctx, request_id: int | None) -> dict | None:
+    """Onde estava o clique que a pessoa aprovou (gravado quando o pedido foi aberto)."""
+    if not request_id:
+        return None
+    from sqlalchemy import select
+
+    from ..models import TaskEvent
+    for ev in ctx.db.scalars(select(TaskEvent).where(TaskEvent.task_id == ctx.task.id, TaskEvent.kind == "desktop")
+                             .order_by(TaskEvent.id.desc())):
+        p = ev.payload or {}
+        if p.get("action") == "pending" and p.get("request") == request_id:
+            return p.get("where") or None
+    return None
+
+
+CONFIRM = re.compile(r"^\s*(sim|yes|ok|confirmar|confirma)\s*[.!]?\s*$", re.I)
+
+
+def _covered_dialog(ctx: Ctx, label: str, window: str) -> int | None:
+    """O "Sim" do diálogo "Confirma?" que aparece logo depois de um clique aprovado faz parte da mesma ação: a
+    aprovação já vale para ele (sem pedir de novo). Só um "Sim/OK" seco, numa janela diferente da do clique aprovado
+    (o diálogo), até 3 minutos depois, e uma vez só."""
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from ..models import TaskEvent, now
+    if not CONFIRM.match(label):
+        return None
+    ev = ctx.db.scalar(select(TaskEvent).where(TaskEvent.task_id == ctx.task.id, TaskEvent.kind == "desktop")
+                       .order_by(TaskEvent.id.desc()))
+    p = (ev.payload or {}) if ev else {}
+    if (ev is None or p.get("action") != "click" or not p.get("approved") or p.get("window") == window
+            or tasksmod._aware(ev.at) < now() - timedelta(minutes=3)):
+        return None
+    return p["approved"]
 
 
 @tool("desktop_type", "Digita texto na janela do app — no campo indicado (element ou x,y: clica nele antes) ou onde "
@@ -184,16 +279,25 @@ def desktop_key(ctx: Ctx, args: dict):
     allowed = ctx.e.desktop_apps or []
     key, mods = str(args.get("key") or ""), [str(m) for m in args.get("modifiers") or []]
     combo = "+".join([*mods, key])
-    if args.get("commit") or combo.lower() in ("ctrl+s", "ctrl+enter"):
+    enter = not mods and key.lower() in ("return", "enter", "kp_enter")
+    covered, win = None, ""
+    if args.get("commit") or combo.lower() in ("ctrl+s", "ctrl+enter") or enter:
         before = call(ctx.task, "look", {"allowed": allowed})
-        shot = _evidence(ctx, before, f"antes de {combo}")
-        why = (f"{ctx.rationale}\nTela: {shot}\nJanela: {before.get('window', '')}").strip()
-        held = side_effect(Ctx(ctx.db, ctx.e, ctx.agent, ctx.task, why), "desktop_key", "platform:desktop_commit",
-                           {"key": combo, "window": before.get("window", "")})
-        if held:
-            return held
+        win = before.get("window", "")
+        # Return só confirma num diálogo de salvar/confirmar ("Save the current workbook as", "Confirmação"); numa
+        # planilha ou num formulário ele só passa de linha
+        commit = bool(args.get("commit")) or not enter or bool(COMMIT.search(win) or PAY.search(win) or SEND.search(win)
+                                                                   or DIALOG.search(win))
+        covered = _covered_dialog(ctx, "ok", win) if commit and enter else None
+        if commit and covered is None:
+            shot = _evidence(ctx, before, f"antes de {combo}")
+            why = (f"{ctx.rationale}\nTela: {shot}\nJanela: {win}").strip()
+            held = side_effect(Ctx(ctx.db, ctx.e, ctx.agent, ctx.task, why), "desktop_key", "platform:desktop_commit",
+                               {"key": combo, "window": win})
+            if held:
+                return held
     st = call(ctx.task, "key", {"allowed": allowed, "key": key, **({"modifiers": mods} if mods else {})})
-    _log(ctx, "key", combo, window=st.get("window", ""))
+    _log(ctx, "key", combo, window=win or st.get("window", ""), **({"covered_by": covered} if covered else {}))
     ctx.db.commit()
     return _out(st)
 

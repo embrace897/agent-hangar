@@ -761,6 +761,7 @@ def _prune_images(msgs, keep: int = KEEP_TOOL_IMAGES):
 
 
 async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, trace, start, tool_choice):
+    nudged = False
     for _ in range(MAX_STEPS):
         _prune_images(msgs)
         payload = {"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}
@@ -777,6 +778,12 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
             usage[k] += (data.get("usage") or {}).get(k, 0)
         msg = data["choices"][0]["message"]
         calls = msg.get("tool_calls") or []
+        if not calls and not (msg.get("content") or "").strip() and trace and not nudged:
+            # terminou sem dizer nada depois de usar ferramentas (alguns modelos param só no raciocínio): um empurrão
+            nudged = True
+            msgs.append({"role": "user", "content": "Você terminou sem responder. Responda agora ao pedido com o "
+                                                    "resultado: o que foi feito, o que encontrou e o que ficou pendente."})
+            continue
         if not calls:
             return msg.get("content") or "", usage, trace, []
         mine = [c for c in calls if c["function"]["name"] in client_names]
