@@ -166,11 +166,16 @@ def _mail(frm, subject, body, mid):
     return {"raw": m.as_bytes(), "seen": False}
 
 
+def _sync(fn, *args):
+    with SessionLocal() as db:
+        fn(db, *args)
+
+
 @pytest.fixture()
 def inbox_env(monkeypatch):
     monkeypatch.setattr(teamwork, "IMAP", FakeIMAP)
     monkeypatch.setattr(config, "SCHEDULE_ALLOW_PRIVATE_WEBHOOKS", True)
-    monkeypatch.setattr(notify, "_bg", lambda fn, *a: fn(SessionLocal(), *a))
+    monkeypatch.setattr(notify, "_bg", _sync)  # fecha a sessão: sem isso cada envio prendia uma conexão do pool
     sent = []
 
     class SMTP:
