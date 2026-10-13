@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-10-13
+
 ### Added
 - **Issues (kanban board)**, in the portal (*Issues*, *Minhas issues*) and the console, like Multica's board but with the Digital employees' governance:
   - Issues `HGR-123` with markdown description, custom statuses in four categories, priority, labels, project, team, dates, estimate, sub-issues in stages, relations (blocks, related, duplicate) and subscriptions.

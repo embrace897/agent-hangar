@@ -1,6 +1,6 @@
 [project]
 name = "agent-hangar"
-version = "0.29.0"
+version = "0.30.0"
 description = "Self-hosted control plane to build, test, ship and govern AI agents from any MCP client."
 license = "Apache-2.0"
 requires-python = ">=3.11"
