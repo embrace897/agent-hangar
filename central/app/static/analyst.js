@@ -254,7 +254,7 @@ async function workItemPage(id) {
   const can = ['open', 'in_progress', 'review', 'waiting'].includes(i.status);
   main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
     <h1 data-noi18n>#${i.id} ${esc(i.title)}</h1>
-    <div class="sub">${wiPill(i.status)} ${i.queue ? `<a href="#/queues/${esc(i.queue)}" data-noi18n>${esc(i.queue_name)}</a>` : ''} ${i.category ? `· <span data-noi18n>${esc(i.category)}</span>` : ''}
+    <div class="sub">${wiPill(i.status)} ${i.queue ? (USER_MODE ? `<span data-noi18n>${esc(i.queue_name)}</span>` : `<a href="#/queues/${esc(i.queue)}" data-noi18n>${esc(i.queue_name)}</a>`) : ''} ${i.category ? `· <span data-noi18n>${esc(i.category)}</span>` : ''}
       ${i.handled_by ? `· <span class="chip">${esc(window.t(HANDLED[i.handled_by] || i.handled_by))}</span>` : ''}
       ${i.employee_task ? ` · <a href="#/tasks/${i.employee_task}">${window.t('tarefa do Digital employee')} #${i.employee_task}</a>` : ''}
       ${i.playbook_run ? ` · <a href="#/runs/${i.playbook_run}">${window.t('execução do playbook')}</a>` : ''}

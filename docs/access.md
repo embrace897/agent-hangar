@@ -91,6 +91,27 @@ The **Início** page is one screen with, in this order:
 7. **Agent memory:** which of your agents remember, with a link to see or delete what was kept.
 8. **What's new** in the company catalog.
 
+**The console's menu** has 13 subjects. Each one opens the last tab you used, and the tabs point to the usual
+addresses, so links and favorites keep working:
+
+| Menu | Tabs |
+|---|---|
+| Painel | Resumo · Ao vivo |
+| Caixa de entrada | Tudo · Decisões · Aprovações |
+| Issues | Quadro · Configurar o quadro |
+| Agentes | Todos · Deployments · Testes · Templates (an agent's own tests and deployments are tabs on its page) |
+| Digital employees | Visão geral (with its own tabs: action catalog, floor, decision channels, calendar, deliverables) · Organograma |
+| Trabalho | Filas · Playbooks · Reuniões · Memorandos de decisão · Vigias · Sistemas de chamados · Comigo |
+| Projetos | Projetos · Metas · Entregáveis |
+| Capacidades | Skills e MCPs · Skill Studio · Plugins · Extração de documentos · Calculadoras · Modelos de mensagem · Procedimentos do navegador |
+| Conhecimento | Base de conhecimento · O que a empresa aprendeu · Trilhas |
+| Valor e custo | Valor e oportunidades · Uso e custo · Orçamentos |
+| Auditoria | Auditoria · Governança de dados |
+| Pessoas e times | Membros · Times · Pacotes de time · SSO e SCIM |
+| Configurações | Provedores de LLM · Segredos · Chaves de API · Avisos · Empresas · Integrações |
+
+*Portal do usuário* is a link at the bottom of the menu.
+
 **The portal's menu** has only the person's own items: *Início, Minhas issues, Issues, Meus agentes, Organograma,
 Decisões, Caixa de entrada, Conectar minha IA, Meus acessos* — the same for admins. Building agents, the catalog, plugins,
 queues, budgets, teams, audit and **Membros** are in the console (`/ui`). See [workspace.md](workspace.md).

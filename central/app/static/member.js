@@ -393,3 +393,60 @@ async function pushCard(el) {
   const ib = $('#pwa-install', el);
   if (ib) ib.onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => null); installEvt = null; pushCard(el); };
 }
+
+/* ---------- menus por assunto (hubs): cada item do menu junta páginas que já existem, com abas em cima ----------
+   As abas apontam para os endereços de sempre (#/queues, #/tests…): links e favoritos seguem valendo. O item do menu
+   abre a última aba usada. need: builder | auditor | admin | instance (quem vê a aba). */
+const HUBS_CONSOLE = [
+  { id: 'painel', tabs: [['', 'Resumo'], ['live', 'Ao vivo']] },
+  { id: 'inbox', tabs: [['inbox', 'Tudo'], ['decisions', 'Decisões', null, 'decisions'], ['approvals', 'Aprovações', null, 'pending']] },
+  { id: 'issues', tabs: [['issues', 'Quadro'], ['issues/settings', 'Configurar o quadro', 'admin']] },
+  { id: 'agentes', tabs: [['agents', 'Todos'], ['deployments', 'Deployments'], ['tests', 'Testes'], ['templates', 'Templates', 'builder']] },
+  { id: 'employees', sub: ['workforce'], tabs: [['workforce', 'Visão geral'], ['org', 'Organograma']] },
+  { id: 'trabalho', tabs: [['queues', 'Filas'], ['playbooks', 'Playbooks'], ['meetings', 'Reuniões'], ['memos', 'Memorandos de decisão'],
+    ['watchers', 'Vigias'], ['tickets', 'Sistemas de chamados'], ['work', 'Comigo']] },
+  { id: 'projetos', tabs: [['projects', 'Projetos'], ['goals', 'Metas'], ['files', 'Entregáveis']] },
+  { id: 'capacidades', tabs: [['catalog', 'Skills e MCPs'], ['skills', 'Skill Studio'], ['plugins', 'Plugins'], ['extraction', 'Extração de documentos'],
+    ['calculators', 'Calculadoras'], ['message-templates', 'Modelos de mensagem'], ['procedures', 'Procedimentos do navegador']] },
+  { id: 'conhecimento', tabs: [['knowledge', 'Base de conhecimento'], ['learned', 'O que a empresa aprendeu'], ['learning', 'Trilhas']] },
+  { id: 'valor', tabs: [['value', 'Valor e oportunidades'], ['usage', 'Uso e custo'], ['budgets', 'Orçamentos']] },
+  { id: 'auditoria', tabs: [['audit', 'Auditoria', 'auditor'], ['governance', 'Governança de dados', 'auditor']] },
+  { id: 'pessoas', tabs: [['members', 'Membros', 'admin'], ['teams', 'Times'], ['packages', 'Pacotes de time'], ['sso', 'SSO e SCIM', 'admin']] },
+  { id: 'config', tabs: [['providers', 'Provedores de LLM', 'admin'], ['secrets', 'Segredos'], ['keys', 'Chaves de API'], ['announcements', 'Avisos', 'admin'],
+    ['orgs', 'Empresas', 'instance'], ['connect', 'Integrações']] },
+];
+const HUBS_PORTAL = [{ id: 'mine', nav: 'my-issues', tabs: [['my-issues', 'Minhas issues'], ['work', 'Meu trabalho']] }];
+const HUBS = () => (USER_MODE ? HUBS_PORTAL : HUBS_CONSOLE);
+const hubOk = need => !need || (need === 'admin' && ME.is_admin) || (need === 'auditor' && ME.is_auditor)
+  || (need === 'builder' && (ME.can_create_agents || ME.is_admin)) || (need === 'instance' && ME.instance_admin);
+const hubTabs = h => h.tabs.filter(t => hubOk(t[2]));
+const hubKey = (r, a) => (r === 'issues' && a === 'settings' ? 'issues/settings' : r);
+function hubOf(r, a) { const k = hubKey(r, a); return HUBS().find(h => h.tabs.some(t => t[0] === k)); }
+
+function hubGo(id) {  // #/hub/<id>: a última aba usada (ou a primeira)
+  const h = HUBS().find(x => x.id === id);
+  if (!h) { location.replace('#/'); return; }
+  const tabs = hubTabs(h).map(t => t[0]);
+  let last = null;
+  try { last = localStorage.getItem('hub_' + id); } catch (e) { /* ok */ }
+  location.replace('#/' + (tabs.includes(last) ? last : tabs[0] || ''));
+}
+
+function hubNav(r, a) {  // o item do menu do assunto fica aceso em qualquer página dele
+  const h = hubOf(r, a);
+  if (!h) return;
+  const link = document.querySelector(`nav a[data-r="${h.nav || 'hub-' + h.id}"]`);
+  if (link) link.classList.add('on');
+}
+
+function hubBar(r, a) {  // as abas do assunto em cima da página (só nas páginas de lista, não nos detalhes)
+  const h = hubOf(r, a);
+  const k = hubKey(r, a);
+  if (!h || (a && k !== 'issues/settings' && !(h.sub || []).includes(r))) return;
+  const tabs = hubTabs(h);
+  if (tabs.length < 2) return;
+  try { localStorage.setItem('hub_' + h.id, k); } catch (e) { /* ok */ }
+  const count = c => (c && ME[c] ? ` <span class="badge">${ME[c]}</span>` : '');
+  main.insertAdjacentHTML('afterbegin', `<div class="hub-bar" role="navigation" aria-label="${esc(window.t('Seções'))}">${tabs.map(t =>
+    `<a href="#/${t[0]}" class="${t[0] === k ? 'on' : ''}">${esc(window.t(t[1]))}${count(t[3])}</a>`).join('')}</div>`);
+}

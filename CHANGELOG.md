@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Console menu by subject:** 13 items instead of 46.
+  - Each item groups the pages of one subject in tabs on top (Painel, Caixa de entrada, Issues, Agentes, Digital employees, Trabalho, Projetos, Capacidades, Conhecimento, Valor e custo, Auditoria, Pessoas e times, Configurações) and opens the last tab used.
+  - Old addresses keep working.
+  - *Portal do usuário* moved to the bottom of the menu.
+- **Portal:** *Minhas issues* gets a *Meu trabalho* tab, with the queue items, playbook steps and work a Digital employee left for you.
+
+### Fixed
+- `./scripts/install.sh` failed on Linux and macOS with "Permission denied": the scripts were committed without the executable bit. A test now guards it. Found by the fresh-install check.
+
 ## [0.30.0] — 2026-10-13
 
 ### Added

@@ -17,67 +17,29 @@
   <div class="gsearch"><input id="gsearch" type="search" placeholder="Buscar… (Ctrl+K)" aria-label="Buscar"></div>
   <nav aria-label="Principal">
     <div class="nav-group">
-      <div class="nav-title">Operação</div>
-      <a href="#/" data-r="" data-i="gauge">Painel</a>
-      <a href="#/inbox" data-r="inbox" data-i="inbox">Caixa de entrada <span id="inbox-badge" class="badge" hidden></span></a>
-      <a href="#/issues" data-r="issues" data-i="template">Issues</a>
-      <a href="#/agents" data-r="agents" data-i="bot">Agentes</a>
-      <a href="#/approvals" data-r="approvals" data-i="approve">Aprovações <span id="appr-badge" class="badge" hidden></span></a>
-      <a href="#/workforce" data-r="workforce" data-i="briefcase">Digital employees</a>
-      <a href="#/decisions" data-r="decisions" data-i="approve">Decisões <span id="dec-badge" class="badge" hidden></span></a>
-      <a href="#/live" data-r="live" data-i="gauge">Ao vivo</a>
-      <a href="#/work" data-r="work" data-i="inbox">Meu trabalho</a>
-      <a href="#/queues" data-r="queues" data-i="team">Filas</a>
-      <a href="#/playbooks" data-r="playbooks" data-i="template">Playbooks</a>
-      <a href="#/meetings" data-r="meetings" data-i="chat">Reuniões</a>
-      <a href="#/memos" data-r="memos" data-i="approve">Memorandos de decisão</a>
-      <a href="#/watchers" data-r="watchers" data-i="gauge">Vigias</a>
-      <a href="#/learning" data-r="learning" data-i="book">Trilhas</a>
-      <a href="#/learned" data-r="learned" data-i="book">O que a empresa aprendeu</a>
-      <a href="#/value" data-r="value" data-i="chart">Valor e oportunidades</a>
-      <a href="#/projects" data-r="projects" data-i="folder">Projetos</a>
-      <a href="#/goals" data-r="goals" data-i="target">Metas</a>
-      <a href="#/files" data-r="files" data-i="file">Entregáveis</a>
+      <div class="nav-title">Dia a dia</div>
+      <a href="#/hub/painel" data-r="hub-painel" data-i="gauge">Painel</a>
+      <a href="#/hub/inbox" data-r="hub-inbox" data-i="inbox">Caixa de entrada <span id="inbox-badge" class="badge" hidden></span></a>
+      <a href="#/hub/issues" data-r="hub-issues" data-i="template">Issues</a>
     </div>
     <div class="nav-group">
-      <div class="nav-title">Construção</div>
-      <a href="#/templates" data-r="templates" data-need="builder" data-i="template">Templates</a>
-      <a href="#/catalog" data-r="catalog" data-i="book">Catálogo</a>
-      <a href="#/plugins" data-r="plugins" data-i="puzzle">Plugins</a>
-      <a href="#/skills" data-r="skills" data-i="book">Skill Studio</a>
-      <a href="#/packages" data-r="packages" data-i="template">Pacotes de time</a>
-      <a href="#/extraction" data-r="extraction" data-i="file">Extração de documentos</a>
-      <a href="#/calculators" data-r="calculators" data-i="chip">Calculadoras</a>
-      <a href="#/message-templates" data-r="message-templates" data-i="chat">Modelos de mensagem</a>
-      <a href="#/knowledge" data-r="knowledge" data-i="book">Base de conhecimento</a>
-      <a href="#/procedures" data-r="procedures" data-i="globe">Procedimentos do navegador</a>
-      <a href="#/tickets" data-r="tickets" data-i="plug">Sistemas de chamados</a>
-      <a href="#/providers" data-r="providers" data-need="admin" data-i="chip">Provedores de LLM</a>
-      <a href="#/connect" data-r="connect" data-i="plug">Conectar ferramentas</a>
+      <div class="nav-title">Força de trabalho</div>
+      <a href="#/hub/agentes" data-r="hub-agentes" data-i="bot">Agentes</a>
+      <a href="#/hub/employees" data-r="hub-employees" data-i="briefcase">Digital employees</a>
+      <a href="#/hub/trabalho" data-r="hub-trabalho" data-i="team">Trabalho</a>
+      <a href="#/hub/projetos" data-r="hub-projetos" data-i="folder">Projetos</a>
+      <a href="#/hub/capacidades" data-r="hub-capacidades" data-i="puzzle">Capacidades</a>
+      <a href="#/hub/conhecimento" data-r="hub-conhecimento" data-i="book">Conhecimento</a>
     </div>
     <div class="nav-group">
-      <div class="nav-title">Monitoramento</div>
-      <a href="#/deployments" data-r="deployments" data-i="server">Deployments</a>
-      <a href="#/tests" data-r="tests" data-i="flask">Testes</a>
-      <a href="#/usage" data-r="usage" data-i="chart">Uso e custo</a>
-      <a href="#/budgets" data-r="budgets" data-i="wallet">Orçamentos</a>
-      <a href="#/audit" data-r="audit" data-need="auditor" data-i="scroll">Auditoria</a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-title">Acesso</div>
-      <a href="#/teams" data-r="teams" data-i="team">Times</a>
-      <a href="#/org" data-r="org" data-i="briefcase">Organograma</a>
-      <a href="#/secrets" data-r="secrets" data-i="lock">Segredos</a>
-      <a href="#/orgs" data-r="orgs" data-need="instance" data-i="globe">Empresas</a>
-      <a href="#/announcements" data-r="announcements" data-need="admin" data-i="chat">Avisos</a>
-      <a href="#/governance" data-r="governance" data-need="auditor" data-i="shield">Governança de dados</a>
-      <a href="#/members" data-r="members" data-need="admin" data-i="userCog">Membros</a>
-      <a href="#/keys" data-r="keys" data-i="key">Chaves de API</a>
-      <a href="#/sso" data-r="sso" data-need="admin" data-i="shield">SSO e SCIM</a>
-      <a href="/app/" data-i="user">Portal do usuário</a>
+      <div class="nav-title">Gestão</div>
+      <a href="#/hub/valor" data-r="hub-valor" data-i="chart">Valor e custo</a>
+      <a href="#/hub/auditoria" data-r="hub-auditoria" data-need="auditor" data-i="scroll">Auditoria</a>
+      <a href="#/hub/pessoas" data-r="hub-pessoas" data-i="userCog">Pessoas e times</a>
+      <a href="#/hub/config" data-r="hub-config" data-i="lock">Configurações</a>
     </div>
   </nav>
-  <div class="side-foot"><div id="whoami"></div><div class="row between"><span id="ver" class="small"></span><button id="logout" class="ghost on-dark" title="Sair"><span data-i="logout"></span>Sair</button></div></div>
+  <div class="side-foot"><div id="whoami"></div><a href="/app/" class="small side-portal" data-i="user">Portal do usuário</a><div class="row between"><span id="ver" class="small"></span><button id="logout" class="ghost on-dark" title="Sair"><span data-i="logout"></span>Sair</button></div></div>
 </aside>
 <main id="main" tabindex="-1"></main>
 <div id="login" hidden></div>

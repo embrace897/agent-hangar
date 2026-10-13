@@ -983,15 +983,17 @@ async function auditPage() {
 /* O portal (/app) é da pessoa: Início, issues, os agentes dela, organograma, decisões, caixa de entrada, conectar a IA,
    acessos — e as páginas que esses abrem (agente, tarefa, chaves, busca, consentimentos). O resto é do console (/ui). */
 const PORTAL_ROUTES = ['', 'my-issues', 'issues', 'mine', 'org', 'decisions', 'inbox', 'connect-ai', 'access', 'employees',
-  'tasks', 'keys', 'search', 'agents', 'projects', 'oauth', 'vscode', 'login'];
-const PORTAL_DETAIL_ONLY = ['agents', 'projects', 'employees', 'tasks'];  // no portal, só a página de um (aberta por um link)
+  'tasks', 'keys', 'search', 'agents', 'projects', 'oauth', 'vscode', 'login', 'work', 'runs'];
+const PORTAL_DETAIL_ONLY = ['agents', 'projects', 'employees', 'tasks', 'runs'];  // no portal, só a página de um (aberta por um link)
 async function route() {
   const [, r = '', a, b] = location.hash.split('?')[0].split('/');  // #/catalog?remote_ok=x -> catalog
   if (r === 'login' || !ME) return;
+  if (r === 'hub') { hubGo(a); return; }  // item do menu: abre a última aba usada do assunto
   if (USER_MODE && (!PORTAL_ROUTES.includes(r) || (PORTAL_DETAIL_ONLY.includes(r) && !a))) { location.replace('#/'); return; }  // o portal mostra só o que é da pessoa
   const navKey = r === 'agents' && ['catalog', 'new'].includes(a) ? `agents/${a}` : r;
   const links = [...document.querySelectorAll('nav a')], key = links.some(x => x.dataset.r === navKey) ? navKey : r;
   links.forEach(x => x.classList.toggle('on', x.dataset.r === key));
+  hubNav(r, a);
   try {
     if (r === 'agents' && a === 'new') await newAgentPage();
     else if (r === 'agents' && a === 'catalog') await agentsPage('catalog');
@@ -1058,6 +1060,7 @@ async function route() {
     else if (r === 'teams' && a) await teamDetail(a);
     else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
+    hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
     uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos
   } catch (e) { if (!(e instanceof AuthError)) main.innerHTML = `<div class="card"><h2>Erro</h2>${esc(e.message)}</div>`; }
 }

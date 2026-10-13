@@ -436,3 +436,10 @@ kbd{font:500 12px var(--f-mono);border:1px solid var(--line);border-bottom-width
 @media(max-width:860px){.iss-page{grid-template-columns:minmax(0,1fr)}.iss-side{position:static}.iss-props{grid-template-columns:repeat(2,minmax(0,1fr))}.iss-col{flex-basis:240px}}
 .oc-person{border-color:var(--mark);background:linear-gradient(180deg,var(--mark-soft),var(--panel) 70%);cursor:default}
 .oc-person-av{width:38px;height:38px;border-radius:50%;background:var(--tarmac);color:#fff;display:inline-flex;align-items:center;justify-content:center;font:600 16px var(--f-ui);object-fit:cover;flex-shrink:0}
+/* ---------- menus por assunto: as abas em cima da página ---------- */
+.hub-bar{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:-4px 0 18px}
+.hub-bar a{padding:8px 13px;color:var(--mute);text-decoration:none;border-bottom:3px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px;display:inline-flex;align-items:center;gap:6px}
+.hub-bar a:hover{color:var(--ink)}.hub-bar a.on{color:var(--ink);border-color:var(--mark)}
+.hub-bar .badge{margin-left:2px}
+.side-portal{display:flex;align-items:center;gap:8px;color:var(--tarmac-ink);text-decoration:none;padding:6px 2px;margin-top:6px}
+.side-portal:hover{color:#fff}.side-portal .ic{color:var(--tarmac-mute)}
