@@ -368,7 +368,7 @@ async function issueDetail(key) {
         ${d.runs.map(r => `<div class="small"><a href="#/tasks/${r.task_id}">#${r.task_id}</a> <span data-noi18n>${esc(r.employee_name)}</span> ${pill(r.status)} <span class="mute">${usd(r.cost_usd)}</span></div>`).join('') || '<div class="mute small">—</div>'}</div>
       <div class="iss-side-sec"><button class="ghost small" id="ip-sub">${d.subscribed ? 'Cancelar inscrição' : 'Inscrever-se'}</button>
         <div class="mute small">${d.subscribers.length} <span>inscrito(s): veem a atividade na caixa de entrada.</span></div></div>
-      <div class="mute small">Criada ${when(d.created_at)}${d.creator ? ` <span>por</span> <span data-noi18n>${esc(d.creator.replace(/^employee:/, ''))}</span>` : ''}</div>
+      <div class="mute small"><span>Criada</span> ${when(d.created_at)}${d.creator ? ` <span>por</span> <span data-noi18n>${esc(d.creator.replace(/^employee:/, ''))}</span>` : ''}</div>
       ${d.can_delete ? '<button class="ghost danger small" id="ip-del">Apagar issue</button>' : ''}
     </aside></div>`;
   issTimelineRender(d);

@@ -239,7 +239,7 @@ async function myAccessPage() {
   $('#ma-code').onclick = e => act(e.target, async () => {
     const r = await api('/me/activation-code', { method: 'POST' });
     const link = `${location.origin}/app/#/login?code=${encodeURIComponent(r.code)}`;
-    $('#ma-code-out').innerHTML = `<span class="code-big" data-noi18n>${esc(r.code)}</span> <span class="mute small">válido até ${new Date(r.expires_at).toLocaleString(window.LOCALE)}</span>
+    $('#ma-code-out').innerHTML = `<span class="code-big" data-noi18n>${esc(r.code)}</span> <span class="mute small"><span>válido até</span> ${new Date(r.expires_at).toLocaleString(window.LOCALE)}</span>
       <div class="small mt">Ou abra o link no outro navegador: ${copyable(link)}</div>`;
   });
 }
