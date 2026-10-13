@@ -922,6 +922,8 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
     playbooks.task_finished(db, task)  # a próxima etapa do processo começa
     from . import regression
     regression.task_finished(db, task)  # tarefa de ouro: a nota entra na rodada de regressão
+    from . import issues
+    issues.task_finished(db, task)  # rodada de uma issue: o resultado vira comentário e a issue vai para revisão
     if task.probation:
         from .employees import probation_progress
         probation_progress(db, db.get(Employee, task.employee_id))

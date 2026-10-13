@@ -159,3 +159,55 @@ def test_org_chart_cards_and_reports_to_proposal(client, env):
     assert d["kind"] == "org_change"
     assert client.post(f"/api/decisions/{req}", headers=env["h"]["mgr"], json={"decision": "approve"}).status_code == 200
     assert client.get(f"/api/employees/{sub}", headers=env["h"]["own"]).json()["reports_to"] == chief
+
+
+def test_admin_invites_a_member_by_email(client, env, monkeypatch):
+    import re
+
+    from app import config
+    from app.services import notify
+
+    from .test_employees_notify import FakeSMTP
+    monkeypatch.setattr(notify, "SMTP", FakeSMTP)
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.com")
+    FakeSMTP.sent = []
+    email = f"conv-{uuid.uuid4().hex[:6]}@acme.com"
+    # só o admin convida (membro, mesmo mantenedor, não)
+    assert client.post("/api/workspace/invites", headers=env["h"]["mgr"], json={"email": email}).status_code == 403
+    assert client.post("/api/workspace/invites", headers=ADMIN, json={"email": "sem-arroba"}).status_code == 400
+    r = client.post("/api/workspace/invites", headers=ADMIN, json={"email": email, "name": "Convidada", "team": env["team"],
+                                                                    "role": "developer"})
+    assert r.status_code == 200 and r.json()["sent"] is True, r.text
+    msg = FakeSMTP.sent[-1]
+    assert msg["To"] == email and "Convite" in msg["Subject"]
+    body = msg.get_body(("plain",)).get_content()
+    link = re.search(r"https?://\S+/app/#/login\?code=([A-Z0-9-]+)", body)
+    assert link, body
+    pending = client.get("/api/workspace/invites", headers=ADMIN).json()
+    inv = next(i for i in pending if i["email"] == email)
+    assert inv["expired"] is False and inv["name"] == "Convidada"
+    team = next(t for t in client.get("/api/users", headers=ADMIN).json() if t["email"] == email)["teams"]
+    assert team and team[0]["role"] == "developer"
+    # reenviar: só o link novo vale
+    uid = inv["user_id"]
+    r2 = client.post(f"/api/workspace/invites/{uid}/resend", headers=ADMIN).json()
+    new_code = re.search(r"code=([A-Z0-9-]+)", r2["link"]).group(1)
+    assert _browser(CHROME_WIN).post("/api/auth/activate", json={"code": link.group(1)}).status_code == 401
+    b = _browser(CHROME_WIN)
+    assert b.post("/api/auth/activate", json={"code": new_code}).status_code == 200
+    assert b.get("/api/me").json()["user"]["email"] == email
+    # entrou: sai da lista de convites e não se convida de novo
+    assert all(i["email"] != email for i in client.get("/api/workspace/invites", headers=ADMIN).json())
+    assert client.post("/api/workspace/invites", headers=ADMIN, json={"email": email}).status_code == 400
+    # sem SMTP: o convite fica criado e o admin recebe o link para mandar
+    monkeypatch.setattr(config, "SMTP_HOST", "")
+    other = f"conv-{uuid.uuid4().hex[:6]}@acme.com"
+    r3 = client.post("/api/workspace/invites", headers=ADMIN, json={"email": other}).json()
+    assert r3["sent"] is False and r3["email_ready"] is False and "/app/#/login?code=" in r3["link"]
+    # sem código de ativação na política, o convite leva ao login (SSO)
+    client.put("/api/workspace/policy", headers=ADMIN, json={"login": {"activation": False}})
+    try:
+        r4 = client.post(f"/api/workspace/invites/{r3['user_id']}/resend", headers=ADMIN).json()
+        assert r4["link"].endswith("/app/") and r4["expires_at"] is None
+    finally:
+        client.put("/api/workspace/policy", headers=ADMIN, json={"login": {"activation": True}})

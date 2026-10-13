@@ -7,8 +7,9 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 
 | Feature | Where | Docs |
 |---|---|---|
+| Issues (kanban): board, list, table, swimlanes and timeline; assign to a Digital employee and it works on the issue (with authority and budget); comments with @mentions, sub-issues in stages, relations, labels, custom statuses | Portal → Issues, Minhas issues · Console → Issues | [issues.md](issues.md) |
 | Member workspace: simple menu, home (decisions, agents working now, my tasks, month cost), personal agents, visual org chart with drag-and-drop, *Connect my AI*, my sign-ins, installable app with notifications | Portal → Início, Meus agentes, Organograma, Conectar minha IA, Meus acessos | [workspace.md](workspace.md) |
-| Member access policy (sign-in methods, personal-agent rules), activation codes, everyone's open sign-ins | Console / Portal → Acesso dos membros | [workspace.md](workspace.md#admin-member-access) |
+| Members: invite by e-mail (link to the portal), people and roles, open sign-ins, sign-in methods and personal-agent rules | Console → Membros | [workspace.md](workspace.md#admin-members) |
 | Full dashboard: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
 | Inbox: decisions, tasks I asked for, stuck work I manage, budget stops (read / archived) | Portal → Inbox | [work.md](work.md#inbox-and-search) |
 | Search everything I can see (`Ctrl+K`) | Top of every page | [work.md](work.md#inbox-and-search) |
@@ -98,7 +99,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Feature | Where | Docs |
 |---|---|---|
 | Companies: create, SSO domains, suspend; act inside one (selector / `X-Hangar-Org`) | Console → Companies | [work.md](work.md#companies-multi-company) |
-| Users, teams, roles, SSO (OIDC/SAML) and SCIM | Console → Users, Teams, SSO and SCIM | [access.md](access.md) |
+| Members, teams, roles, SSO (OIDC/SAML) and SCIM | Console → Membros, Times, SSO e SCIM | [access.md](access.md) |
 | LLM providers and connections | Console → LLM providers | [install.md](install.md) |
 | Digital workforce: overview, action catalog, authority floor, decision channels (Slack, Teams, Telegram, Discord, e-mail) | Console → Digital employees | [digital-employee.md](digital-employee.md) |
 | Secrets vault (`secret://`), rotation, proposals approved by someone else | Console → Secrets | [work.md](work.md#secrets-vault) |

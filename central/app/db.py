@@ -16,6 +16,12 @@ log = logging.getLogger("hangar.db")
 
 _connect_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(config.DATABASE_URL, pool_pre_ping=True, connect_args=_connect_args)
+if config.DATABASE_URL.startswith("sqlite"):  # como no Postgres: apagar o pai leva os filhos (ON DELETE CASCADE)
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_fk(conn, _record):
+        conn.execute("PRAGMA foreign_keys=ON")
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 from . import tenancy  # noqa: E402,F401  (registra o filtro por empresa nas sessões)
 

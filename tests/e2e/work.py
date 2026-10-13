@@ -1,4 +1,4 @@
-"""E2E do trabalho do dia a dia (fases A a M), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
+"""E2E do trabalho do dia a dia (fases A a N), contra um Agent Hangar rodando de verdade (modo mock, sem LLM).
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> ECHO_URL=http://e2e-echo:8080 python tests/e2e/work.py [--keep FILE]
 
@@ -498,6 +498,28 @@ def phase_m(dev, dev_pat, mgr, team, dev_email):
     check("MCP: a IA do membro vê o workspace dele", any(a["slug"] == slug for a in ws["agents"]), ws.get("agents"))
 
 
+def phase_n(dev, mgr, team, slug):
+    """Issues (quadro kanban): atribuir a um Digital employee começa a rodada; o resultado vira comentário e a issue
+    vai para revisão; @menção num comentário aciona o funcionário sem trocar o responsável; quem revisa conclui."""
+    i = ok(dev.post("/api/issues", json={"title": f"Board {RUN}", "description": "summarise the renewals", "team": team,
+                                         "priority": "high", "assignee": f"employee:{slug}"}))
+    check("issues: atribuir ao Digital employee começa a rodada", i["run_started"] and i["status"] == "in_progress", i)
+    done = wf.wait(lambda: (lambda d: d if d["status"] == "in_review" else None)(ok(dev.get(f"/api/issues/{i['key']}"))), 300)
+    check("issues: o resultado vira comentário e a issue vai para revisão", done is not None and any(
+        x["type"] == "comment" and x["author"]["kind"] == "employee" for x in done["timeline"]), done and done["status"])
+    b = ok(dev.post("/api/issues", json={"title": f"Backlog {RUN}", "team": team}))
+    c = ok(mgr.post(f"/api/issues/{b['key']}/comments", json={"body": f"@[Agent](employee:{slug}) take a look"}))
+    check("issues: @menção aciona o Digital employee sem trocar o responsável", c["runs_started"] == [slug]
+          and ok(dev.get(f"/api/issues/{b['key']}"))["assignee"] is None, c)
+    d = ok(mgr.patch(f"/api/issues/{i['key']}", json={"status": "done"}))
+    check("issues: quem revisa conclui", d["status"] == "done" and d["completed_at"], d["status"])
+    board = ok(dev.get("/api/issues", params={"team": team}))
+    check("issues: o quadro do time", {i["key"], b["key"]} <= {x["key"] for x in board}, len(board))
+    wf.wait(lambda: not ok(dev.get(f"/api/issues/{b['key']}"))["run"]["active"], 300)
+    for k in (i["key"], b["key"]):
+        dev.delete(f"/api/issues/{k}")
+
+
 def main():
     keep = sys.argv[sys.argv.index("--keep") + 1] if "--keep" in sys.argv else ""
     check("health", ok(admin.get("/api/health"))["status"] == "ok")
@@ -518,6 +540,7 @@ def main():
     phase_k(dev, mgr, team, slug)
     phase_l(dev, mgr, team, slug)
     phase_m(dev, dev_pat, mgr, team, dev_email)
+    phase_n(dev, mgr, team, slug)
     print(f"\n{wf.passed} checks ok", flush=True)
     if keep:
         with open(keep, "w", encoding="utf-8") as f:

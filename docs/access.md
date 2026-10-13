@@ -95,7 +95,8 @@ The **Início** page is one screen with, in this order:
 - *Meus agentes*, *Catálogo da empresa*, *Pedidos e aprovações*, *Conectar ferramentas*, *Minhas chaves*,
   *Uso e custo* and *Meus times*.
 - Developers and maintainers also get *Novo agente*, *Templates* and *Skills e MCPs*.
-- Auditors also get *Auditoria* and *Usuários*.
+- Auditors also get *Auditoria*.
+- People are managed only in the console, in **Membros** (admins): see [workspace.md](workspace.md#admin-members).
 
 **How `/ui/` is kept admin-only:**
 - A signed-in non-admin who opens `/ui/` is redirected to `/app/`, by the server and again by the page.
@@ -119,7 +120,7 @@ The UI opens on a login page. The buttons are the configured providers, plus **S
 
 A token becomes a session cookie; it is not stored in the browser.
 
-**Local accounts (username and password).** An admin can create them in **Usuários → Cadastrar usuário** by
+**Local accounts (username and password).** An admin can create them in **Membros → Pessoas → Cadastrar sem convite** by
 setting a username and a password, or with `POST /api/users {username, password, org_role}`. They sign in with
 the username/password form on the login page.
 - Passwords are stored only as scrypt hashes, with a minimum of 8 characters.
@@ -135,7 +136,7 @@ Put the hangar behind HTTPS before real use; cookies get `Secure` automatically 
 https.
 
 **First admin.** List your e-mail in `BOOTSTRAP_ADMIN_EMAILS`. You can also sign in with the `ADMIN_TOKEN`, open
-**Usuários** and promote someone.
+**Membros** and promote someone.
 
 ### Google
 1. Google Cloud Console → APIs & Services → Credentials → **OAuth client ID** → Web application. Add the redirect
@@ -207,5 +208,5 @@ Supported:
 | Request access | catalog → Solicitar acesso | `hangar request-access <slug>` | `POST /api/agents/{slug}/access-requests` | `request_agent_access` |
 | Approvals | Aprovações | `hangar approvals ls/approve/reject` | `GET /api/approvals`, `POST /api/promotions/{id}/approve` | `list_approvals`, `decide_approval` |
 | Visibility / owner team | agent → Acesso | — | `PATCH /api/agents/{slug}/access` | — |
-| Users | Usuários | — | `/api/users` | — |
+| Members (people, invites, sign-ins) | Membros (console) | — | `/api/users`, `/api/workspace/invites` | — |
 | SSO and SCIM | SSO e SCIM | — | `/api/sso…`, `/scim/v2` | — |

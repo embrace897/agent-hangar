@@ -58,7 +58,8 @@ def routine_dict(r: EmployeeRoutine) -> dict:
     return {"id": r.id, "title": r.title, "body": r.body, "cron": r.cron, "timezone": r.timezone, "when": when,
             "priority": r.priority, "enabled": r.enabled, "next_run_at": iso(nxt),
             "next_run_local": nxt.astimezone(zone(r.timezone)).strftime("%d/%m/%Y %H:%M") if nxt else None,
-            "last_run_at": iso(tasksmod._aware(r.last_run_at)), "last_task_id": r.last_task_id, "skipped": r.skipped}
+            "last_run_at": iso(tasksmod._aware(r.last_run_at)), "last_task_id": r.last_task_id, "skipped": r.skipped,
+            "creates_issue": bool(r.creates_issue)}
 
 
 def routines_of(db: Session, e: Employee) -> list[dict]:
@@ -67,7 +68,8 @@ def routines_of(db: Session, e: Employee) -> list[dict]:
 
 
 def set_routine(db: Session, acc: Access, slug: str, title: str = "", body: str = "", cron: str = "",
-                timezone: str = "", priority: int = 2, enabled: bool = True, routine_id: int | None = None) -> dict:
+                timezone: str = "", priority: int = 2, enabled: bool = True, routine_id: int | None = None,
+                creates_issue: bool | None = None) -> dict:
     from .employees import find
     e, a = find(db, acc, slug, "manage")
     if e.status == "offboarded":
@@ -88,6 +90,8 @@ def set_routine(db: Session, acc: Access, slug: str, title: str = "", body: str 
         r.cron = _cron(cron, r.timezone)
     r.priority = max(1, min(int(priority or 2), 3))
     r.enabled = bool(enabled)
+    if creates_issue is not None:
+        r.creates_issue = bool(creates_issue)
     from . import bizcal
     r.next_run_at = bizcal.next_after(db, r.cron, now(), r.timezone) if r.enabled else None
     if "schedule" not in (e.channels or []):  # o canal "schedule" passa a valer para este funcionário
@@ -119,8 +123,15 @@ def _routine_task(db: Session, e: Employee, r: EmployeeRoutine, trigger: str) ->
             tasksmod.event(db, prev, "note", {"routine": r.id, "skipped": "a tarefa anterior da rotina ainda está aberta"})
             db.commit()
             return None
-    t = tasksmod.create_task(db, e, r.title, r.body, "routine", f"rotina #{r.id} ({trigger})", None, r.priority,
-                             routine_id=r.id)
+    if r.creates_issue:  # cada disparo abre uma issue no quadro, atribuída a ele (a conversa fica na issue)
+        from . import issues
+        t = issues.from_routine(db, e, r)
+        if t is None:
+            return None
+        t.routine_id = r.id
+    else:
+        t = tasksmod.create_task(db, e, r.title, r.body, "routine", f"rotina #{r.id} ({trigger})", None, r.priority,
+                                 routine_id=r.id)
     r.last_task_id, r.last_run_at = t.id, now()
     db.commit()
     return t

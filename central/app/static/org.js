@@ -86,6 +86,10 @@ async function showLogin() {
     location.hash = next; location.reload();
   };
   $('#lg-act').onclick = activate;
+  if (params.get('code')) {  // link do convite (ou de Meus acessos): entra direto, e o código sai do endereço
+    history.replaceState(null, '', location.pathname + location.search + '#/login');
+    activate();
+  }
   $('#lg-code').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); activate(); } };
   $('#lg-token').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   const pf = $('#lg-pw');
@@ -247,7 +251,8 @@ async function teamDetail(slug) {
 }
 
 /* ---------- usuários ---------- */
-async function usersPage() {
+/* A lista de pessoas da empresa: hoje dentro de Membros → Pessoas (console). */
+async function usersPage(el = main) {
   const list = await api('/users');
   const render = q => {
     const rows = list.filter(u => (u.email + u.name).toLowerCase().includes(q.toLowerCase()));
@@ -263,14 +268,14 @@ async function usersPage() {
       if (!username) return;
       const password = prompt(`Nova senha para ${username} (mínimo 8 caracteres). As sessões atuais dessa pessoa serão encerradas.`);
       if (!password) return;
-      try { await api(`/users/${b.dataset.id}`, { method: 'PATCH', body: { username, password } }); toast('Senha definida'); usersPage(); } catch (err) { toast(err.message, true); }
+      try { await api(`/users/${b.dataset.id}`, { method: 'PATCH', body: { username, password } }); toast('Senha definida'); route(); } catch (err) { toast(err.message, true); }
     });
     document.querySelectorAll('.u-act').forEach(b => b.onclick = e => (b.dataset.a === '1' || confirm(`Desativar ${b.dataset.n}? Sessões encerradas e todas as chaves revogadas na hora.`)) &&
-      act(e.target, () => api(`/users/${b.dataset.id}`, { method: 'PATCH', body: { active: b.dataset.a === '1' } }).then(usersPage), 'Usuário atualizado'));
+      act(e.target, () => api(`/users/${b.dataset.id}`, { method: 'PATCH', body: { active: b.dataset.a === '1' } }).then(route), 'Usuário atualizado'));
   };
-  main.innerHTML = `<div class="row between"><div><h1>Usuários</h1><div class="sub">Criados no primeiro login (OAuth2), por SCIM ou pré-cadastrados. <b>Admin</b>: tudo. <b>Auditor</b>: lê tudo (uso, custo, auditoria, specs). <b>Membro</b>: conforme os times.</div></div>
+  el.innerHTML = `<div class="row between mt"><div class="mute small">Criados no primeiro login (SSO), por convite, por SCIM ou pré-cadastrados. <b>Admin</b>: tudo. <b>Auditor</b>: lê tudo (uso, custo, auditoria, specs). <b>Membro</b>: conforme os times.</div>
     <input id="u-q" placeholder="Buscar…" style="max-width:240px"></div>
-  ${ME.is_admin ? `<details class="card"><summary>+ Cadastrar usuário</summary><div class="grid g4 mt"><input id="nu-email" placeholder="e-mail (entra por SSO)"><input id="nu-name" placeholder="nome (opcional)">
+  ${ME.is_admin ? `<details class="card mt"><summary>Cadastrar sem convite (conta local ou pré-cadastro)</summary><div class="grid g4 mt"><input id="nu-email" placeholder="e-mail (entra por SSO)"><input id="nu-name" placeholder="nome (opcional)">
     <input id="nu-user" placeholder="usuário (conta local, opcional)" autocomplete="off"><input id="nu-pass" type="password" placeholder="senha da conta local" autocomplete="new-password"></div>
     <div class="grid g4 mt"><select id="nu-role"><option value="member">Membro</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select><button id="nu-go">Cadastrar</button></div>
     <div class="mute small mt">Só e-mail: pré-cadastro, a pessoa entra pelo SSO. Com usuário e senha: conta local (login direto na tela de entrada).</div></details>` : ''}
@@ -278,7 +283,7 @@ async function usersPage() {
   render(''); $('#u-q').oninput = e => render(e.target.value);
   const go = $('#nu-go');
   if (go) go.onclick = e => act(e.target, () => api('/users', { method: 'POST', body: { email: $('#nu-email').value.trim(), name: $('#nu-name').value, org_role: $('#nu-role').value,
-    username: $('#nu-user').value.trim() || null, password: $('#nu-pass').value || null } }).then(usersPage), 'Usuário cadastrado');
+    username: $('#nu-user').value.trim() || null, password: $('#nu-pass').value || null } }).then(route), 'Usuário cadastrado');
 }
 
 /* ---------- SSO (OAuth2) e SCIM ---------- */

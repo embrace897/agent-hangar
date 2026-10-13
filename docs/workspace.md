@@ -20,7 +20,6 @@ The menu shows the essentials. **Advanced** reveals everything else, and the cho
 | **Caixa de entrada** | Unchanged. |
 | **Conectar minha IA** | Generates a personal key and gives the ready-made config for Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, VS Code and OpenCode (copy or download). Claude.ai and ChatGPT use OAuth, with no key. |
 | **Meus acessos** | Shows where your account is signed in (browser and system, how you signed in, last use, IP). You can end one sign-in or all the others. Also: an activation code for another browser, installing the app, and turning notifications on. |
-| **Acesso dos membros** | Admins and auditors only. See [Admin](#admin-member-access). |
 
 Dragging on the org chart:
 - If you manage the agent, the change is saved.
@@ -34,7 +33,7 @@ A member signs in with one of:
 - **SSO:** Microsoft Entra ID, Google, GitHub or generic OAuth2 (see [access.md](access.md#signing-in)).
 - **Username and password**, for a local account.
 - **Activation code** (the "virtual key"): `XXXX-XXXX-XXXX`, single use, valid for 24 hours. Only its hash is stored. It comes from:
-  - the admin (*Acesso dos membros*), for a member who has no SSO or password yet;
+  - the admin's invite (*Membros*, in the console), valid for 7 days;
   - the member (*Meus acessos*), to open another browser. This creates a link like `/app/#/login?code=…`.
 - **Personal token** on the sign-in screen.
 
@@ -90,15 +89,18 @@ To install it:
 - `WEBPUSH_SUBJECT` (a `mailto:`) identifies the sender to the push services.
 - Browsers only allow service workers and notifications over HTTPS. `localhost` also works, for testing.
 
-## Admin: member access
+## Admin: members
 
-*Acesso dos membros* is in both the console (`/ui/#/workspace`) and the portal. It has:
-- **How members sign in:** password, SSO, activation code, personal token.
-- **Personal agents:** on/off, who creates them, maximum per member, monthly budget per member, allowed LLM connections.
-- **Activation code for a member.**
-- **Open sign-ins** across the workspace, with *End* and *All of this member's*.
+Only the admin manages members, in the console (`/ui/#/members`). The portal shows each member only what belongs to
+their own account. **Membros** has three tabs:
+- **Pessoas:**
+  - **Convidar um membro:** e-mail, name, company role, team and team role. The person gets an e-mail with the link to `/app`. The link signs in once, without a password, and is valid for 7 days. After that they sign in with SSO, or with a code from *Meus acessos*.
+  - Without SMTP configured, the invite is still created and the admin gets the link to send. *Reenviar* issues a new link, and the old one stops working.
+  - Below the invite form are the pending invites and the company's people: role, teams, last sign-in, local account, deactivate. This replaces the former *Usuários* page.
+- **Acessos abertos:** every open sign-in in the workspace, with *Encerrar* and *Todos deste membro*.
+- **Como entram:** the sign-in methods and the personal-agent rules. When activation codes are turned off, invite links go to the sign-in page (SSO).
 
-Auditors see the page but can't change anything.
+E-mail goes out through the installation's SMTP (`SMTP_HOST`, `SMTP_FROM`…; see [digital-employee.md](digital-employee.md#decisions-outside-the-portal)).
 
 ## API
 
@@ -110,6 +112,9 @@ Auditors see the page but can't change anything.
 | DELETE | `/api/workspace/sessions/{id}` | Ends one sign-in (admin) |
 | POST | `/api/workspace/users/{id}/sessions/revoke` | Ends all of a member's sign-ins (admin) |
 | POST | `/api/workspace/activation-codes` | `{email}` → `{code, user, expires_at}` (admin) |
+| POST | `/api/workspace/invites` | `{email, name, team, role, org_role}` → creates the member (and the team membership) and e-mails the link to `/app`; returns `{link, sent, email_ready, expires_at}` (admin) |
+| GET | `/api/workspace/invites` | Invites waiting for the person to sign in (admin, auditor) |
+| POST | `/api/workspace/invites/{user_id}/resend` | A new link (the previous one stops working) |
 | GET | `/api/me/workspace` | The member's home: `to_decide`, `agents` (with `personal`, `working_on`), `my_tasks`, `month_cost_usd`, personal-agent counters and caps |
 | GET | `/api/me/sessions` | My sign-ins (`device`, `method`, `ip`, `last_seen_at`, `current`) |
 | DELETE | `/api/me/sessions/{id}` | Ends one of my sign-ins |

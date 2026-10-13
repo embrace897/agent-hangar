@@ -40,7 +40,7 @@ LLM_PROVIDERS = {
     "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "protocol": "openai", "key": True},
     "litellm": {"label": "Gateway corporativo (LiteLLM, Portkey…)", "base_url": "http://host.docker.internal:4000/v1",
                 "protocol": "openai", "key": True, "note": "também o caminho para Bedrock e Vertex AI"},
-    "ollama": {"label": "Ollama (modelo local)", "base_url": "http://host.docker.internal:11434/v1", "protocol": "openai", "key": False},
+    "ollama": {"label": "Ollama que você já roda (no host)", "base_url": "http://host.docker.internal:11434/v1", "protocol": "openai", "key": False},
     "custom": {"label": "Outro endpoint OpenAI-compatible", "base_url": "", "protocol": "openai", "key": True},
 }
 EXPOSURES = {
@@ -401,9 +401,13 @@ def _interactive_common(a: dict, prev: dict):
 
     title("4/7 · LLM")
     prev_llm = prev.get("llm") or {}
-    prov = choose("De onde vêm os modelos?", {**{k: v["label"] for k, v in LLM_PROVIDERS.items()}, "none": "Configurar depois"},
+    prov = choose("De onde vêm os modelos?", {**{k: v["label"] for k, v in LLM_PROVIDERS.items()},
+                   "none": "Configurar depois (até lá, os agentes respondem com um modelo de teste)"},
                   prev_llm.get("provider", "openrouter"))
     llm: dict = {"provider": prov}
+    if prov == "none":
+        warn("sem provedor, os agentes respondem com um modelo de teste (respostas fictícias). Para o trabalho de verdade, "
+             "cadastre a chave de API de um provedor depois em Console → Provedores de LLM, ou rode  hangar setup  de novo")
     if prov != "none":
         p = LLM_PROVIDERS[prov]
         if p.get("note"):
@@ -450,6 +454,8 @@ def _interactive_common(a: dict, prev: dict):
         "any": "Qualquer conexão", "approved": "Só conexões aprovadas para código"}, prev.get("code_policy", "approved"))
     a["clients"] = choose_many("Gerar configuração para quais ferramentas de IA?", CLIENTS,
                                prev.get("clients", ["claude-code", "vscode"]))
+    a["demo"] = yes("Criar uma empresa de exemplo (time, projeto e três Digital employees) para o portal não abrir vazio?",
+                    bool(prev.get("demo", True)))
 
 
 def _public_base(a: dict) -> str:
@@ -473,6 +479,7 @@ def validate(a: dict) -> dict:
     a.setdefault("extras", [])
     a.setdefault("code_policy", "approved")
     a.setdefault("clients", ["claude-code", "vscode"])
+    a["demo"] = bool(a.get("demo", False))
     errs = []
     if a["target"] not in ("docker", "kubernetes"):
         errs.append(f"target: {a['target']} (docker | kubernetes)")
@@ -513,6 +520,8 @@ def validate(a: dict) -> dict:
         a["llm"].setdefault("base_url", p["base_url"])
         a["llm"].setdefault("protocol", p["protocol"])
         a["llm"].setdefault("approve_for_code", True)
+        if prov == "ollama":
+            a["llm"].setdefault("api_key", "ollama")
         for k in ("base_url", "model"):
             if not a["llm"].get(k) or "<" in a["llm"].get(k, ""):
                 errs.append(f"llm.{k} é obrigatório")
@@ -636,6 +645,20 @@ def configure(api: Api, a: dict, local_base: str) -> dict:
     return result
 
 
+def seed_demo(base: str, admin_token: str, a: dict):
+    """A empresa de exemplo (hangar demo), com o admin como gestora e o LLM escolhido (ou o modelo de teste)."""
+    from .demo import Demo
+    from .main import Api as CliApi
+    title("Empresa de exemplo")
+    api = CliApi(base, admin_token)
+    admin = next((u for u in api.get("/users") if (u.get("username") or "") == a["admin"]["username"]), None)
+    llm = (a.get("llm") or {}).get("name", "") if (a.get("llm") or {}).get("provider", "none") != "none" else ""
+    try:
+        Demo(api, say=info).seed(admin["email"] if admin else None, llm)
+    except Exception as e:  # noqa: BLE001 — o exemplo é um extra: a instalação segue pronta
+        warn(f"não consegui criar o exemplo ({e}); rode depois:  hangar demo")
+
+
 def personal_token(base: str, username: str, password: str) -> str:
     """Token pessoal do admin (escopo user) para as ferramentas de IA: entra com a senha e cria a chave."""
     with httpx.Client(base_url=base, timeout=30) as c:
@@ -718,6 +741,8 @@ def setup(root: Path, answers_file: str | None = None, start: bool = True, assum
     title("Configurando")
     env = read_env(env_path)
     result = configure(Api(local, env["ADMIN_TOKEN"]), a, local)
+    if a.get("demo"):
+        seed_demo(local, env["ADMIN_TOKEN"], a)
     base = updates["PUBLIC_BASE_URL"]
     if result.get("client_token"):
         cdir = state / "clients"
@@ -741,6 +766,10 @@ def setup(root: Path, answers_file: str | None = None, start: bool = True, assum
         warn("anote a senha gerada agora — ela não fica salva em lugar nenhum")
     info("Acesso de emergência: o valor de ADMIN_TOKEN no .env (guarde com cuidado)")
     info("Diagnóstico:         hangar doctor")
+    if a["llm"].get("provider", "none") == "none":
+        warn(f"nenhum provedor de LLM: os agentes respondem com um modelo de teste. Cadastre a chave de API de um provedor "
+             f"(OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Azure, gateway da empresa) em  {base}/ui/#/providers  "
+             "ou rode  hangar setup  de novo")
     return 0
 
 

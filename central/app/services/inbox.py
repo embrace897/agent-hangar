@@ -93,6 +93,12 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
             a = managed[t.employee_id]
             add(f"task:{t.id}", "task", t.title, t.updated_at, f"#/tasks/{t.id}", task_id=t.id, status=t.status,
                 employee=a.slug, employee_name=a.name, requested=False, blocked=True)
+    from . import issues as issuesmod
+    for x in issuesmod.inbox_items(db, acc):  # issues em que estou inscrito, com novidade de outra pessoa ou agente
+        i = x["issue"]
+        add(f"issue:{i.id}", "issue", f"{x['key']} {i.title}", x["at"], f"#/issues/{x['key']}", issue=x["key"],
+            actor=x["actor"], activity=x["kind"], mention=x["kind"] == "mention", mine=x["kind"] == "mention",
+            blocked=x["kind"] == "run_failed")
     from .budgets import can_manage, scope_name
     for i in db.scalars(select(BudgetIncident).where(BudgetIncident.status == "open").order_by(BudgetIncident.id.desc()).limit(50)):
         p = db.get(BudgetPolicy, i.policy_id)
@@ -157,7 +163,7 @@ def search(db: Session, acc: Access, q: str, kinds: str = "", limit: int = 30) -
     if len(q) < 2:
         raise PlatformError("digite pelo menos 2 letras")
     q = q[:100].replace("%", "").replace("_", " ")
-    want = set((kinds or "agent,employee,task,project,goal,plugin,skill").split(","))
+    want = set((kinds or "agent,employee,task,issue,project,goal,plugin,skill").split(","))
     limit = max(1, min(int(limit or 30), 100))
     out: list[dict] = []
     emp_by_agent = {e.agent_id: e for e in db.scalars(select(Employee))}
@@ -183,6 +189,14 @@ def search(db: Session, acc: Access, q: str, kinds: str = "", limit: int = 30) -
                 src = t.title if q.lower() in t.title.lower() else t.body if q.lower() in (t.body or "").lower() else t.result
                 out.append({"kind": "task", "title": f"#{t.id} {t.title}", "sub": t.status, "url": f"#/tasks/{t.id}",
                             "snippet": _snip(src, q)})
+    if "issue" in want:
+        from . import issues as im
+        for i in db.scalars(select(im.Issue).where(or_(_like(im.Issue.title, q), _like(im.Issue.description, q)))
+                            .order_by(im.Issue.id.desc()).limit(limit * 3)):
+            if im.can_view(acc, i):
+                k = im.key_of(db, i)
+                out.append({"kind": "issue", "title": f"{k} {i.title}", "sub": i.status, "url": f"#/issues/{k}",
+                            "snippet": _snip(i.description or i.title, q)})
     if "project" in want:
         from .goals import can_view_project
         for p in db.scalars(select(Project).where(or_(_like(Project.name, q), _like(Project.description, q),

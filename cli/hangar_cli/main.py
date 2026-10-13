@@ -549,6 +549,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--manager", help="e-mail da gestora (padrão: você; com o token admin, uma pessoa de teste)")
     s.add_argument("--keep", action="store_true", help="não apagar o que foi criado")
     s.add_argument("--timeout", type=int, default=300, help="segundos de espera por etapa")
+    s.add_argument("--llm", default="", help="conexão de LLM do catálogo (padrão: o modelo de teste mock/echo)")
+    s = add(sub, "demo", cmd_demo, "cria uma empresa de exemplo (time, meta, projeto e três Digital employees em "
+                                   "organograma) para o portal não abrir vazio; --remove apaga")
+    s.add_argument("--manager", help="e-mail da gestora (padrão: você; com o token admin, o primeiro admin)")
+    s.add_argument("--llm", default="", help="conexão de LLM do catálogo (padrão: o modelo de teste mock/echo)")
+    s.add_argument("--timeout", type=int, default=300, help="segundos de espera por etapa")
+    s.add_argument("--remove", action="store_true", help="apaga o exemplo")
     s = add(sub, "upgrade", cmd_upgrade, "atualiza a instalação Docker: backup, nova versão, sobe e confere")
     s.add_argument("--version", help="versão das imagens publicadas (ex.: 0.12.0)")
     s.add_argument("--dir", default=".")
@@ -557,11 +564,25 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def cmd_demo(a):
+    from .demo import Demo
+    d = Demo(api())
+    try:
+        if a.remove:
+            print(f"exemplo apagado: {d.remove()}")
+        else:
+            res = d.seed(a.manager, a.llm, a.timeout)
+            if getattr(a, "json", False):
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+    except (TimeoutError, RuntimeError) as e:
+        raise CliError(str(e)) from None
+
+
 def cmd_test_drive(a):
     from .testdrive import Drive
     d = Drive(api())
     try:
-        res = d.run(a.manager, a.timeout)
+        res = d.run(a.manager, a.timeout, a.llm)
         if getattr(a, "json", False):
             print(json.dumps(res, indent=2, ensure_ascii=False))
     except (TimeoutError, RuntimeError) as e:

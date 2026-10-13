@@ -121,6 +121,9 @@ def delete_agent(db: Session, slug: str, actor="admin"):
         db.query(Schedule).filter(Schedule.id.in_(sids)).delete(synchronize_session=False)
     db.query(AccessRequest).filter(AccessRequest.agent_id == a.id).delete()
     db.query(PromotionRequest).filter(PromotionRequest.agent_id == a.id).delete()
+    from ..models import AgentGuide, AgentLineage  # ON DELETE CASCADE no Postgres; no SQLite, apagamos aqui
+    db.query(AgentLineage).filter(AgentLineage.agent_id == a.id).delete()
+    db.query(AgentGuide).filter(AgentGuide.agent_id == a.id).delete()
     db.delete(a)
     db.commit()
     audit(db, actor, "agent.delete", slug)

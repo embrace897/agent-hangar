@@ -31,11 +31,12 @@ DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/ap
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
 PAGES_APP = ["", "live", "announcements", "inbox", "search?q=e2e", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "calculators/_nova", "work", "queues", "playbooks", "playbooks/_novo", "meetings", "message-templates", "knowledge", "procedures", "governance", "memos", "watchers", "learning", "value", "tickets", "learned", "agents", "agents/catalog", "agents/new", "approvals",
              "employees", "employees/new", "manager", "decisions", "overview", "mine", "org?view=tree", "connect-ai", "access",
-             "workspace", "employees/new?personal=1",
-             "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit", "users"]
+             "employees/new?personal=1", "issues", "my-issues", "issues?view=list", "issues?view=table",
+             "issues?view=swim", "issues?view=timeline", "issues/settings",
+             "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit"]
 PAGES_UI = ["", "live", "announcements", "inbox", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "agents", "approvals", "workforce/overview", "workforce/brand", "workforce/calendar", "workforce/catalog", "workforce/floor", "workforce/notify",
             "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
-            "audit", "teams", "users", "keys", "sso", "workspace"]
+            "audit", "teams", "keys", "sso", "members", "members/access", "members/policy"]
 
 LEFTOVERS_JS = """() => {
   const SKIP = 'script,style,code,pre,textarea,input,select,[data-noi18n],.msg,.run-out,.chat,.md';
@@ -91,10 +92,18 @@ def setup() -> tuple[str, str, dict]:
                                                          "instructions": "i"}))["slug"]
     made["budget"] = ok(admin.post("/api/budgets", json={"scope_type": "project", "scope": made["project"],
                                                          "amount_usd": 10}))["id"]
+    parent = ok(me.post("/api/issues", json={"title": f"E2E issue {RUN}", "description": "e2e", "team": team,
+                                             "priority": "high", "due_date": "2030-01-31", "start_date": "2029-12-01"}))
+    ok(me.post("/api/issues", json={"title": f"E2E sub {RUN}", "parent": parent["key"], "stage": 1}))
+    ok(me.post(f"/api/issues/{parent['key']}/comments", json={"body": "e2e"}))
+    made["issue"] = parent["key"]
     return f"e2e-{RUN}-i18n", pw, made
 
 
 def cleanup(made: dict):
+    if made.get("issue"):
+        for i in admin.get("/api/issues", params={"q": RUN}).json():
+            admin.delete(f"/api/issues/{i['key']}")
     if made.get("budget"):
         admin.delete(f"/api/budgets/{made['budget']}")
     if made.get("project"):
@@ -141,7 +150,7 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
         f"/app/#/agents/{made['agent']}", f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
         f"/app/#/employees/{made['employee']}/routines",
-        f"/app/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}"]
+        f"/app/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}"]
     with sync_playwright() as p:
         b = p.chromium.launch()
         ctx = b.new_context(viewport={"width": 1440, "height": 1000})

@@ -26,7 +26,7 @@ class Drive:
             time.sleep(2)
         raise TimeoutError(f"{what}: passou de {secs}s (o executor de tarefas está ligado? veja `hangar doctor`)")
 
-    def run(self, manager: str | None = None, timeout: int = 300) -> dict:
+    def run(self, manager: str | None = None, timeout: int = 300, llm: str = "") -> dict:
         a, n = self.api, uuid.uuid4().hex[:6]
         health = a.get("/health")
         self.say(f"Agent Hangar {health.get('version', '')} em {a.url}\n{LINE}")
@@ -42,13 +42,13 @@ class Drive:
         self.step(f"time {team}, com {email} como gestora")
         job = {"name": f"Test drive {n}", "title": "Analista de teste", "mission": "Mostrar o caminho de ponta a ponta.",
                "responsibilities": ["entender o pedido", "fazer o trabalho", "entregar o resultado"], "manager": email,
-               "team": team, "systems": ["nenhum (modelo de teste)"], "llm": {"model": "mock/echo"}, "channels": ["portal"],
+               "team": team, "systems": ["nenhum"], "llm": {"connection": llm} if llm else {"model": "mock/echo"}, "channels": ["portal"],
                "accept_default_authority": True,
                "probation_tasks": [{"title": f"Experiência {i}", "body": f"responda {i}", "expected": f"responda {i}"}
                                    for i in range(3)]}
         slug = a.post("/employees", job)["employee"]["slug"]
         self.made["agent"] = slug
-        self.step(f"Digital employee contratado: {slug} (modelo mock/echo, sem custo)")
+        self.step(f"Digital employee contratado: {slug} " + (f"(conexão {llm})" if llm else "(modelo mock/echo, sem custo)"))
         a.post(f"/employees/{slug}/probation")
         self.wait(lambda: (lambda e: e["probation"] and all(t["status"] == "done" for t in e["probation"]))(
             a.get(f"/employees/{slug}")), timeout, "experiência")

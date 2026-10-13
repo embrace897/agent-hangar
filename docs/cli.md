@@ -55,6 +55,17 @@ test person with the admin token).
 ```bash
 hangar test-drive            # ✓ team · ✓ hired · ✓ probation · ✓ admitted · ✓ task done → links
 hangar test-drive --keep     # keep the team and the Digital employee to open them in the portal
+hangar test-drive --llm openrouter   # the same path with a real model (an LLM connection from the catalog)
+```
+
+`hangar demo` creates an example company so a new install doesn't open empty: the team *Exemplo · Renovações* with you
+as manager, a goal, a project and three Digital employees in an org chart (the coordinator and two who report to her),
+already admitted, and a first task. Without an LLM they use the test model; `--llm <connection>` uses a real one.
+Running it again doesn't duplicate anything. `hangar setup` offers it at the end (`demo: true` in the answers file).
+
+```bash
+hangar demo                  # ✓ team · ✓ hired · ✓ org chart · ✓ admitted · ✓ project and first task → links
+hangar demo --remove         # deletes the example (the project is archived)
 ```
 
 See [install.md](install.md).

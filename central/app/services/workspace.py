@@ -205,8 +205,88 @@ def redeem(db, code: str) -> User:
         raise Forbidden("código inválido ou já usado")
     check_login(db, u, "activation")
     c.used_at = now()
+    u.last_login_at = now()
     db.commit()
     return u
+
+
+# ------------------------------------------------------------------ convites (só o admin, no console)
+INVITE_DAYS = 7
+
+
+def _org_name(db) -> str:
+    o = db.get(Organization, tenancy.current_org())
+    return o.name if o else "Agent Hangar"
+
+
+def invite(db, acc: Access, email: str, name: str = "", team: str = "", role: str = "consumer",
+           org_role: str = "member", send: bool = True) -> dict:
+    """O admin cadastra a pessoa (e o time dela) e manda o convite por e-mail: o link do portal (/app) entra uma
+    vez, sem senha, por 7 dias (código de ativação). Sem código liberado na política, o link leva ao login (SSO).
+    Para quem ainda não entrou, chamar de novo reenvia (o link anterior deixa de valer)."""
+    from .. import config
+    from . import notify, org
+    if not acc.p.is_admin:
+        raise Forbidden("só o admin convida membros")
+    email = (email or "").strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise PlatformError("informe o e-mail da pessoa")
+    if role not in ("consumer", "developer", "maintainer"):
+        raise PlatformError("papel no time: consumer | developer | maintainer")
+    u = db.scalar(select(User).where(User.email == email, User.org_id == tenancy.current_org()))
+    if u is not None and u.last_login_at is not None:
+        raise PlatformError("essa pessoa já entrou na plataforma: ajuste times e papel na lista de membros")
+    if u is None:
+        u = org.create_user(db, acc, email, name, org_role)
+    elif not u.active:
+        org.update_user(db, acc, u.id, active=True)
+    if team:
+        org.add_member(db, acc, team, email, role)
+    for old in db.scalars(select(ActivationCode).where(ActivationCode.user_id == u.id, ActivationCode.used_at.is_(None))):
+        db.delete(old)  # reenvio: só o link mais novo vale
+    link, code, expires = f"{config.PUBLIC_BASE_URL}/app/", "", None
+    if policy(db)["login"].get("activation", True):
+        alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+        raw = "".join(secrets.choice(alphabet) for _ in range(12))
+        code = f"{raw[:4]}-{raw[4:8]}-{raw[8:]}"
+        expires = now() + timedelta(days=INVITE_DAYS)
+        db.add(ActivationCode(user_id=u.id, code_hash=_hash(code), created_by=f"invite:{acc.p.name}", expires_at=expires,
+                              created_at=now()))
+        link += f"#/login?code={code}"
+    db.commit()
+    sent, error = False, ""
+    if send and notify.email_ready():
+        ws = _org_name(db)
+        lines = [f"{acc.p.name} convidou você para o workspace {ws} no Agent Hangar.",
+                 "No portal você acompanha e cria os seus agentes, decide os pedidos deles e conecta a sua IA "
+                 "(Claude, ChatGPT, Codex, Cursor…).",
+                 (f"O link entra uma vez, sem senha, e vale por {INVITE_DAYS} dias. Depois, entre com a conta da empresa "
+                  "ou gere um código em Meus acessos.") if code else "Entre com a conta da empresa (SSO)."]
+        try:
+            notify._email(email, f"Convite para o Agent Hangar — {ws}", "\n".join([*lines, link]),
+                          notify._mail_html(f"Você foi convidado para {ws}", lines, [("Entrar no Agent Hangar", link)]))
+            sent = True
+        except Exception as e:  # noqa: BLE001 — o convite fica criado; o admin copia o link
+            error = f"o e-mail não saiu ({type(e).__name__}); copie o link e mande para a pessoa"
+    audit(db, acc.p.name, "member.invite", email, f"time={team or '-'} papel={role} enviado={sent}")
+    return {"user": email, "user_id": u.id, "link": link, "sent": sent, "email_ready": notify.email_ready(),
+            "error": error, "expires_at": iso(expires) if expires else None}
+
+
+def invites(db, acc: Access) -> list[dict]:
+    """Convites que ainda esperam a pessoa entrar."""
+    if not (acc.p.is_admin or acc.p.is_auditor):
+        raise Forbidden("só o admin (ou o auditor) vê os convites")
+    from . import employee_tasks as tasksmod
+    out = []
+    rows = db.execute(select(ActivationCode, User).join(User, User.id == ActivationCode.user_id).where(
+        ActivationCode.created_by.like("invite:%"), ActivationCode.used_at.is_(None), User.last_login_at.is_(None),
+        User.org_id == tenancy.current_org()).order_by(ActivationCode.id.desc())).all()
+    for c, u in rows:
+        out.append({"user_id": u.id, "email": u.email, "name": u.name, "invited_by": c.created_by[len("invite:"):],
+                    "invited_at": iso(c.created_at), "expires_at": iso(c.expires_at),
+                    "expired": tasksmod._aware(c.expires_at) < now()})
+    return out
 
 
 # ------------------------------------------------------------------ agentes pessoais
@@ -343,7 +423,8 @@ def home(db, acc: Access) -> dict:
     cost = float(db.scalar(select(func.coalesce(func.sum(EmployeeTask.cost_usd), 0.0)).where(
         EmployeeTask.created_at >= since, EmployeeTask.employee_id.in_(ids or [-1]))) or 0)
     pa = policy(db)["personal_agents"]
-    return {"workspace": (db.get(Organization, tenancy.current_org()).name if db.get(Organization, tenancy.current_org()) else ""),
+    from ..models import LlmConnection
+    return {"llm_ready": bool(db.scalar(select(func.count()).select_from(LlmConnection))), "workspace": (db.get(Organization, tenancy.current_org()).name if db.get(Organization, tenancy.current_org()) else ""),
             "to_decide": decide, "agents": mine,
             "my_tasks": [{"id": t.id, "title": t.title, "status": t.status, "created_at": iso(t.created_at)} for t in tasks],
             "month_cost_usd": round(cost, 4), "personal_spent_usd": round(personal_spent(db, uid), 4),

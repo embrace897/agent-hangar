@@ -429,6 +429,7 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 | [Concepts](docs/concepts.md) · [Spec reference](docs/spec.md) · [Templates](docs/templates.md) | What an agent is and how to describe one |
 | [Clients](docs/clients.md) | Connecting Claude, ChatGPT, Codex, OpenCode, Cursor, VS Code, LibreChat, Open WebUI |
 | [Access, teams, SSO and the portal](docs/access.md) | Roles, approvals, budgets, OAuth2/SCIM, where each person lands |
+| [Issues (kanban board)](docs/issues.md) | The board for people and Digital employees: assign an issue and the agent works on it, with authority, budget and review |
 | [Member workspace](docs/workspace.md) | The member's portal: personal agents, visual org chart, connect my AI, sign-ins and activation codes, installable app with notifications |
 | [Memory](docs/memory.md) · [MCP catalog](docs/mcp-catalog.md) · [Remote MCPs + Activepieces](docs/remote-mcp.md) | What agents can know and use |
 | [Harnesses](docs/harnesses.md) | Claude Code, Codex, Hermes and DeepSeek Harness as agents |

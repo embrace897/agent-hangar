@@ -511,6 +511,55 @@ async def promote_personal_agent(ctx: Context, slug: str, note: str = "") -> dic
 
 
 @mcp.tool()
+async def list_issues(ctx: Context, assignee: str = "", status: str = "", team: str = "", project: str = "",
+                      q: str = "") -> list[dict]:
+    """Issues do quadro que você vê. assignee: me | none | employee:<slug> | user:<id>; status: chaves separadas por
+    vírgula (backlog, todo, in_progress, in_review, blocked, done, cancelled…); q: busca no título, na descrição ou
+    pela chave (HGR-12)."""
+    return await _run(ctx, lambda db, acc: [{k: x[k] for k in ("key", "title", "status", "priority", "assignee", "labels",
+                                                                "due_date", "run", "sub")}
+                                            for x in svc.issues.list_issues(db, acc, team, project, assignee, status, "", "", q)])
+
+
+@mcp.tool()
+async def get_issue(ctx: Context, key: str) -> dict:
+    """Uma issue (HGR-12) com descrição, sub-issues, relações, rodadas e a linha do tempo (comentários e atividade)."""
+    return await _run(ctx, lambda db, acc: svc.issues.get_issue(db, acc, key))
+
+
+@mcp.tool()
+async def create_issue(ctx: Context, title: str, description: str = "", team: str = "", project: str = "",
+                       priority: str = "none", assignee: str = "", labels: list[str] | None = None, parent: str = "",
+                       status: str = "", due_date: str = "", start: bool = True) -> dict:
+    """Cria uma issue no quadro. assignee: me | e-mail | employee:<slug> (um Digital employee: começa a trabalhar nela
+    na hora, a menos que start=false ou status=backlog — a alçada, o orçamento e o modo sombra dele valem).
+    priority: urgent | high | medium | low | none. parent: a chave da issue mãe (vira sub-issue)."""
+    return await _run(ctx, lambda db, acc: svc.issues.create(db, acc, title, description, team, project, status, priority,
+                                                             assignee, labels or [], parent, None, None, due_date or None,
+                                                             None, start))
+
+
+@mcp.tool()
+async def update_issue(ctx: Context, key: str, status: str = "", priority: str = "", assignee: str | None = None,
+                       title: str = "", description: str | None = None, labels: list[str] | None = None,
+                       due_date: str | None = None, start: bool | None = None) -> dict:
+    """Muda uma issue: status, prioridade, responsável (vazio tira; employee:<slug> atribui a um Digital employee e começa
+    a rodada), título, descrição, etiquetas, prazo."""
+    changes = {k: v for k, v in {"status": status, "priority": priority, "title": title}.items() if v}
+    for k, v in {"assignee": assignee, "description": description, "labels": labels, "due_date": due_date}.items():
+        if v is not None:
+            changes[k] = v
+    return await _run(ctx, lambda db, acc: svc.issues.update(db, acc, key, changes, start=start))
+
+
+@mcp.tool()
+async def comment_issue(ctx: Context, key: str, body: str, reply_to: int | None = None) -> dict:
+    """Comenta numa issue (markdown). Para acionar um Digital employee, mencione: @[Nome](employee:<slug>); para avisar
+    uma pessoa: @[Nome](user:<id>). Se a issue é de um Digital employee, o comentário vai para a rodada dele."""
+    return await _run(ctx, lambda db, acc: svc.issues.add_comment(db, acc, key, body, reply_to))
+
+
+@mcp.tool()
 async def my_workspace(ctx: Context) -> dict:
     """O resumo do membro: decisões para tomar, os agentes dele (pessoais e que gerencia) e o que fazem agora, as
     tarefas que pediu, o custo do mês e as regras dos agentes pessoais."""

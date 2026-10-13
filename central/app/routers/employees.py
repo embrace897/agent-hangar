@@ -117,6 +117,7 @@ class RoutineBody(BaseModel):
     timezone: str = ""
     priority: int = 2
     enabled: bool = True
+    creates_issue: bool | None = None  # cada disparo abre uma issue no quadro
 
 
 class WebhookBody(BaseModel):

@@ -220,6 +220,7 @@ Goals, projects, the task's conversation, budgets, the inbox and search: see [wo
 
 | Method | Path | Description |
 |---|---|---|
+| — | — | Issues (kanban board): see [issues.md](issues.md#api) |
 | — | — | Member workspace (policy, sign-ins, activation codes, personal agents, notifications): see [workspace.md](workspace.md#api) |
 | GET | `/api/me/home` | The portal's former Início page (now *Painel completo*): `attention`, `agents`, `counts`, `to_decide`, `my_requests`, `teams` (budget), `my_usage` (30 days), `schedules`, `keys`, `memory`, `catalog_news`. Filtered by the caller's permissions |
 

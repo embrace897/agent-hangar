@@ -542,3 +542,34 @@ def my_push_remove(body: PushBody, request: Request, db=Depends(db_dep)):
 @router.post("/me/push/test")
 def my_push_test(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.webpush.test_mine(db, acc(request, db)))
+
+
+
+class InviteBody(BaseModel):
+    email: str
+    name: str = ""
+    team: str = ""
+    role: str = "consumer"
+    org_role: str = "member"
+
+
+@router.post("/workspace/invites")
+def workspace_invite(body: InviteBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.invite(db, acc(request, db), body.email, body.name, body.team, body.role, body.org_role))
+
+
+@router.get("/workspace/invites")
+def workspace_invites(request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.invites(db, acc(request, db)))
+
+
+@router.post("/workspace/invites/{user_id}/resend")
+def workspace_invite_resend(user_id: int, request: Request, db=Depends(db_dep)):
+    from ..models import User
+
+    def go():
+        u = db.get(User, user_id)
+        if u is None:
+            raise svc.PlatformError("membro não encontrado")
+        return svc.workspace.invite(db, acc(request, db), u.email)
+    return guard(go)

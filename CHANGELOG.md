@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Issues (kanban board)**, in the portal (*Issues*, *Minhas issues*) and the console, like Multica's board but with the Digital employees' governance:
+  - Issues `HGR-123` with markdown description, custom statuses in four categories, priority, labels, project, team, dates, estimate, sub-issues in stages, relations (blocks, related, duplicate) and subscriptions.
+  - Board, list, table, swimlanes and timeline views, with drag-and-drop, filters, search, keyboard shortcuts and live refresh.
+  - Assigning to a Digital employee (or `@`-mentioning one) starts a run, which goes through authority, budget, shadow mode and audit. Comments go into the active run. The result becomes a comment and the issue moves to review; a failure goes back to todo.
+  - Agents comment, move the issue (never to done or cancelled) and create sub-issues. Delegating to a colleague goes through authority.
+  - Threaded comments with resolve, reactions and mentions; inbox and search integration.
+  - Routines can open issues.
+  - MCP tools `list_issues`, `get_issue`, `create_issue`, `update_issue` and `comment_issue`.
+- **Fresh-install check:** after every release (and every Monday), a clean machine clones the tag and installs it as anyone would (`scripts/install.sh --answers` with the published images). Then it runs `hangar doctor`, `hangar test-drive` and the first minutes in the portal: sign-in, home, example company, and the MCP with the personal token. On Windows, the PowerShell installer is checked too.
+- **Example company:** `hangar demo` creates a team, a goal, a project and three Digital employees in an org chart, admitted and with a first task, so a new install doesn't open empty (`--remove` deletes it). `hangar setup` offers it.
+- `hangar test-drive --llm <connection>` runs the same path with a real model.
+- **Invite members by e-mail** (console → *Membros*): the admin sets the company role, team and team role. The person gets a link to the portal that signs in once, valid for 7 days. Without SMTP, the admin copies the link. Pending invites can be resent.
+- **API-key nudge:** without an LLM provider, the console and portal home pages say the agents are in test mode and link to *Provedores de LLM*; `hangar setup` says so too.
+
+### Changed
+- **Membros** (console only) brings together people, invites, open sign-ins and how members sign in, and replaces *Usuários*. The portal (`/app`) shows each member only their own account.
+- An activation link (invite or *Meus acessos*) signs in right away, and the code leaves the address bar.
+
 ## [0.29.0] — 2026-10-12
 
 ### Added

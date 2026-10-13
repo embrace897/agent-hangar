@@ -22,6 +22,16 @@ const workingChip = w => w ? `<a class="chip work-on" href="#/tasks/${w.id}"><i 
 const modelChip = n => n.model ? `<span class="chip" title="${esc(n.connection || '')}">${icon('chip')}<span data-noi18n>${esc(n.model)}</span></span>` : '';
 const harnessChip = h => h ? `<span class="chip">${icon('server')}<span data-noi18n>${esc(h)}</span></span>` : '';
 
+/* Sem provedor de LLM, os agentes respondem com o modelo de teste: o aviso leva quem pode resolver à chave de API. */
+function llmBanner(ready) {
+  if (ready) return '';
+  return ME.is_admin
+    ? `<div class="card warn-card"><h2>Adicione a chave de um provedor de LLM</h2>
+        <div>Sem um provedor, os agentes respondem com um <b>modelo de teste</b> (respostas fictícias, sem custo). Cadastre a chave de API da OpenAI, Anthropic, Google Gemini, OpenRouter, DeepSeek, Azure OpenAI ou do gateway da empresa (LiteLLM, Portkey…) — a conexão é testada na hora.</div>
+        <div class="row mt"><a href="/ui/#/providers"><button>Cadastrar provedor</button></a></div></div>`
+    : '<div class="card warn-card">Os agentes estão no <b>modo de teste</b> (respostas fictícias) até o admin cadastrar um provedor de LLM.</div>';
+}
+
 /* ---------- início do membro ---------- */
 async function memberHome() {
   const [w, dec] = await Promise.all([api('/me/workspace'), api('/decisions').catch(() => [])]);
@@ -34,6 +44,7 @@ async function memberHome() {
   main.innerHTML = `<div class="row between"><div><h1>${esc(hello)}${first ? `, <span data-noi18n>${esc(first)}</span>` : ''}</h1>
     <div class="sub"><span>Workspace</span> <b data-noi18n>${esc(w.workspace || '')}</b></div></div>
     <div class="row">${w.personal_allowed ? '<a href="#/employees/new?personal=1"><button>+ Novo agente</button></a>' : ''}<a href="#/connect-ai"><button class="ghost">Conectar minha IA</button></a></div></div>
+  ${llmBanner(w.llm_ready !== false)}
   <div class="board">
     ${kpi(fmt(w.to_decide), 'Para você decidir')}
     ${kpi(fmt((w.agents || []).length), 'Meus agentes')}
@@ -249,19 +260,79 @@ async function myAccessPage() {
   });
 }
 
-/* ---------- admin: acesso dos membros (política, acessos, códigos) ---------- */
-async function workspaceAdminPage() {
-  const [pol, ss, users] = await Promise.all([api('/workspace/policy'), api('/workspace/sessions'), api('/users').catch(() => [])]);
-  const L = pol.login, P = pol.personal_agents;
+/* ---------- console (admin): Membros — pessoas e convites, acessos abertos, como entram ---------- */
+const ROLE_TEAM = { consumer: 'Consumer — usa os agentes do time', developer: 'Developer — cria e edita os agentes do time', maintainer: 'Mantenedor — gerencia o time e aprova' };
+
+async function membersPage(tab = 'people') {
+  const tabs = { people: 'Pessoas', access: 'Acessos abertos', policy: 'Como entram' };
+  const key = tabs[tab] ? tab : 'people';
+  main.innerHTML = `<h1>Membros</h1><div class="sub">O workspace é a empresa: aqui você convida as pessoas, define o papel e os times de cada uma, como entram e onde cada conta está aberta. No portal (/app), cada membro vê só o que é da conta dele.</div>
+    <div class="tabs">${Object.entries(tabs).map(([k, v]) => `<a href="#/members/${k}" class="${k === key ? 'on' : ''}">${v}</a>`).join('')}</div><div id="tab"></div>`;
+  await ({ people: membersPeople, access: membersAccess, policy: membersPolicy })[key]($('#tab'));
+}
+
+async function membersPeople(el) {
+  const [inv, teams] = await Promise.all([api('/workspace/invites').catch(() => []), api('/teams').catch(() => [])]);
+  const admin = ME.is_admin;
+  el.innerHTML = `${admin ? `<div class="card hero"><h2>Convidar um membro</h2>
+      <div class="mute small">A pessoa recebe um e-mail com o link do portal (/app). O link entra uma vez, sem senha, e vale por 7 dias; depois ela entra com a conta da empresa (SSO) ou com um código gerado em Meus acessos.</div>
+      <div class="grid g3 mt"><label>E-mail<input id="iv-email" type="email" placeholder="pessoa@empresa.com" autocomplete="off"></label>
+        <label>Nome<input id="iv-name" placeholder="opcional"></label>
+        <label>Papel na empresa<select id="iv-org"><option value="member">Membro</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select></label>
+        <label>Time<select id="iv-team"><option value="">— sem time por enquanto —</option>${teams.map(t => `<option value="${esc(t.slug)}" data-noi18n>${esc(t.name)}</option>`).join('')}</select></label>
+        <label>Papel no time<select id="iv-role">${Object.entries(ROLE_TEAM).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+        <div class="row" style="align-items:flex-end"><button id="iv-go">Enviar convite</button></div></div>
+      <div id="iv-out" class="mt"></div></div>` : ''}
+    ${inv.length ? `<div class="card mt"><h2><span>Convites aguardando</span> (${inv.length})</h2><table><tr><th>Pessoa</th><th>Convidado por</th><th>Enviado</th><th>Validade</th><th></th></tr>
+      ${inv.map(i => `<tr><td><b data-noi18n>${esc(i.name || i.email)}</b><div class="mute small" data-noi18n>${esc(i.email)}</div></td><td class="small" data-noi18n>${esc(i.invited_by)}</td>
+        <td class="small">${when(i.invited_at)}</td><td>${i.expired ? '<span class="pill warn">expirado</span>' : `<span class="small">${new Date(i.expires_at).toLocaleDateString(window.LOCALE)}</span>`}</td>
+        <td>${admin ? `<button class="ghost small iv-resend" data-id="${i.user_id}">Reenviar</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}
+    <div id="iv-users"></div>`;
+  await usersPage($('#iv-users'));
+  const show = r => {
+    $('#iv-out').innerHTML = r.sent
+      ? `<div class="card ok-card"><span>Convite enviado para</span> <b data-noi18n>${esc(r.user)}</b>.</div>`
+      : `<div class="card warn-card">${esc(r.error || (r.email_ready ? '' : window.t('O e-mail da instalação não está configurado (SMTP): copie o link e mande para a pessoa.')))}
+          <div class="mt">${copyable(r.link)}</div><div class="mute small mt">O link entra uma vez, sem senha. Não publique em lugar aberto.</div></div>`;
+  };
+  const go = $('#iv-go');
+  if (go) go.onclick = e => act(e.target, async () => {
+    const r = await api('/workspace/invites', { method: 'POST', body: { email: $('#iv-email').value.trim(), name: $('#iv-name').value.trim(),
+      org_role: $('#iv-org').value, team: $('#iv-team').value, role: $('#iv-role').value } });
+    await membersPeople(el);
+    show(r);
+  });
+  el.querySelectorAll('.iv-resend').forEach(b => b.onclick = e => act(e.target, async () => {
+    const r = await api(`/workspace/invites/${b.dataset.id}/resend`, { method: 'POST' });
+    await membersPeople(el);
+    show(r);
+  }));
+}
+
+async function membersAccess(el) {
+  const ss = await api('/workspace/sessions');
   const admin = ME.is_admin;
   const byUser = {};
   ss.forEach(s => { (byUser[s.user_id] = byUser[s.user_id] || []).push(s); });
-  main.innerHTML = `<h1>Acesso dos membros</h1><div class="sub">O workspace é a empresa: aqui você define como os membros entram, o que podem criar sozinhos e vê (e encerra) onde cada conta está aberta.</div>
-  <div class="grid g2">
+  el.innerHTML = `<div class="card"><h2><span>Acessos abertos</span> (${ss.length})</h2>
+    ${ss.length ? `<table><tr><th>Membro</th><th>Aparelho</th><th>Entrou com</th><th>Último uso</th><th></th></tr>
+      ${Object.values(byUser).map(list => list.map((s, i) => `<tr><td>${i ? '' : `<b data-noi18n>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.user || '')}</div>`}</td>
+        <td data-noi18n>${esc(s.device)}</td><td>${esc(window.t(METHOD_LABEL[s.method] || s.method))}</td><td>${when(s.last_seen_at)}</td>
+        <td>${admin ? `<button class="ghost small wp-rev" data-id="${s.id}">Encerrar</button>${i ? '' : ` <button class="ghost small wp-rev-all" data-user="${s.user_id}">Todos deste membro</button>`}` : ''}</td></tr>`).join('')).join('')}</table>`
+      : '<div class="mute">Nenhum acesso aberto.</div>'}</div>`;
+  el.querySelectorAll('.wp-rev').forEach(b => b.onclick = e => act(e.target, () => api(`/workspace/sessions/${b.dataset.id}`, { method: 'DELETE' }).then(route), 'Acesso encerrado'));
+  el.querySelectorAll('.wp-rev-all').forEach(b => b.onclick = e => confirm(window.t('Encerrar todos os acessos deste membro?')) &&
+    act(e.target, () => api(`/workspace/users/${b.dataset.user}/sessions/revoke`, { method: 'POST' }).then(route), 'Acessos encerrados'));
+}
+
+async function membersPolicy(el) {
+  const pol = await api('/workspace/policy');
+  const L = pol.login, P = pol.personal_agents, admin = ME.is_admin;
+  el.innerHTML = `<div class="grid g2">
     <div class="card"><h2>Como os membros entram</h2>
       ${[['password', 'Usuário e senha'], ['sso', 'SSO (Entra ID, Google, GitHub…)'], ['activation', 'Código de ativação (chave virtual)'], ['key', 'Token pessoal na tela de login']].map(([k, v]) =>
         `<label class="row small" style="gap:6px"><input type="checkbox" class="wp-login" value="${k}" ${L[k] ? 'checked' : ''} ${admin ? '' : 'disabled'} style="width:auto">${esc(window.t(v))}</label>`).join('')}
-      <div class="mute small mt">O SSO é configurado em <a href="/ui/#/sso">SSO e SCIM</a>. Pelo menos um jeito de entrar fica ligado. O MCP (chave pessoal ou OAuth) continua funcionando.</div></div>
+      <div class="mute small mt">O SSO é configurado em <a href="#/sso">SSO e SCIM</a>. Pelo menos um jeito de entrar fica ligado. Os convites usam o código de ativação; sem ele, o link do convite leva ao login (SSO). O MCP (chave pessoal ou OAuth) continua funcionando.</div></div>
     <div class="card"><h2>Agentes pessoais</h2>
       <label class="row small" style="gap:6px"><input type="checkbox" id="wp-pa" ${P.enabled ? 'checked' : ''} ${admin ? '' : 'disabled'} style="width:auto">Membros podem criar agentes pessoais</label>
       <div class="grid g2 mt">
@@ -269,31 +340,13 @@ async function workspaceAdminPage() {
         <label>Máximo por membro<input id="wp-max" type="number" min="0" max="50" value="${P.max_per_member}" ${admin ? '' : 'disabled'}></label>
         <label>Orçamento por membro / mês (US$, 0 = sem teto)<input id="wp-budget" type="number" min="0" step="1" value="${P.monthly_budget_usd}" ${admin ? '' : 'disabled'}></label>
         <label>Conexões de LLM liberadas (vírgula; vazio = todas)<input id="wp-llm" value="${esc((P.llm_connections || []).join(', '))}" ${admin ? '' : 'disabled'} data-noi18n></label></div>
-      ${admin ? '<button id="wp-save" class="mt">Salvar política</button>' : ''}</div>
-  </div>
-  ${admin ? `<div class="card mt"><h2>Código de ativação para um membro</h2>
-    <div class="mute small">Para quem ainda não tem SSO ou senha: o membro digita o código na tela de login. Uso único, 24 horas.</div>
-    <div class="row mt"><select id="wp-user" style="flex:1">${users.filter(u => u.active !== false).map(u => `<option value="${esc(u.email)}" data-noi18n>${esc(u.name || u.email)} · ${esc(u.email)}</option>`).join('')}</select>
-      <button id="wp-code">Gerar código</button></div><div id="wp-code-out" class="mt"></div></div>` : ''}
-  <div class="card mt"><h2><span>Acessos abertos</span> (${ss.length})</h2>
-    ${ss.length ? `<table><tr><th>Membro</th><th>Aparelho</th><th>Entrou com</th><th>Último uso</th><th></th></tr>
-      ${Object.values(byUser).map(list => list.map((s, i) => `<tr><td>${i ? '' : `<b data-noi18n>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.user || '')}</div>`}</td>
-        <td data-noi18n>${esc(s.device)}</td><td>${esc(window.t(METHOD_LABEL[s.method] || s.method))}</td><td>${when(s.last_seen_at)}</td>
-        <td>${admin ? `<button class="ghost small wp-rev" data-id="${s.id}">Encerrar</button>${i ? '' : ` <button class="ghost small wp-rev-all" data-user="${s.user_id}">Todos deste membro</button>`}` : ''}</td></tr>`).join('')).join('')}</table>`
-      : '<div class="mute">Nenhum acesso aberto.</div>'}</div>`;
+    </div></div>
+  ${admin ? '<button id="wp-save" class="mt">Salvar política</button>' : ''}`;
   const save = $('#wp-save');
   if (save) save.onclick = e => act(e.target, () => api('/workspace/policy', { method: 'PUT', body: {
-    login: Object.fromEntries([...main.querySelectorAll('.wp-login')].map(c => [c.value, c.checked])),
+    login: Object.fromEntries([...el.querySelectorAll('.wp-login')].map(c => [c.value, c.checked])),
     personal_agents: { enabled: $('#wp-pa').checked, who: $('#wp-who').value, max_per_member: Number($('#wp-max').value || 0),
       monthly_budget_usd: Number($('#wp-budget').value || 0), llm_connections: $('#wp-llm').value.split(',').map(x => x.trim()).filter(Boolean) } } }).then(route), 'Política salva');
-  const code = $('#wp-code');
-  if (code) code.onclick = e => act(e.target, async () => {
-    const r = await api('/workspace/activation-codes', { method: 'POST', body: { email: $('#wp-user').value } });
-    $('#wp-code-out').innerHTML = `<span class="code-big" data-noi18n>${esc(r.code)}</span> <span class="mute small"><span>para</span> <span data-noi18n>${esc(r.user)}</span> · <span>válido até</span> ${new Date(r.expires_at).toLocaleString(window.LOCALE)}</span>`;
-  });
-  main.querySelectorAll('.wp-rev').forEach(b => b.onclick = e => act(e.target, () => api(`/workspace/sessions/${b.dataset.id}`, { method: 'DELETE' }).then(route), 'Acesso encerrado'));
-  main.querySelectorAll('.wp-rev-all').forEach(b => b.onclick = e => confirm(window.t('Encerrar todos os acessos deste membro?')) &&
-    act(e.target, () => api(`/workspace/users/${b.dataset.user}/sessions/revoke`, { method: 'POST' }).then(route), 'Acessos encerrados'));
 }
 
 /* ---------- app instalado (PWA) e notificações do navegador (Web Push) ---------- */

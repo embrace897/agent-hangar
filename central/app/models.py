@@ -244,6 +244,7 @@ class Organization(Base):
     brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # identidade visual dos entregáveis: theme, accent, footer
     calendar: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # dias úteis, expediente e feriados da empresa
     governance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # DLP e retenção por classificação
+    issue_prefix: Mapped[str] = mapped_column(String(10), default="HGR")  # issues do quadro: HGR-123
 
 
 class Team(Base):
@@ -669,6 +670,7 @@ class EmployeeTask(OrgScoped, Base):
     legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
     purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # conteúdo apagado pela retenção
     mode: Mapped[str] = mapped_column(String(8), default="work")  # work | copilot (modo par: sugere e explica, não age)
+    issue_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # rodada de uma issue do quadro
 
 
 
@@ -744,6 +746,7 @@ class EmployeeRoutine(OrgScoped, Base):
     skipped: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(254), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    creates_issue: Mapped[bool] = mapped_column(Boolean, default=False)  # cada disparo abre uma issue no quadro
 
 
 class EmployeeReport(OrgScoped, Base):
@@ -1631,3 +1634,106 @@ class PushSubscription(OrgScoped, Base):
     user_agent: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ------------------------------------------------------------------ issues (quadro kanban)
+class IssueStatus(OrgScoped, Base):
+    """Status do quadro. Os embutidos (backlog, todo, in_progress, in_review, blocked, done, cancelled) não mudam; o
+    admin cria outros, cada um numa das quatro categorias (a categoria decide o comportamento)."""
+    __tablename__ = "issue_statuses"
+    __table_args__ = (UniqueConstraint("org_id", "key", name="uq_issue_status_org_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(80))
+    category: Mapped[str] = mapped_column(String(12))  # unstarted | started | done | closed
+    color: Mapped[str] = mapped_column(String(9), default="#8793A1")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class IssueLabel(OrgScoped, Base):
+    __tablename__ = "issue_labels"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_issue_label_org_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    color: Mapped[str] = mapped_column(String(9), default="#5B8DEF")
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+
+
+class Issue(OrgScoped, Base):
+    """O registro persistente do trabalho no quadro (HGR-123). Cada execução de um Digital employee é uma rodada
+    (EmployeeTask com issue_id): uma issue pode ter várias. O status decide se acabou, não a rodada."""
+    __tablename__ = "issues"
+    __table_args__ = (UniqueConstraint("org_id", "number", name="uq_issue_org_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    stage: Mapped[int | None] = mapped_column(Integer, nullable=True)  # sub-issues em etapas (1, 2, 3…)
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="backlog", index=True)
+    priority: Mapped[str] = mapped_column(String(8), default="none")  # urgent | high | medium | low | none
+    assignee_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    assignee_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    creator_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    creator_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    labels: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ids de IssueLabel
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pontos
+    position: Mapped[float] = mapped_column(Float, default=0.0)  # ordem dentro da coluna
+    routine_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # aberta por uma rotina
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IssueRelation(OrgScoped, Base):
+    __tablename__ = "issue_relations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    issue_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # blocks | related | duplicate
+    other_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class IssueComment(OrgScoped, Base):
+    """Comentário (markdown). Respostas ficam sob o primeiro da discussão, que pode ser resolvida. Menções:
+    @[Nome](employee:slug) aciona o Digital employee; @[Nome](user:id) avisa a pessoa."""
+    __tablename__ = "issue_comments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    issue_id: Mapped[int] = mapped_column(Integer, index=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    author_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    author_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body: Mapped[str] = mapped_column(Text, default="")
+    reactions: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"👍": [user ids]}
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str] = mapped_column(String(254), default="")
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a rodada que a escreveu (ou que ela acionou)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class IssueActivity(OrgScoped, Base):
+    __tablename__ = "issue_activity"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    issue_id: Mapped[int] = mapped_column(Integer, index=True)
+    actor: Mapped[str] = mapped_column(String(254), default="")  # e-mail, "employee:<slug>" ou "sistema"
+    actor_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class IssueSubscription(OrgScoped, Base):
+    __tablename__ = "issue_subscriptions"
+    __table_args__ = (UniqueConstraint("issue_id", "user_id", name="uq_issue_sub"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    issue_id: Mapped[int] = mapped_column(Integer, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

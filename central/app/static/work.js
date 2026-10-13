@@ -1,8 +1,8 @@
 /* O trabalho do dia a dia: caixa de entrada, busca, projetos, metas, orçamentos e a conversa da tarefa. */
 const GOAL_STATUS = { planned: ['Planejada', ''], active: ['Ativa', 'info'], achieved: ['Atingida', 'ok'], dropped: ['Abandonada', 'bad'] };
 const INBOX_VIEWS = { all: 'Tudo', unread: 'Não lidas', decisions: 'Decisões', blocked: 'Travadas', mine: 'Que eu pedi', archived: 'Arquivadas' };
-const INBOX_ICON = { decision: 'approve', task: 'briefcase', budget: 'wallet' };
-const SEARCH_KIND = { agent: 'Agentes', employee: 'Digital employees', task: 'Tarefas', project: 'Projetos', goal: 'Metas', plugin: 'Plugins', skill: 'Skills' };
+const INBOX_ICON = { decision: 'approve', task: 'briefcase', budget: 'wallet', issue: 'template' };
+const SEARCH_KIND = { agent: 'Agentes', employee: 'Digital employees', task: 'Tarefas', issue: 'Issues', project: 'Projetos', goal: 'Metas', plugin: 'Plugins', skill: 'Skills' };
 const BUDGET_SCOPE = { org: 'Empresa', team: 'Time', agent: 'Agente', project: 'Projeto' };
 const BUDGET_STATE = { ok: ['ok', 'ok'], warning: ['aviso', 'warn'], stopped: ['parado', 'bad'] };
 const goalPill = s => pillOf(GOAL_STATUS, s);
@@ -24,6 +24,7 @@ async function inboxPage() {
         <a href="${esc(i.url)}" class="ib-open">${i.kind === 'budget' ? `<b>${esc(window.t('Orçamento'))}:</b> ${scopeOf(i)}` : `<b data-noi18n>${esc(i.title)}</b>`}</a> ${i.unread ? '<span class="pill info">nova</span>' : ''}
         <div class="mute small">${i.kind === 'task' ? `${taskPill(i.status)} <span data-noi18n>${esc(i.employee_name || '')}</span>${i.requested ? ' · <span>você pediu</span>' : ''}`
           : i.kind === 'decision' ? `<span>Decisão</span> · <span data-noi18n>${esc(i.employee || '')}</span>${i.mine ? ' · <span>com você</span>' : ''}`
+          : i.kind === 'issue' ? `<span>Issue</span> · <span data-noi18n>${esc((i.actor || '').replace(/^employee:/, ''))}</span> · <span>${esc(window.t({ comment: 'comentou', mention: 'mencionou você', status: 'mudou o status', run_done: 'terminou uma rodada', run_failed: 'a rodada falhou', run_started: 'começou uma rodada', assignee: 'mudou o responsável', created: 'criou' }[i.activity] || 'atualizou'))}</span>`
           : `<span class="pill ${i.budget_kind === 'hard_stop' ? 'bad' : 'warn'}">${i.budget_kind === 'hard_stop' ? 'parado' : 'aviso'}</span>`} · <span>${when(i.at)}</span></div></span></span>
       <span class="row" style="gap:4px">${i.unread ? '<button class="ghost small ib-read">Lida</button>' : ''}
         <button class="ghost small ib-arch">${i.archived ? 'Desarquivar' : 'Arquivar'}</button></span></div>`).join('')}</div>`

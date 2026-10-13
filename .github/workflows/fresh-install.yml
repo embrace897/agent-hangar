@@ -1,0 +1,144 @@
+name: Fresh install (clean clone)
+
+# O caminho de quem chega agora: git clone da release, scripts/install.sh --answers com as imagens publicadas,
+# hangar doctor, hangar test-drive e os primeiros minutos no portal (login, Início, exemplo, MCP com o token
+# pessoal). Roda depois de cada "Release images", toda segunda (a última release continua instalando?) e à mão.
+on:
+  workflow_run:
+    workflows: ["Release images"]
+    types: [completed]
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag ou branch a clonar (vazio = a última release)"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fresh-install-${{ github.event.workflow_run.head_branch || inputs.ref || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      REPO: ${{ github.repository }}
+      DIR: ${{ github.workspace }}/clone
+    steps:
+      - name: Which version
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          REF="${INPUT_REF:-$RUN_REF}"
+          if [ -z "$REF" ]; then
+            REF=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/releases/latest" \
+              | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Instalando $REF do zero"
+      - name: Test tooling (only .github/ci from this repo)
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          sparse-checkout: .github/ci
+      - name: git clone, like anyone would
+        run: git clone --depth 1 --branch "${{ steps.ref.outputs.ref }}" "https://github.com/$REPO.git" "$DIR"
+      - name: Answers file
+        working-directory: clone
+        run: |
+          PW="Pw-$(openssl rand -hex 12)"
+          echo "::add-mask::$PW"
+          echo "ADMIN_PW=$PW" >> "$GITHUB_ENV"
+          DEMO=false
+          grep -q "def seed_demo" cli/hangar_cli/setup.py && DEMO=true   # a empresa de exemplo existe desde a 0.30
+          echo "DEMO=$DEMO" >> "$GITHUB_ENV"
+          cat > answers.yaml <<YAML
+          target: docker
+          images: published
+          port: 8090
+          exposure: {mode: local}
+          admin: {username: admin, password: "$PW"}
+          llm: {provider: none}       # sem chave: os agentes usam o modelo de teste (mock/echo)
+          memory: none
+          clients: [claude-code]
+          demo: $DEMO
+          YAML
+      - name: scripts/install.sh --answers (published images)
+        working-directory: clone
+        run: |
+          start=$(date +%s)
+          ./scripts/install.sh --answers answers.yaml
+          echo "### Instalação do zero: $(( $(date +%s) - start ))s até pronta" >> "$GITHUB_STEP_SUMMARY"
+      - name: Only the published images (nothing built on the machine)
+        working-directory: clone
+        run: |
+          V=$(grep '^HANGAR_VERSION=' .env | cut -d= -f2)
+          docker image ls --format '{{.Repository}}:{{.Tag}}' | sort | tee images.txt
+          if grep -E '^agent-hangar/' images.txt; then echo "imagem construída localmente: a instalação publicada não deveria construir nada"; exit 1; fi
+          grep -qx "ghcr.io/valteresj2/central:$V" images.txt
+      - name: hangar doctor
+        working-directory: clone
+        run: .hangar/venv/bin/hangar doctor --dir .
+      - name: hangar test-drive (team, Digital employee, probation, a task)
+        working-directory: clone
+        run: |
+          export HANGAR_URL=http://localhost:8090 HANGAR_TOKEN="$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-)"
+          .hangar/venv/bin/hangar test-drive
+      - name: The first minutes in the portal (login, home, example company, MCP)
+        working-directory: clone
+        run: |
+          FLAGS=""
+          [ "$DEMO" = true ] && FLAGS="--demo"
+          .hangar/venv/bin/python "$GITHUB_WORKSPACE/tools/.github/ci/fresh_install_check.py" . admin $FLAGS
+      - name: Logs on failure
+        if: failure()
+        working-directory: clone
+        run: |
+          docker compose ps -a || true
+          docker compose logs --tail 200 central || true
+
+  windows:
+    # Sem containers Linux no runner Windows: confere o instalador PowerShell (Python, venv, CLI, .env para as
+    # imagens publicadas) com --no-start, como o job do macOS no CI.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Which version
+        id: ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          REF="${INPUT_REF:-$RUN_REF}"
+          if [ -z "$REF" ]; then
+            REF=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+              | python -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+      - name: git clone
+        run: git clone --depth 1 --branch "${{ steps.ref.outputs.ref }}" "https://github.com/${{ github.repository }}.git" clone
+      - name: scripts\install.ps1 --answers --no-start
+        working-directory: clone
+        run: |
+          Set-Content -Encoding utf8 answers.yaml "target: docker`nimages: published`nport: 8090`nexposure: {mode: local}"
+          powershell -ExecutionPolicy Bypass -File scripts\install.ps1 --answers answers.yaml --no-start
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $envText = Get-Content .env -Raw
+          $version = ([regex]::Match((Get-Content central\app\config.py -Raw), '(?m)^VERSION = "([^"]+)"')).Groups[1].Value
+          if ($envText -notmatch "(?m)^HANGAR_REGISTRY=ghcr\.io/valteresj2\r?$") { throw "HANGAR_REGISTRY" }
+          if ($envText -notmatch "(?m)^HANGAR_VERSION=$([regex]::Escape($version))\r?$") { throw "HANGAR_VERSION" }
+          if ($envText -notmatch "(?m)^ADMIN_TOKEN=.{32,}") { throw "ADMIN_TOKEN" }
+          & .hangar\venv\Scripts\hangar.exe --version
+          "### Windows: install.ps1 pronto para as imagens publicadas $version" >> $env:GITHUB_STEP_SUMMARY
