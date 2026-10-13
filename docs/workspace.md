@@ -20,7 +20,7 @@ The portal shows only what belongs to the person, even when that person is an ad
 |---|---|
 | **Início** | Shows decisions waiting for you, your agents working right now (and on what), the tasks you asked for, and this month's cost. |
 | **Meus agentes** | Lists your personal agents and the team agents you manage. Each one shows its model, harness, level and specialists. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
-| **Organograma** | The visual org chart: cards with model, harness, level, status, manager and the current task. Drag a card onto another to change who it reports to (see below). The tree view is still under *List*. |
+| **Organograma** | Your own structure: you at the top (CEO if you are the company admin, Staff otherwise) and, below, your agents: the personal ones and the ones you manage or own. Each card shows model, harness, level, status and the current task, and who reports to whom is kept. Drag an agent onto another to change who it reports to; drop it on your own card to have it report directly to you. The company-wide org chart, with every team, is in the console. |
 | **Decisões** | Unchanged. |
 | **Caixa de entrada** | Unchanged. |
 | **Conectar minha IA** | Generates a personal key and gives the ready-made config for Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, VS Code and OpenCode (copy or download). Claude.ai and ChatGPT use OAuth, with no key. |

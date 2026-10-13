@@ -434,3 +434,5 @@ details.inline summary{cursor:pointer}
 .iss-swatch{display:inline-block;width:14px;height:14px;border-radius:4px}
 kbd{font:500 12px var(--f-mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 @media(max-width:860px){.iss-page{grid-template-columns:minmax(0,1fr)}.iss-side{position:static}.iss-props{grid-template-columns:repeat(2,minmax(0,1fr))}.iss-col{flex-basis:240px}}
+.oc-person{border-color:var(--mark);background:linear-gradient(180deg,var(--mark-soft),var(--panel) 70%);cursor:default}
+.oc-person-av{width:38px;height:38px;border-radius:50%;background:var(--tarmac);color:#fff;display:inline-flex;align-items:center;justify-content:center;font:600 16px var(--f-ui);object-fit:cover;flex-shrink:0}

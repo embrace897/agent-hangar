@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format follows
   - "Primeiros passos" are the person's own.
 
   Building and administration live in the console (`/ui`).
+- **The portal's org chart is the person's:** you at the top (CEO or Staff) and your agents below, with who reports to whom kept; drop an agent on your card to have it report directly to you (`GET /api/org-chart?mine=1`). The company-wide chart stays in the console.
 - **Membros** (console only) brings together people, invites, open sign-ins and how members sign in, and replaces *Usuários*. The portal (`/app`) shows each member only their own account.
 - An activation link (invite or *Meus acessos*) signs in right away, and the code leaves the address bar.
 

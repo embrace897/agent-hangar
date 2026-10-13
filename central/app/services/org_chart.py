@@ -83,8 +83,9 @@ def prompt_lines(db: Session, e: Employee, en: bool = False) -> str:
     return "\n".join(lines)
 
 
-def chart(db: Session, acc: Access, team: str | None = None) -> dict:
-    """Os Digital employees que a pessoa vê, com o chefe (agente) e o gestor (pessoa) de cada um."""
+def chart(db: Session, acc: Access, team: str | None = None, mine: bool = False) -> dict:
+    """Os Digital employees que a pessoa vê, com o chefe (agente) e o gestor (pessoa) de cada um. mine=True (o
+    organograma do portal): só os agentes da pessoa (pessoais, que ela gerencia ou de que é dona), com ela no topo."""
     from .employees import find
     q = select(Employee).where(Employee.status != "offboarded")
     if team:
@@ -97,6 +98,9 @@ def chart(db: Session, acc: Access, team: str | None = None) -> dict:
         a = db.get(Agent, e.agent_id)
         if a is None:
             continue
+        uid = acc.p.user_id
+        if mine and not (uid and (a.personal_owner_id == uid or uid in (e.manager_user_id, e.owner_user_id))):
+            continue
         try:
             find(db, acc, a.slug)
         except Exception:  # noqa: BLE001
@@ -105,7 +109,15 @@ def chart(db: Session, acc: Access, team: str | None = None) -> dict:
         nodes.append({"slug": a.slug, "name": a.name, "title": e.title, "status": e.status, "level": e.autonomy_level,
                       "team": teams.get(e.team_id), "manager": people.get(e.manager_user_id, ""),
                       "reports_to": _slug(db, chief), **card(db, acc, e, a, people)})
-    return {"nodes": nodes}
+    if not mine:
+        return {"nodes": nodes}
+    u = db.get(User, acc.p.user_id) if acc.p.user_id else None
+    slugs = {n["slug"] for n in nodes}
+    for n in nodes:  # o chefe fora do meu organograma: o agente fica direto abaixo de mim
+        if n["reports_to"] not in slugs:
+            n["reports_to"] = None
+    return {"nodes": nodes, "me": {"name": (u.name or u.email) if u else acc.p.name, "email": u.email if u else "",
+                                   "avatar_url": u.avatar_url if u else "", "role": "CEO" if acc.p.is_admin else "Staff"}}
 
 
 def card(db: Session, acc: Access, e: Employee, a: Agent, people: dict) -> dict:

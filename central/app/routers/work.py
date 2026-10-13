@@ -196,8 +196,8 @@ def message_discard(task_id: int, message_id: int, request: Request, db=Depends(
 
 # ------------------------------------------------------------------ organograma
 @router.get("/org-chart")
-def org_chart(request: Request, team: str | None = None, db=Depends(db_dep)):
-    return guard(lambda: svc.org_chart.chart(db, acc(request, db), team))
+def org_chart(request: Request, team: str | None = None, mine: bool = False, db=Depends(db_dep)):
+    return guard(lambda: svc.org_chart.chart(db, acc(request, db), team, mine))
 
 
 # ------------------------------------------------------------------ dependências, pausa e continuar

@@ -217,3 +217,15 @@ def test_portal_onboarding_is_the_members_even_for_admins(client):
     steps = [s["id"] for s in client.get("/api/onboarding", headers=ADMIN, params={"portal": 1}).json()["steps"]]
     assert steps[0] == "connect" and "issue" in steps and "team" not in steps and "budget" not in steps
     assert "budget" in [s["id"] for s in client.get("/api/onboarding", headers=ADMIN).json()["steps"]]  # o console segue
+
+
+def test_portal_org_chart_is_mine_with_me_on_top(client, env):
+    chief, sub = hire(client, env, name="Chefe"), hire(client, env, name="Sub")  # gestora: mgr
+    client.patch(f"/api/employees/{sub}", headers=env["h"]["own"], json={"reports_to": chief})
+    mine = client.get("/api/org-chart", headers=env["h"]["mgr"], params={"mine": 1}).json()
+    nodes = {n["slug"]: n for n in mine["nodes"]}
+    assert {chief, sub} <= set(nodes) and nodes[sub]["reports_to"] == chief and nodes[chief]["reports_to"] is None
+    assert mine["me"]["role"] == "Staff" and mine["me"]["email"] == env["em"]["mgr"]
+    assert all(n["slug"] not in (chief, sub) for n in client.get("/api/org-chart", headers=env["h"]["req"], params={"mine": 1}).json()["nodes"])
+    assert client.get("/api/org-chart", headers=ADMIN, params={"mine": 1}).json()["me"]["role"] == "CEO"
+    assert "me" not in client.get("/api/org-chart", headers=env["h"]["mgr"]).json()  # o console segue com o da empresa

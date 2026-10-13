@@ -62,7 +62,7 @@ const ASK_AI = () => window.LANG === 'en'
   : 'Crie um agente pessoal para mim no Agent Hangar (hire_employee com personal=true). Pergunte o que ele deve fazer, quais sistemas usa e quanta autonomia tem, e me mostre o resumo antes de contratar.';
 
 async function myAgentsPage() {
-  const [w, chart] = await Promise.all([api('/me/workspace'), api('/org-chart').catch(() => ({ nodes: [] }))]);
+  const [w, chart] = await Promise.all([api('/me/workspace'), api('/org-chart?mine=1').catch(() => ({ nodes: [] }))]);
   const card = Object.fromEntries((chart.nodes || []).map(n => [n.slug, n]));
   const list = (w.agents || []).map(a => ({ ...a, ...(card[a.slug] || {}), personal: a.personal, name: a.name }));
   const personal = list.filter(a => a.personal), team = list.filter(a => !a.personal);
@@ -94,9 +94,10 @@ async function myAgentsPage() {
 /* ---------- organograma visual (arrastar para mudar a quem reporta) ---------- */
 async function orgVisualPage() {
   const q = qsOf();
-  if (q.get('view') === 'tree') return orgChartPage();
-  const team = q.get('team') || '';
-  const d = await api('/org-chart' + (team ? `?team=${encodeURIComponent(team)}` : ''));
+  if (q.get('view') === 'tree' && !USER_MODE) return orgChartPage();
+  const team = USER_MODE ? '' : (q.get('team') || '');
+  // no portal, o organograma é o da pessoa: ela no topo (CEO ou Staff) e, abaixo, os agentes dela
+  const d = await api('/org-chart' + (USER_MODE ? '?mine=1' : team ? `?team=${encodeURIComponent(team)}` : ''));
   const by = Object.fromEntries(d.nodes.map(n => [n.slug, n]));
   const kids = {};
   d.nodes.forEach(n => { const p = n.reports_to && by[n.reports_to] ? n.reports_to : ''; (kids[p] = kids[p] || []).push(n); });
@@ -106,16 +107,28 @@ async function orgVisualPage() {
       <div class="mute small" data-noi18n>${esc(n.title || '')}</div>
       <div class="oc-chips">${modelChip(n)}${harnessChip(n.harness)}<span class="chip">${esc(LEVEL_LABEL[n.level] || n.level)}</span>${n.personal ? '<span class="pill info">pessoal</span>' : ''}</div>
       ${(n.specialists || []).length ? `<div class="oc-spec small">${n.specialists.map(s => `<span title="${esc(s.harness || '')}">${icon('bot')}<span data-noi18n>${esc(s.name)}</span></span>`).join('')}</div>` : ''}
-      <div class="mute small">${n.manager ? `${PERSON_IC(n.manager)} <span data-noi18n>${esc(n.manager)}</span>` : ''}</div>
+      ${!USER_MODE && n.manager ? `<div class="mute small">${PERSON_IC(n.manager)} <span data-noi18n>${esc(n.manager)}</span></div>` : ''}
       ${workingChip(n.working_on)}</div>
     ${(kids[n.slug] || []).length ? `<ul>${kids[n.slug].map(node).join('')}</ul>` : ''}</li>`;
-  main.innerHTML = `<div class="row between"><div><h1>Organograma</h1><div class="sub">Arraste um agente para cima de outro para mudar a quem ele reporta. Se você não gerencia o agente, vira uma proposta para quem gerencia decidir.</div></div>
-    <div class="row"><select id="oc-team" style="width:auto"><option value="">${window.t('Todos os times')}</option>${teams.map(t => `<option ${t === team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-      <a href="#/org?view=tree${team ? `&team=${encodeURIComponent(team)}` : ''}" class="small">Lista</a></div></div>
-  ${d.nodes.length ? `<div class="oc-root" id="oc-root">Solte aqui para não reportar a ninguém</div>
-    <div class="card oc-wrap"><ul class="oc-tree">${(kids[''] || []).map(node).join('')}</ul></div>`
+  const me = d.me;
+  const top = (kids[''] || []).map(node).join('');
+  const meCard = me ? `<li><div class="oc-card oc-person" id="oc-root" tabindex="0">
+      <div class="row" style="gap:10px">${me.avatar_url ? `<img class="oc-person-av" src="${esc(me.avatar_url)}" alt="" referrerpolicy="no-referrer">` : `<span class="oc-person-av">${esc((me.name || '?')[0].toUpperCase())}</span>`}
+        <div><b data-noi18n>${esc(me.name)}</b><div class="mute small"><span class="pill ${me.role === 'CEO' ? 'warn' : 'info'}">${esc(me.role)}</span> <span>você</span></div></div></div>
+      <div class="mute small">${d.nodes.length} <span>agente(s) seu(s)</span> · <span>solte um agente aqui para ele reportar direto a você</span></div></div>
+    ${top ? `<ul>${top}</ul>` : ''}</li>` : '';
+  main.innerHTML = `<div class="row between"><div><h1>Organograma</h1><div class="sub">${USER_MODE
+      ? 'Você no topo e, abaixo, os seus agentes (os pessoais e os que você gerencia). Arraste um agente para cima de outro para mudar a quem ele reporta.'
+      : 'Arraste um agente para cima de outro para mudar a quem ele reporta. Se você não gerencia o agente, vira uma proposta para quem gerencia decidir.'}</div></div>
+    ${USER_MODE ? '' : `<div class="row"><select id="oc-team" style="width:auto"><option value="">${window.t('Todos os times')}</option>${teams.map(t => `<option ${t === team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+      <a href="#/org?view=tree${team ? `&team=${encodeURIComponent(team)}` : ''}" class="small">Lista</a></div>`}</div>
+  ${me ? `<div class="card oc-wrap"><ul class="oc-tree">${meCard}</ul></div>
+    ${d.nodes.length ? '' : '<div class="card empty mt"><div class="mute">Você ainda não tem agentes. Crie um em <a href="#/mine">Meus agentes</a> (ou peça para a sua IA): ele aparece aqui, abaixo de você.</div></div>'}`
+    : d.nodes.length ? `<div class="oc-root" id="oc-root">Solte aqui para não reportar a ninguém</div>
+    <div class="card oc-wrap"><ul class="oc-tree">${top}</ul></div>`
     : '<div class="card empty"><div class="mute">Nenhum Digital employee visível.</div></div>'}`;
-  $('#oc-team').onchange = () => { location.hash = '#/org' + ($('#oc-team').value ? `?team=${encodeURIComponent($('#oc-team').value)}` : ''); };
+  const ts = $('#oc-team');
+  if (ts) ts.onchange = () => { location.hash = '#/org' + (ts.value ? `?team=${encodeURIComponent(ts.value)}` : ''); };
   let dragged = '';
   const move = async (slug, to) => {
     const n = by[slug];
