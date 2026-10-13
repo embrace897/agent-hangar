@@ -88,7 +88,7 @@ async function issuesPage(mine = false) {
       ${f.view === 'swim' ? `<label class="small row" style="gap:6px">Raias<select id="if-lane" style="width:auto">${Object.entries(ISS_LANES).map(([k, v]) => `<option value="${k}" ${f.lane === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
       <input id="iss-q" type="search" placeholder="Buscar… ( / )" value="${esc(f.q)}" style="width:180px">
       <span class="mute small"><b>${list.length}</b> <span>issues</span></span>
-      <a href="#/issues/settings" class="ghost small btnlike" title="${esc(window.t('Configurar o quadro'))}">${icon('userCog')}</a>
+      ${!USER_MODE && ME.is_admin ? `<a href="#/issues/settings" class="ghost small btnlike" title="${esc(window.t('Configurar o quadro'))}">${icon('userCog')}</a>` : ''}
       <button id="iss-new">${icon('plus')}<span>Nova issue</span></button></div></div>
   <div id="iss-body"></div>`;
   const draw = rows => { $('#iss-body').innerHTML = issRender(f, rows, st); issBind(f, rows, base); };

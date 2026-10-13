@@ -21,6 +21,13 @@ All notable changes to this project are documented here. The format follows
 - **API-key nudge:** without an LLM provider, the console and portal home pages say the agents are in test mode and link to *Provedores de LLM*; `hangar setup` says so too.
 
 ### Changed
+- **The portal (`/app`) shows only what belongs to the person**, even for admins:
+  - nine menu items; the *Avançado* toggle is gone;
+  - other routes go back to Início;
+  - search covers only issues, Digital employees and tasks;
+  - "Primeiros passos" are the person's own.
+
+  Building and administration live in the console (`/ui`).
 - **Membros** (console only) brings together people, invites, open sign-ins and how members sign in, and replaces *Usuários*. The portal (`/app`) shows each member only their own account.
 - An activation link (invite or *Meus acessos*) signs in right away, and the code leaves the address bar.
 

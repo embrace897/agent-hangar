@@ -61,7 +61,7 @@ async function searchPage() {
   $('#sq-go').onclick = go;
   $('#sq').onkeydown = e => { if (e.key === 'Enter') go(); };
   if (q.length < 2) return;
-  const r = await api('/search?q=' + encodeURIComponent(q));
+  const r = await api('/search?q=' + encodeURIComponent(q) + (USER_MODE ? '&kinds=issue,employee,task' : ''));  // no portal, só o que é da pessoa
   const groups = {};
   r.items.forEach(x => (groups[x.kind] = groups[x.kind] || []).push(x));
   $('#sr').innerHTML = r.items.length ? Object.entries(groups).map(([k, xs]) => `<div class="card mt"><h2>${esc(SEARCH_KIND[k] || k)} (${xs.length})</h2>

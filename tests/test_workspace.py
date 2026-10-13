@@ -211,3 +211,9 @@ def test_admin_invites_a_member_by_email(client, env, monkeypatch):
         assert r4["link"].endswith("/app/") and r4["expires_at"] is None
     finally:
         client.put("/api/workspace/policy", headers=ADMIN, json={"login": {"activation": True}})
+
+
+def test_portal_onboarding_is_the_members_even_for_admins(client):
+    steps = [s["id"] for s in client.get("/api/onboarding", headers=ADMIN, params={"portal": 1}).json()["steps"]]
+    assert steps[0] == "connect" and "issue" in steps and "team" not in steps and "budget" not in steps
+    assert "budget" in [s["id"] for s in client.get("/api/onboarding", headers=ADMIN).json()["steps"]]  # o console segue

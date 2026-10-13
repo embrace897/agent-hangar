@@ -47,7 +47,7 @@ function uxBanner() {
 }
 
 async function uxOnboarding() {
-  const o = await api('/onboarding').catch(() => null);
+  const o = await api('/onboarding' + (USER_MODE ? '?portal=1' : '')).catch(() => null);
   if (!o || o.hidden || o.complete || !location.hash.match(/^#?\/?$/)) return;
   const card = document.createElement('div');
   card.className = 'card ux-onb';

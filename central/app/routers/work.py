@@ -423,8 +423,8 @@ def search(request: Request, q: str = "", kinds: str = "", limit: int = 30, db=D
 
 # ------------------------------------------------------------------ primeiros passos, avisos e ao vivo
 @router.get("/onboarding")
-def onboarding(request: Request, db=Depends(db_dep)):
-    return guard(lambda: svc.ux.onboarding(db, acc(request, db)))
+def onboarding(request: Request, portal: bool = False, db=Depends(db_dep)):
+    return guard(lambda: svc.ux.onboarding(db, acc(request, db), portal))
 
 
 class HideBody(BaseModel):

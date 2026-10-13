@@ -29,14 +29,18 @@ ALLOW = re.compile(r"^(e2e|E2E|https?://|[\w.-]+@[\w.-]+$)")
 DATA_ENDPOINTS = ["/api/agents", "/api/users", "/api/keys", "/api/catalog", "/api/templates", "/api/employees",
                   "/api/plugins", "/api/teams", "/api/remote-mcps", "/api/connect", "/api/deployments", "/api/tests",
                   "/api/usage", "/api/schedules", "/api/oauth/clients"]
-PAGES_APP = ["", "live", "announcements", "inbox", "search?q=e2e", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "calculators/_nova", "work", "queues", "playbooks", "playbooks/_novo", "meetings", "message-templates", "knowledge", "procedures", "governance", "memos", "watchers", "learning", "value", "tickets", "learned", "agents", "agents/catalog", "agents/new", "approvals",
-             "employees", "employees/new", "manager", "decisions", "overview", "mine", "org?view=tree", "connect-ai", "access",
-             "employees/new?personal=1", "issues", "my-issues", "issues?view=list", "issues?view=table",
-             "issues?view=swim", "issues?view=timeline", "issues/settings",
-             "templates", "catalog", "plugins", "plugins/new", "connect", "keys", "usage", "teams", "audit"]
-PAGES_UI = ["", "live", "announcements", "inbox", "projects", "goals", "budgets", "files", "org", "skills", "packages", "secrets", "orgs", "extraction", "calculators", "agents", "approvals", "workforce/overview", "workforce/brand", "workforce/calendar", "workforce/catalog", "workforce/floor", "workforce/notify",
-            "decisions", "templates", "catalog", "plugins", "providers", "connect", "deployments", "tests", "usage",
-            "audit", "teams", "keys", "sso", "members", "members/access", "members/policy"]
+PAGES_APP = ["", "inbox", "search?q=e2e", "org", "employees/new", "decisions", "mine", "org?view=tree",
+             "connect-ai", "access", "employees/new?personal=1", "issues", "my-issues", "issues?view=list",
+             "issues?view=table", "issues?view=swim", "issues?view=timeline", "keys"]
+PAGES_UI = ["", "live", "announcements", "inbox", "projects", "goals", "budgets", "files", "org", "skills", "packages",
+            "secrets", "orgs", "extraction", "calculators", "agents", "approvals", "workforce/overview",
+            "workforce/brand", "workforce/calendar", "workforce/catalog", "workforce/floor",
+            "workforce/notify", "decisions", "templates", "catalog", "plugins", "providers", "connect",
+            "deployments", "tests", "usage", "audit", "teams", "keys", "sso", "members", "members/access",
+            "members/policy", "calculators/_nova", "work", "queues", "playbooks", "playbooks/_novo",
+            "meetings", "message-templates", "knowledge", "procedures", "governance", "memos", "watchers",
+            "learning", "value", "tickets", "learned", "agents/catalog", "agents/new", "employees", "manager",
+            "overview", "issues/settings", "plugins/new"]
 
 LEFTOVERS_JS = """() => {
   const SKIP = 'script,style,code,pre,textarea,input,select,[data-noi18n],.msg,.run-out,.chat,.md';
@@ -150,7 +154,7 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
         f"/app/#/agents/{made['agent']}", f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
         f"/app/#/employees/{made['employee']}/routines",
-        f"/app/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}"]
+        f"/ui/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}"]
     with sync_playwright() as p:
         b = p.chromium.launch()
         ctx = b.new_context(viewport={"width": 1440, "height": 1000})

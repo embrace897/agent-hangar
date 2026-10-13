@@ -2,21 +2,6 @@
    arrastar-e-soltar, conectar a minha IA (MCP da plataforma), meus acessos — e, para o admin, a política de acesso
    dos membros. Usa os helpers de app.js ($, api, esc, act, toast, ME…). */
 
-const ADV_KEY = 'hangar_nav_adv';
-const advOn = () => { try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; } };
-
-/* ---------- menu: o essencial, e o resto atrás de "Avançado" ---------- */
-function memberNavSync(key) {
-  const adv = $('#nav-adv'), btn = $('#nav-adv-btn');
-  if (!adv || !btn) return;
-  const inAdv = [...adv.querySelectorAll('a')].some(a => a.dataset.r === key && key !== '');
-  const open = advOn() || inAdv;
-  adv.hidden = !open;
-  btn.textContent = window.t(open ? 'Menos opções' : 'Avançado');
-  btn.setAttribute('aria-expanded', String(open));
-  btn.onclick = () => { try { localStorage.setItem(ADV_KEY, advOn() ? '0' : '1'); } catch (e) { /* ok */ } memberNavSync(key); };
-}
-
 const PERSON_IC = n => `<span class="av">${esc(((n || '?')[0] || '?').toUpperCase())}</span>`;
 const workingChip = w => w ? `<a class="chip work-on" href="#/tasks/${w.id}"><i class="dot-live"></i><span>trabalhando em</span> <span data-noi18n>${esc(w.title)}</span></a>` : '';
 const modelChip = n => n.model ? `<span class="chip" title="${esc(n.connection || '')}">${icon('chip')}<span data-noi18n>${esc(n.model)}</span></span>` : '';
@@ -61,15 +46,14 @@ async function memberHome() {
         : '<div class="mute">Nenhum dos seus agentes está numa tarefa agora.</div>'}</div>
   </div>
   <div class="grid g2 mt">
-    <div class="card"><div class="row between"><h2>Minhas tarefas</h2><a href="#/work" class="small">Meu trabalho →</a></div>
+    <div class="card"><div class="row between"><h2>Minhas tarefas</h2><a href="#/my-issues" class="small">Minhas issues →</a></div>
       ${(w.my_tasks || []).length ? `<table class="small">${w.my_tasks.map(t => `<tr><td><a href="#/tasks/${t.id}" data-noi18n>${esc(t.title)}</a></td><td>${pill(t.status)}</td><td class="mute">${when(t.created_at)}</td></tr>`).join('')}</table>`
         : '<div class="mute">Você ainda não pediu tarefas aos agentes. Peça pela página do agente ou pela sua IA conectada.</div>'}</div>
     <div class="card"><div class="row between"><h2>Meus agentes</h2><a href="#/mine" class="small">Ver todos →</a></div>
       ${(w.agents || []).length ? `<ul class="list">${w.agents.slice(0, 6).map(a => `<li><a href="#/employees/${esc(a.slug)}"><b data-noi18n>${esc(a.name)}</b></a>
         ${a.personal ? '<span class="pill info">pessoal</span>' : ''} ${empPill(a.status)}</li>`).join('')}</ul>`
         : `<div class="mute">Nenhum agente seu ainda.</div>${w.personal_allowed ? '<a href="#/employees/new?personal=1" class="small">Criar o primeiro →</a>' : ''}`}</div>
-  </div>
-  <div class="mute small mt"><a href="#/overview">Painel completo (agentes do hangar, chamadas e produção) →</a></div>`;
+  </div>`;
 }
 
 /* ---------- meus agentes ---------- */

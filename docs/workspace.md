@@ -9,7 +9,12 @@ Cursor, Gemini, VS Code, OpenCode) keeps connecting through the platform MCP, ex
 
 ## What the member sees
 
-The menu shows the essentials. **Advanced** reveals everything else, and the choice is remembered per browser.
+The portal shows only what belongs to the person, even when that person is an admin:
+- The menu has nine items: Início, Minhas issues, Issues, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos.
+- Everything else (building agents, catalog, plugins, queues, budgets, teams, governance…) is in the console (`/ui`), for admins.
+- In the portal, other addresses go back to Início. Projects, agents, Digital employees and tasks open only as a detail page, from a link.
+- The global search only returns issues, Digital employees and tasks.
+- "Primeiros passos" are the person's own: connect your AI, create a personal agent, create the first issue, choose where you get decisions.
 
 | Page | What it does |
 |---|---|
@@ -25,7 +30,6 @@ Dragging on the org chart:
 - If you manage the agent, the change is saved.
 - If you don't, it becomes an `org_change` proposal. The agent's manager decides it in *Decisões*.
 
-The previous home page (agents, calls, production) is still there as **Painel completo** (`#/overview`).
 
 ## Signing in
 

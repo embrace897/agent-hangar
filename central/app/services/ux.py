@@ -36,11 +36,24 @@ def _channel_on(db) -> bool:
 
 
 # ------------------------------------------------------------------ primeiros passos
-def onboarding(db, acc: Access) -> dict:
-    """Os próximos passos de quem está começando: os da empresa (admin) ou os da pessoa. Some quando tudo está feito
-    ou quando a pessoa esconde."""
+def onboarding(db, acc: Access, portal: bool = False) -> dict:
+    """Os próximos passos de quem está começando: os da empresa (admin, no console) ou os da pessoa (no portal, mesmo
+    para o admin). Some quando tudo está feito ou quando a pessoa esconde."""
     p, u = acc.p, (db.get(User, acc.p.user_id) if acc.p.user_id else None)
-    if p.is_admin:
+    if portal:
+        from ..models import Issue
+        from .workspace import policy
+        uid = p.user_id or 0
+        steps = [
+            ("connect", "Conectar a sua IA (Claude, ChatGPT, Codex…)", _n(db, ApiKey, ApiKey.user_id == uid,
+                                                                          ApiKey.revoked_at.is_(None)) > 0, "#/connect-ai"),
+            ("issue", "Criar a primeira issue", _n(db, Issue, Issue.creator_user_id == uid) > 0, "#/issues"),
+            ("decisions", "Escolher onde recebe as decisões", bool(u and (u.notify or {}).get("channel")), "#/decisions"),
+        ]
+        if policy(db)["personal_agents"]["enabled"]:
+            steps.insert(1, ("personal", "Criar um agente pessoal", _n(db, Agent, Agent.personal_owner_id == uid) > 0,
+                             "#/employees/new?personal=1"))
+    elif p.is_admin:
         steps = [
             ("llm", "Conectar um modelo de IA", _n(db, LlmConnection) > 0 or not config.DEFAULT_MODEL.startswith("mock/"),
              "#/catalog"),

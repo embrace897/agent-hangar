@@ -980,13 +980,18 @@ async function auditPage() {
 }
 
 /* ---------- roteamento ---------- */
+/* O portal (/app) é da pessoa: Início, issues, os agentes dela, organograma, decisões, caixa de entrada, conectar a IA,
+   acessos — e as páginas que esses abrem (agente, tarefa, chaves, busca, consentimentos). O resto é do console (/ui). */
+const PORTAL_ROUTES = ['', 'my-issues', 'issues', 'mine', 'org', 'decisions', 'inbox', 'connect-ai', 'access', 'employees',
+  'tasks', 'keys', 'search', 'agents', 'projects', 'oauth', 'vscode', 'login'];
+const PORTAL_DETAIL_ONLY = ['agents', 'projects', 'employees', 'tasks'];  // no portal, só a página de um (aberta por um link)
 async function route() {
   const [, r = '', a, b] = location.hash.split('?')[0].split('/');  // #/catalog?remote_ok=x -> catalog
   if (r === 'login' || !ME) return;
+  if (USER_MODE && (!PORTAL_ROUTES.includes(r) || (PORTAL_DETAIL_ONLY.includes(r) && !a))) { location.replace('#/'); return; }  // o portal mostra só o que é da pessoa
   const navKey = r === 'agents' && ['catalog', 'new'].includes(a) ? `agents/${a}` : r;
   const links = [...document.querySelectorAll('nav a')], key = links.some(x => x.dataset.r === navKey) ? navKey : r;
   links.forEach(x => x.classList.toggle('on', x.dataset.r === key));
-  if (USER_MODE) memberNavSync(key);
   try {
     if (r === 'agents' && a === 'new') await newAgentPage();
     else if (r === 'agents' && a === 'catalog') await agentsPage('catalog');
@@ -1002,7 +1007,7 @@ async function route() {
     else if (r === 'goals') await goalsPage();
     else if (r === 'budgets') await budgetsPage();
     else if (r === 'files') await filesPage();
-    else if (r === 'issues' && a === 'settings') await issueSettingsPage();
+    else if (r === 'issues' && a === 'settings') { if (USER_MODE) { location.replace('#/issues'); return; } await issueSettingsPage(); }
     else if (r === 'issues' && a) await issueDetail(decodeURIComponent(a));
     else if (r === 'issues') await issuesPage(false);
     else if (r === 'my-issues') await issuesPage(true);

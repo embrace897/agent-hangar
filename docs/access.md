@@ -77,7 +77,7 @@ agents.
 
 | Address | For | What it has |
 |---|---|---|
-| `/app/`, the user portal | Everyone who is not a platform admin | The **Início** page and the day-to-day menus |
+| `/app/`, the user portal | Everyone (admins too, when they open it) | Only what belongs to the person: Início, issues, their agents, org chart, decisions, inbox, connect their AI, sign-ins |
 | `/ui/`, the admin console | Platform admins only | Everything, including LLM providers, SSO/SCIM, deployments and tests across the company |
 
 The **Início** page is one screen with, in this order:
@@ -91,12 +91,9 @@ The **Início** page is one screen with, in this order:
 7. **Agent memory:** which of your agents remember, with a link to see or delete what was kept.
 8. **What's new** in the company catalog.
 
-**Other menus in the portal:**
-- *Meus agentes*, *Catálogo da empresa*, *Pedidos e aprovações*, *Conectar ferramentas*, *Minhas chaves*,
-  *Uso e custo* and *Meus times*.
-- Developers and maintainers also get *Novo agente*, *Templates* and *Skills e MCPs*.
-- Auditors also get *Auditoria*.
-- People are managed only in the console, in **Membros** (admins): see [workspace.md](workspace.md#admin-members).
+**The portal's menu** has only the person's own items: *Início, Minhas issues, Issues, Meus agentes, Organograma,
+Decisões, Caixa de entrada, Conectar minha IA, Meus acessos* — the same for admins. Building agents, the catalog, plugins,
+queues, budgets, teams, audit and **Membros** are in the console (`/ui`). See [workspace.md](workspace.md).
 
 **How `/ui/` is kept admin-only:**
 - A signed-in non-admin who opens `/ui/` is redirected to `/app/`, by the server and again by the page.
@@ -109,7 +106,7 @@ so non-admins never see it; admins return at `/ui/`.
 The data comes from `GET /api/me/home`, already filtered by the caller's permissions.
 
 > Since the member workspace, the portal opens on a simpler **Início** (decisions, agents working now, my tasks, month
-> cost), and this page is **Painel completo** under *Avançado*. See [workspace.md](workspace.md).
+> cost), and the builder pages (this one included) live in the console. See [workspace.md](workspace.md).
 
 ## Signing in
 
