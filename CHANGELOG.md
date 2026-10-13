@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-10-13
+
 ### Changed
 - **Console menu by subject:** 13 items instead of 46.
   - Each item groups the pages of one subject in tabs on top (Painel, Caixa de entrada, Issues, Agentes, Digital employees, Trabalho, Projetos, Capacidades, Conhecimento, Valor e custo, Auditoria, Pessoas e times, Configurações) and opens the last tab used.
