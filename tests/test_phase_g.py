@@ -397,3 +397,21 @@ def test_knowledge_source_can_be_removed_by_who_maintains_it(client, env):
     assert all(s["name"] != src for s in client.get("/api/knowledge/sources", headers=ADMIN).json())
     with SessionLocal() as db:
         assert not knowledge.search(db, "zq9", who, 5)
+
+
+def test_knowledge_search_has_a_brake_against_reformulation_loops(client, env, rt):
+    """Depois de SEARCH_LIMIT buscas na mesma tarefa, a ferramenta manda responder com o que tem (ou perguntar)."""
+    from app.services import employee_tasks as tm
+    from app.services import knowledge, platform_tools
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    tid = assign(client, env, slug, "uma pergunta qualquer")
+    with SessionLocal() as db:
+        a = _agent(db, slug)
+        for i in range(knowledge.SEARCH_LIMIT):
+            r = platform_tools.run(db, a, tid, "search_knowledge", {"query": f"variação {i}"})
+            assert "Não busque de novo" not in r["result"]
+        r = platform_tools.run(db, a, tid, "search_knowledge", {"query": "mais uma variação"})
+        assert "Não busque de novo" in r["result"] and "ask_human" in r["result"]
+        assert db.query(tm.TaskEvent).filter_by(task_id=tid, kind="knowledge").count() == knowledge.SEARCH_LIMIT
+

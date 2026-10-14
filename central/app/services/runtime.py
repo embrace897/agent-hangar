@@ -92,7 +92,7 @@ def refresh_deployments(db: Session, agents=None):
         for d in a.deployments:
             if d.status == "running":
                 st = live.get(deploy.container_name(a.slug, d.env), "missing")
-                if st != "running":
+                if st not in ("running", "hibernated"):  # hibernado: o stage ocioso parado de propósito
                     d.status = "missing" if st == "missing" else "exited"
                     d.stopped_at = now()
                     changed = True

@@ -116,9 +116,14 @@ def states(max_age=3.0) -> dict | None:
         found = client().containers.list(all=True, filters={"label": "central.agent"})
     except Exception:
         return None
-    data = {c.name: c.status for c in found}
+    data = {c.name: ("hibernated" if _hibernated(c) else c.status) for c in found}
     _states_cache = (time.monotonic(), data)
     return data
+
+
+def _hibernated(c) -> bool:
+    """Parado de propósito (stage ocioso): saiu limpo, código 0. Uma queda sai com outro código e segue "exited"."""
+    return c.status == "exited" and str(c.attrs.get("Status", "")).startswith("Exited (0)")
 
 
 def invalidate_states():
@@ -134,12 +139,85 @@ def state(slug: str, env: str) -> str:
     return s.get(container_name(slug, env), "missing")
 
 
-def stop_agent(slug: str, env: str):
+def stop_agent(slug: str, env: str, remove_data: bool = False):
+    """Tira o agente do ar. remove_data: apaga também o volume de dados (o agente foi excluído) — sem isso, cada
+    agente apagado deixava dois volumes órfãos para trás."""
+    name = container_name(slug, env)
     try:
-        client().containers.get(container_name(slug, env)).remove(force=True)
+        client().containers.get(name).remove(force=True)
     except docker.errors.NotFound:
         pass
+    if remove_data:
+        try:
+            client().volumes.get(f"{name}-data").remove(force=True)
+        except docker.errors.NotFound:
+            pass
+        except docker.errors.APIError:  # ainda em uso por um container que está saindo: fica para o próximo
+            pass
     invalidate_states()
+
+
+# ------------------------------------------------------------------ hibernação do stage ocioso
+# O stage só é usado em testes, na experiência, no modo sombra e no playground: parado depois de STAGE_IDLE_MIN sem uso,
+# acorda sozinho na próxima chamada (ensure_up). O prod nunca hiberna.
+_LAST_USE: dict[str, float] = {}
+_SHARED_AT: dict[str, float] = {}
+
+
+def touch(name: str):
+    """Uso do ambiente: na memória e (no máximo uma vez por minuto) no estado compartilhado entre réplicas."""
+    now_ = time.monotonic()
+    _LAST_USE[name] = now_
+    if now_ - _SHARED_AT.get(name, -1e9) < 60:
+        return
+    _SHARED_AT[name] = now_
+    try:
+        from . import shared
+        shared.put(f"stageuse:{name}", {"at": time.time()}, max(60.0, config.STAGE_IDLE_MIN * 60))
+    except Exception:  # noqa: BLE001 — sem banco agora: vale o uso local
+        pass
+
+
+def idle(name: str, idle_s: float) -> bool:
+    """Sem uso há idle_s nesta réplica (o primeiro visto conta a partir de agora) e em nenhuma outra."""
+    now_ = time.monotonic()
+    if now_ - _LAST_USE.setdefault(name, now_) < idle_s:
+        return False
+    try:
+        from . import shared
+        return shared.get(f"stageuse:{name}") is None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def ensure_up(slug: str, env: str, timeout=90) -> str | None:
+    """Antes de chamar o agente: se o ambiente hibernou, sobe de novo e espera ficar saudável. None = no ar."""
+    name = container_name(slug, env)
+    touch(name)
+    if (states() or {}).get(name) != "hibernated":
+        return None
+    try:
+        client().containers.get(name).start()
+    except Exception as e:  # noqa: BLE001
+        return f"não consegui acordar {name}: {e}"
+    invalidate_states()
+    return wait_healthy(slug, env, timeout)
+
+
+def hibernate_idle(idle_s: float) -> list[str]:
+    """Para os stages sem uso há idle_s segundos em todas as réplicas."""
+    out = []
+    for name, st in (states(max_age=0) or {}).items():
+        if not name.endswith("-stage") or st != "running" or not idle(name, idle_s):
+            continue
+        try:
+            client().containers.get(name).stop(timeout=10)
+            out.append(name)
+        except Exception:  # noqa: BLE001 — tenta de novo na próxima volta
+            continue
+    if out:
+        invalidate_states()
+    return out
 
 
 # ------------------------------------------------------------------ jobs (agentes com harness)
@@ -266,6 +344,8 @@ if config.RUNTIME_BACKEND == "kubernetes":
     invalidate_states = _k8s.invalidate_states
     state = _k8s.state
     stop_agent = _k8s.stop_agent
+    ensure_up = _k8s.ensure_up
+    hibernate_idle = _k8s.hibernate_idle
     run_job_container = _k8s.run_job_container
     job_logs = _k8s.job_logs
     remove_job_container = _k8s.remove_job_container

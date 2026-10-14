@@ -169,6 +169,7 @@ def eval_chat(token: str, body: dict):
     e = svc.code_eval.session(token)
     if not e:
         raise HTTPException(404, "avaliação inexistente ou encerrada")
+    deploy.ensure_up(e["slug"], "stage")
     r = httpx.post(f"{deploy.internal_url(e['slug'], 'stage')}/v1/chat/completions", timeout=300,
                    headers={"X-Channel": "code-eval", "X-Session-Id": f"eval-{token[:10]}", "X-Progress": "off"},
                    json={**body, "stream": False})

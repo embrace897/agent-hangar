@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import httpx
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from .. import config, deploy, tenancy
@@ -29,7 +29,17 @@ from .usage import record_usage
 
 log = logging.getLogger("hangar.employees")
 WAIT_MARK = re.compile(r"^\[\[HANGAR_WAITING:(\d+)\]\]\s*", re.S)
-CONTINUE_MARK = re.compile(r"^\[\[HANGAR_CONTINUE\]\]\s*", re.S)  # passos da rodada esgotados: segue numa nova
+CONTINUE_MARK = re.compile(r"^\[\[HANGAR_CONTINUE\]\]\s*", re.S)
+# a "resposta final" que só anuncia o próximo passo ("vou trocar o filtro…", "let me check…"): o modelo parou no meio
+ANNOUNCED = re.compile(r"(?:\b(?:vou|irei|vamos|deixa eu|deixe-me|agora vou|em seguida vou|a seguir vou|vou tentar)\b"
+                       r"|\b(?:i will|i'll|let me|next,? i(?:'ll| will))\b)[^.!?\n]{0,160}[.:…!]?\s*$", re.I)
+MAX_NUDGES = 2
+
+
+def announced_only(content: str, used_tools: bool) -> bool:
+    """A resposta termina anunciando uma ação que não foi feita (curta, depois de usar ferramentas na rodada)."""
+    text = (content or "").strip()
+    return used_tools and 0 < len(text) <= 600 and bool(ANNOUNCED.search(text[-260:]))  # passos da rodada esgotados: segue numa nova
 JOB_MARK = re.compile(r"\[job #(\d+)")  # resultado de um job de código (runtime: _a2a_call)
 TERMINAL = ("done", "failed", "cancelled", "expired")
 BLOCKING = ("approval", "question", "capability", "plan", "review_fields", "doc_change", "message")  # pausam a tarefa até alguém decidir
@@ -813,6 +823,7 @@ def _run_task(task_id: int) -> EmployeeTask | None:
     t0 = now()
     data, err = None, ""
     try:
+        deploy.ensure_up(slug, env)  # stage hibernado (experiência, modo sombra): acorda antes da rodada
         with HTTP() as http:
             resp = http.post(deploy.internal_url(slug, env) + "/v1/chat/completions",
                              headers={"X-Channel": "employee", "X-Hangar-Task": str(task_id),
@@ -883,6 +894,17 @@ def _run_task(task_id: int) -> EmployeeTask | None:
         if task_thread.pending(db, task):  # chegou mensagem durante a rodada: mais uma rodada antes de encerrar
             task.status = "new"
             event(db, task, "note", {"continue": "mensagem nova na conversa"})
+            db.commit()
+            return task
+        nudges = db.scalar(select(func.count()).select_from(TaskEvent).where(
+            TaskEvent.task_id == task.id, TaskEvent.kind == "nudge")) or 0
+        if nudges < MAX_NUDGES and announced_only(content, bool(data.get("x_trace"))):
+            # parou anunciando o próximo passo: mais uma rodada, com o lembrete na conversa (no máximo MAX_NUDGES)
+            checkpoint(db, task, messages + [{"role": "user", "content": (
+                "Você anunciou o próximo passo mas encerrou sem executá-lo. Continue agora: chame a ferramenta necessária "
+                "ou, se o trabalho já terminou, responda com o resultado final completo.")}])
+            event(db, task, "nudge", {"why": "anunciou o próximo passo sem executar", "said": content[-200:]})
+            task.status = "new"
             db.commit()
             return task
         from . import task_flow

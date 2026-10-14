@@ -1,0 +1,156 @@
+{{- /* Ferramentas do analista no cluster: Data Studio (análise de dados, PPTX, dashboards; o código roda em processos
+   isolados dentro do próprio pod — sandbox "process") e o navegador governado (Playwright; só a central fala com ele).
+   Os downloads do Data Studio saem pela central, em <publicUrl>/ds/f/… (link assinado). */ -}}
+{{- $full := include "hangar.fullname" . -}}
+{{- if .Values.dataStudio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-data-studio
+  labels: {{- include "hangar.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "hangar.selector" . | nindent 4 }}
+    app.kubernetes.io/component: data-studio
+  ports:
+    - {name: mcp, port: 8000, targetPort: 8000}
+    - {name: files, port: 8001, targetPort: 8001}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $full }}-data-studio
+  labels: {{- include "hangar.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.dataStudio.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources: {requests: {storage: {{ .Values.dataStudio.storage | quote }}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-data-studio
+  labels: {{- include "hangar.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-studio
+spec:
+  replicas: 1   # os kernels e os workspaces das sessões vivem neste pod
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {{- include "hangar.selector" . | nindent 6 }}
+      app.kubernetes.io/component: data-studio
+  template:
+    metadata:
+      labels: {{- include "hangar.selector" . | nindent 8 }}
+        app.kubernetes.io/component: data-studio
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {seccompProfile: {type: RuntimeDefault}, fsGroup: 0}
+      {{- include "hangar.pullSecrets" . | nindent 6 }}
+      containers:
+        - name: data-studio
+          image: {{ include "hangar.image" (dict "ctx" . "name" "mcp-data-studio") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: SANDBOX, value: process}
+            - {name: PUBLIC_URL, value: {{ printf "%s/ds" (.Values.publicUrl | default "http://localhost:8090" | trimSuffix "/") | quote }}}
+            - {name: MAX_FILE_MB, value: {{ .Values.dataStudio.maxFileMb | quote }}}
+            - {name: RETENTION_DAYS, value: {{ .Values.dataStudio.retentionDays | quote }}}
+          ports: [{name: mcp, containerPort: 8000}, {name: files, containerPort: 8001}]
+          readinessProbe: {httpGet: {path: /health, port: 8001}, periodSeconds: 10}
+          resources: {{- toYaml .Values.dataStudio.resources | nindent 12 }}
+          # o servidor troca de uid para isolar cada sessão (setpriv) e ajusta os donos dos workspaces
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL], add: [SETUID, SETGID, CHOWN, FOWNER, DAC_OVERRIDE, KILL]}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ $full }}-data-studio}
+{{- end }}
+{{- if .Values.browser.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-browser
+  labels: {{- include "hangar.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "hangar.selector" . | nindent 4 }}
+    app.kubernetes.io/component: browser
+  ports: [{name: mcp, port: 8000, targetPort: 8000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-browser
+  labels: {{- include "hangar.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser
+spec:
+  replicas: 1   # as sessões abertas vivem neste pod
+  selector:
+    matchLabels: {{- include "hangar.selector" . | nindent 6 }}
+      app.kubernetes.io/component: browser
+  template:
+    metadata:
+      labels: {{- include "hangar.selector" . | nindent 8 }}
+        app.kubernetes.io/component: browser
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10002, runAsGroup: 10002, seccompProfile: {type: RuntimeDefault}}
+      {{- include "hangar.pullSecrets" . | nindent 6 }}
+      containers:
+        - name: browser
+          image: {{ include "hangar.image" (dict "ctx" . "name" "mcp-browser") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: BROWSER_IDLE_MIN, value: {{ .Values.browser.idleMin | quote }}}
+            - {name: BROWSER_MAX_SESSIONS, value: {{ .Values.browser.maxSessions | quote }}}
+          ports: [{name: mcp, containerPort: 8000}]
+          readinessProbe: {tcpSocket: {port: 8000}, periodSeconds: 10}
+          resources: {{- toYaml .Values.browser.resources | nindent 12 }}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: shm, mountPath: /dev/shm}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: shm, emptyDir: {medium: Memory, sizeLimit: 1Gi}}
+        - {name: tmp, emptyDir: {sizeLimit: 1Gi}}
+{{- end }}
+{{- if and .Values.networkPolicy.enabled (or .Values.dataStudio.enabled .Values.browser.enabled) }}
+{{- $sel := include "hangar.selector" . }}
+{{- range $c := list "data-studio" "browser" }}
+{{- if or (and (eq $c "data-studio") $.Values.dataStudio.enabled) (and (eq $c "browser") $.Values.browser.enabled) }}
+---
+# {{ $c }}: recebe só da central{{ if eq $c "data-studio" }} e dos agentes (MCP){{ end }}; sai para o DNS e a internet, sem IPs privados
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-{{ $c }}
+  labels: {{- include "hangar.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- $sel | nindent 6 }}
+      app.kubernetes.io/component: {{ $c }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+              app.kubernetes.io/component: central
+        {{- if eq $c "data-studio" }}
+        - podSelector:
+            matchLabels: {hangar.dev/role: agent}
+        {{- end }}
+  egress:
+    - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+{{- end }}
+{{- end }}
+{{- end }}

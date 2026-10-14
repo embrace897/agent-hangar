@@ -533,6 +533,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dir", default=".", help="pasta do repositório")
     s.add_argument("--namespace", help="Kubernetes: namespace da instalação (usa kubectl e um port-forward)")
     s.add_argument("--release", default="agent-hangar", help="Kubernetes: nome do release Helm")
+    s = add(sub, "cleanup", cmd_cleanup, "apaga os volumes de dados de agentes já excluídos (lista e confirma antes)")
+    s.add_argument("--dir", default=".", help="pasta do repositório")
+    s.add_argument("--yes", action="store_true", help="não perguntar")
     s = add(sub, "backup", cmd_backup, "backup do banco (pg_dump) em .hangar/backups/")
     s.add_argument("--dir", default=".", help="pasta do repositório")
     s.add_argument("--out", help="pasta de destino (padrão: .hangar/backups)")
@@ -605,6 +608,11 @@ def cmd_setup(a):
     except KeyboardInterrupt:
         print("\ninterrompido — rode  hangar setup  de novo quando quiser (as respostas ficam salvas)")
         sys.exit(130)
+
+
+def cmd_cleanup(a):
+    from .doctor import cleanup
+    sys.exit(cleanup(Path(a.dir), a.yes))
 
 
 def cmd_doctor(a):

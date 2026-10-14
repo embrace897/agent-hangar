@@ -106,6 +106,7 @@ services:
       DATA_STUDIO_FILES_URL: ${DATA_STUDIO_FILES_URL:-http://data-studio:8001}
       # navegador governado (perfil browser): sistemas sem API, pela alçada
       BROWSER_URL: ${BROWSER_URL:-http://browser:8000/mcp}
+      STAGE_IDLE_MIN: ${STAGE_IDLE_MIN:-30}   # stage sem uso hiberna (container parado) e acorda na próxima chamada; 0 desliga
       # desktop governado (perfil desktop): apps de desktop olhando a tela, pela alçada
       DESKTOP_URL: ${DESKTOP_URL:-http://desktop:8000/mcp}
       LEARN_AFTER_MIN: ${LEARN_AFTER_MIN:-2}  # aprendizado: minutos depois do fim da tarefa (o juiz dá nota antes)

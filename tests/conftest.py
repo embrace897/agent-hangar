@@ -47,6 +47,7 @@ class FakeDocker:
     def __init__(self):
         self.running: dict[str, str] = {}
         self.jobs: list[dict] = []
+        self.removed_data: list[str] = []  # volumes de dados apagados (agente excluído)
         self.job_result = {"status": "passed", "result": "done", "diff": "", "logs": "",
                            "usage": {"input_tokens": 1000, "output_tokens": 500}}
 
@@ -57,8 +58,10 @@ class FakeDocker:
             id = "abc123def456789"
         return C()
 
-    def stop_agent(self, slug, env):
+    def stop_agent(self, slug, env, remove_data=False):
         self.running.pop(deploy.container_name(slug, env), None)
+        if remove_data:
+            self.removed_data.append(deploy.container_name(slug, env))
 
     def states(self, max_age=3.0):
         return dict(self.running)

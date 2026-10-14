@@ -38,6 +38,13 @@ spec:
               app.kubernetes.io/component: central
       ports: [{port: 8080, protocol: TCP}]
     {{- end }}
+    {{- if and (eq $role "agent") $.Values.dataStudio.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+              app.kubernetes.io/component: data-studio
+      ports: [{port: 8000, protocol: TCP}]
+    {{- end }}
     - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
     {{- if and (eq $role "plugin") (eq $.Values.plugins.egress "proxy") }}
     - to:

@@ -220,6 +220,9 @@ def states(max_age=3.0) -> dict | None:
         by_name.setdefault(p.metadata.labels.get(f"{LBL}/name", ""), []).append(p)
     data = {}
     for d in deps:
+        if _replicas(d) == 0:  # hibernado (stage ocioso): acorda na próxima chamada
+            data[d.metadata.name] = "hibernated"
+            continue
         # o Deployment existe: está "no ar" a menos que o pod esteja em falha (subindo ainda conta como no ar)
         data[d.metadata.name] = "exited" if _waiting_reason(by_name.get(d.metadata.name, [])) else "running"
     _states_cache = (time.monotonic(), data)
@@ -238,7 +241,51 @@ def state(slug: str, env: str) -> str:
     return s.get(container_name(slug, env), "missing")
 
 
-def stop_agent(slug: str, env: str):
+def _replicas(d) -> int:
+    r = getattr(getattr(d, "spec", None), "replicas", None)
+    return 1 if r is None else int(r)
+
+
+def _scale(name: str, replicas: int):
+    _, apps, _ = apis()
+    apps.patch_namespaced_deployment_scale(name, namespace(), {"spec": {"replicas": replicas}})
+    invalidate_states()
+
+
+def ensure_up(slug: str, env: str, timeout=120) -> str | None:
+    from .deploy import touch
+    name = container_name(slug, env)
+    touch(name)
+    if (states() or {}).get(name) != "hibernated":
+        return None
+    try:
+        _scale(name, 1)
+    except Exception as e:  # noqa: BLE001
+        return f"não consegui acordar {name}: {e}"
+    return wait_healthy(slug, env, timeout)
+
+
+def hibernate_idle(idle_s: float) -> list[str]:
+    try:
+        _, apps, _ = apis()
+        deps = apps.list_namespaced_deployment(namespace(), label_selector=f"{LBL}/role=agent,{LBL}/env=stage").items
+    except Exception:  # noqa: BLE001
+        return []
+    from .deploy import idle
+    out = []
+    for d in deps:
+        name = d.metadata.name
+        if _replicas(d) == 0 or not idle(name, idle_s):
+            continue
+        try:
+            _scale(name, 0)
+            out.append(name)
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def stop_agent(slug: str, env: str, remove_data: bool = False):  # os dados do pod são emptyDir: saem com ele
     core, apps, _ = apis()
     ns, name = namespace(), container_name(slug, env)
     for fn in (lambda: apps.delete_namespaced_deployment(name, ns), lambda: core.delete_namespaced_service(name, ns),

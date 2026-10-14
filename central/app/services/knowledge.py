@@ -458,12 +458,21 @@ def _gap(db, query: str, results: list[dict], task_id: int | None, who: str):
         db.commit()
 
 
+SEARCH_LIMIT = 6  # buscas por tarefa: depois disso, mais variações da mesma pergunta só gastam passos e tokens
+
+
 @tool("search_knowledge", "Busca na base de conhecimento da empresa (políticas, procedimentos, contratos-modelo, histórico) "
       "com o acesso de quem pediu a tarefa. Responda só com o que os trechos dizem e cite as fontes como [1], [2]; se a "
       "fonte estiver vencida, avise. Sem trecho bom, diga que a base não cobre — não invente.",
       {"properties": {"query": {"type": "string"}, "k": {"type": "integer"}}, "required": ["query"]}, "knowledge")
 def search_knowledge(ctx: Ctx, args: dict):
     t: EmployeeTask = ctx.task
+    from ..models import TaskEvent
+    done = ctx.db.query(TaskEvent).filter(TaskEvent.task_id == t.id, TaskEvent.kind == "knowledge").count()
+    if done >= SEARCH_LIMIT:
+        return (f"Você já buscou {done} vezes na base nesta tarefa. Não busque de novo: responda com o que encontrou "
+                "(citando as fontes) ou diga que a base não cobre — e, se a resposta depender disso, pergunte a uma pessoa "
+                "(ask_human).")
     user = ctx.db.get(User, t.requester_user_id) if t.requester_user_id else None
     who = principals(ctx.db, user, [ctx.agent.team_id] if (user is None and ctx.agent.team_id) else None)
     q = str(args.get("query") or "")

@@ -128,6 +128,30 @@ Policies only take effect if the CNI enforces them:
 | EKS | VPC CNI add-on with `enableNetworkPolicy=true`, or Calico/Cilium |
 | Others | Calico, Cilium (k3s enforces them by default) |
 
+### Analyst tools in the cluster (Data Studio and the governed browser)
+
+Both are off by default; turn them on with `--set dataStudio.enabled=true --set browser.enabled=true`.
+
+| | Data Studio | Governed browser |
+|---|---|---|
+| What runs | the MCP server; the analysis code runs in isolated processes inside its own pod (`SANDBOX=process`), with no Docker socket | Playwright, one session per task |
+| Who reaches it | the central and the agents (MCP) | only the central |
+| Egress | DNS and the internet, without private ranges | DNS and the internet, without private ranges |
+| Storage | a PVC (`dataStudio.storage`, default 10Gi) for the session workspaces and deliverables | none (sessions live in memory) |
+| Pod security | seccomp RuntimeDefault, no privilege escalation, every capability dropped except the ones it uses to switch uid per session (SETUID, SETGID, CHOWN, FOWNER, DAC_OVERRIDE, KILL) | non-root (uid 10002), seccomp RuntimeDefault, every capability dropped |
+
+Data Studio downloads go through the central at `<publicUrl>/ds/f/…`. The link is signed by Data Studio, so it needs
+no other port or ingress. With the tools off, the central turns those features off too. The governed desktop
+(experimental), the Docker MCP catalog and Activepieces need the Docker socket and stay Compose-only.
+
+### Idle stage environments
+
+An agent's stage Deployment that has had no use for `agents.stageIdleMin` minutes (default 30) is scaled to 0. The
+next test, probation task, shadow-mode task or stage playground call scales it back to 1. Production never scales
+down. `0` turns it off. With several central replicas, use is shared through the database, so one replica never
+scales down a stage another one is using. In Kubernetes the agent's `/data` is an `emptyDir`, so a hibernated stage
+loses its temporary files (test conversations), and production keeps its own.
+
 ## 6. Air-gapped / private registry
 
 Mirror the images (`central`, `agent-runtime`, `harness-*`, `mcp-memory`, and `mcp-data-studio`, `mcp-browser` and `desktop` if you use them) to your registry, answer its address in
@@ -232,4 +256,5 @@ continuous traffic with no failed request.
 - Tested end to end on k3s, including External Secrets (fake provider), backups and metrics. The GKE/AKS/EKS
   presets, Cloud SQL Auth Proxy, cloud identity and Terraform follow each provider's documentation and pass
   `helm template`/`terraform validate`, but were not applied to real accounts by the project. Please report differences.
-- Optional Compose extras (Data Studio, Docker MCP catalog, Activepieces) are not part of the chart yet.
+- Data Studio and the governed browser are part of the chart (see above). The governed desktop, the Docker MCP catalog
+  and Activepieces need the Docker socket and stay Compose-only.

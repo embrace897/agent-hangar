@@ -71,6 +71,7 @@ postgresql:
     existingSecret: ""              # Secret com a chave DATABASE_URL
 
 agents:
+  stageIdleMin: 30                  # stage sem uso por N minutos vai a 0 réplicas e volta na próxima chamada; 0 desliga
   memLimit: 512m                    # por agente (Deployment)
   cpus: "1.0"
   jobMemLimit: 1g                   # por job de harness / avaliação de código (Job)
@@ -124,6 +125,25 @@ sso:
   microsoft: {clientId: "", clientSecret: "", tenant: "", allowedDomains: "", fetchGroups: false}
   github: {clientId: "", clientSecret: "", orgs: ""}
   oauth2: {clientId: "", clientSecret: "", label: "", authorizeUrl: "", tokenUrl: "", userinfoUrl: "", scopes: ""}
+
+# Ferramentas do analista no cluster (desligadas por padrão): o Data Studio roda o código em processos isolados
+# dentro do próprio pod; o navegador governado só fala com a central. Os dois saem só para a internet (sem IPs privados).
+dataStudio:
+  enabled: false
+  storage: 10Gi                     # workspaces das sessões e entregáveis
+  storageClass: ""
+  maxFileMb: 200
+  retentionDays: 30
+  resources:
+    requests: {cpu: 250m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
+browser:
+  enabled: false
+  idleMin: 15                       # sessão sem uso fecha depois de N minutos
+  maxSessions: 8
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
 
 networkPolicy:
   enabled: true                     # exige um CNI que aplique NetworkPolicy (GKE Dataplane V2, AKS com política, EKS com VPC CNI policy, Calico, Cilium…)

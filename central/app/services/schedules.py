@@ -299,6 +299,21 @@ def _loop():
                 _pool.submit(execute, sid, trig)
         except Exception:
             log.exception("falha no tick do agendador")
+        try:
+            hibernate_idle_stages()
+        except Exception:
+            log.exception("falha ao hibernar os stages ociosos")
+
+
+def hibernate_idle_stages() -> list[str]:
+    """Stage sem uso há STAGE_IDLE_MIN minutos (em nenhuma réplica) para; acorda sozinho na próxima chamada."""
+    from .. import deploy, shared
+    if config.STAGE_IDLE_MIN <= 0 or not shared.take_once("stage-hibernate", 60):  # uma réplica por minuto
+        return []
+    out = deploy.hibernate_idle(config.STAGE_IDLE_MIN * 60)
+    if out:
+        log.info("stage ocioso hibernado: %s", ", ".join(out))
+    return out
 
 
 def start():

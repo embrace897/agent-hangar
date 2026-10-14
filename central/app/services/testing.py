@@ -144,6 +144,7 @@ def run_tests(db: Session, slug: str, actor="admin") -> TestRun:
     dep = active_deployment(a, "stage")
     if not dep or dep.version != a.current_version:
         deploy_env(db, slug, "stage", actor)
+    deploy.ensure_up(slug, "stage")
     base = deploy.internal_url(slug, "stage")
     results, t0 = [], time.time()
 

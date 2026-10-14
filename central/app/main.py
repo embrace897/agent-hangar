@@ -76,7 +76,7 @@ async def lifespan(app):
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
 
 _GW = re.compile(r"^/gw(?:-stage)?/([^/]+)(?:/|$)")
-OPEN_PREFIXES = ("/ui", "/app", "/downloads/", "/api/health", "/internal", "/api/auth/", "/login", "/favicon.ico",
+OPEN_PREFIXES = ("/ui", "/app", "/ds/f/", "/downloads/", "/api/health", "/internal", "/api/auth/", "/login", "/favicon.ico",
                  "/.well-known/", "/oauth/",
                  "/hooks/")  # webhook de entrada do Digital employee: autenticado pelo token do próprio funcionário
 # descoberta e endpoints OAuth do MCP: clientes que rodam no navegador (ex.: MCP Inspector) precisam de CORS
@@ -319,6 +319,23 @@ def vscode_extension():
     if not os.path.exists(path):
         return JSONResponse({"error": "extensão não incluída nesta imagem — gere com extensions/vscode (npm run package)"}, 404)
     return FileResponse(path, media_type="application/octet-stream", filename="agent-hangar-vscode.vsix")
+
+
+@app.get("/ds/f/{path:path}")
+def data_studio_file(path: str):
+    """Downloads do Data Studio pela central (no cluster não há porta própria): o link já vem assinado por ele
+    (sessão + token); aqui só repassamos o arquivo, sem sessão do Hangar."""
+    import httpx
+
+    from . import config
+    if not config.DATA_STUDIO_FILES_URL or ".." in path:
+        return JSONResponse({"error": "não encontrado"}, 404)
+    try:
+        r = httpx.get(f"{config.DATA_STUDIO_FILES_URL.rstrip('/')}/f/{path}", timeout=60)
+    except httpx.HTTPError:
+        return JSONResponse({"error": "Data Studio indisponível"}, 503)
+    keep = {k: v for k, v in r.headers.items() if k.lower() in ("content-type", "content-disposition", "cache-control")}
+    return Response(r.content, status_code=r.status_code, headers=keep)
 
 
 @app.get("/favicon.ico")

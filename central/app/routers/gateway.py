@@ -240,6 +240,7 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
     # read=900: um agente com várias tools pode demorar; em streaming o runtime manda keepalive a cada 10s
     client = httpx.AsyncClient(timeout=httpx.Timeout(900, connect=10))
     try:
+        await run_in_threadpool(deploy.ensure_up, slug, env)  # stage hibernado: acorda antes
         url = f"{deploy.internal_url(slug, env)}/{path}" + (f"?{request.url.query}" if request.url.query else "")
         raw = await request.body()
         # MCP: handshake, tools/list, ping e notificações não são "uso" — só tools/call entra nas métricas

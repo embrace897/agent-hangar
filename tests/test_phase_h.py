@@ -269,3 +269,52 @@ def test_memo_recommendation_matches_the_option_as_the_model_writes_it():
     assert m("C", names) == names[2] and m("b)", names) == names[1] and m("(a)", names) == names[0]
     assert m("C) Renovar negociando a margem", names) == names[2] and m("b) deixar o contrato", names) == names[1]
     assert m("Renovar", names) is None and m("", names) is None and m("D", names) is None
+
+
+def test_first_golden_run_with_low_scores_is_not_passed(client, env, rt, monkeypatch):
+    """Sem rodada anterior para comparar, a nota absoluta decide: nota 1-2 sai "abaixo do esperado", não "passou"."""
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    client.post(f"/api/employees/{slug}/golden", headers=env["h"]["own"], json={
+        "title": "Prazo", "body": "Qual o prazo?", "expected": "30 dias"})
+    client.post(f"/api/employees/{slug}/golden/run", headers=env["h"]["own"])
+    monkeypatch.setattr(regression, "score", lambda db, e, t: 1)
+    work()
+    v = client.get(f"/api/employees/{slug}/golden", headers=env["h"]["own"]).json()
+    assert v["runs"][0]["status"] == "low" and v["runs"][0]["results"][0]["score"] == 1
+
+
+def test_a_final_answer_that_only_announces_the_next_step_gets_one_more_round(client, env, rt, monkeypatch):
+    """O modelo encerrou anunciando o próximo passo ("vou trocar o filtro…") depois de usar ferramentas: mais uma
+    rodada com o lembrete, em vez de concluir com a frase solta (no máximo MAX_NUDGES vezes)."""
+    import httpx
+
+    from app.services import employee_tasks as tm
+    assert tm.announced_only("A pasta aparece vazia; vou trocar o filtro para ver todos os arquivos.", True)
+    assert tm.announced_only("Let me check the other folder.", True)
+    assert not tm.announced_only("Total: R$ 6.871,50; a região Norte vendeu mais.", True)
+    assert not tm.announced_only("Agora vou detalhar: o total é 10.", False)  # sem ferramentas na rodada, não insiste
+    slug = hire(client, env)
+    make_active(client, env, slug, rt)
+    replies = iter(["Abri o arquivo, mas a pasta aparece vazia; vou trocar o filtro para ver todos os arquivos.",
+                    "Total: 6871,50 — Norte vendeu mais."])
+
+    class Http:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, headers=None, json=None, timeout=None):
+            body = {"choices": [{"message": {"role": "assistant", "content": next(replies)}}],
+                    "usage": {"total_tokens": 10}, "x_trace": [{"tool": "desktop_click", "args": {}, "result": "ok"}]}
+            return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+    monkeypatch.setattr(tm, "HTTP", lambda: Http())
+    tid = assign(client, env, slug, "abra a planilha e diga o total")
+    work()
+    t = client.get(f"/api/tasks/{tid}", headers=env["h"]["own"]).json()
+    assert t["status"] == "new" and any(e["kind"] == "nudge" for e in t["events"])
+    work()
+    t = client.get(f"/api/tasks/{tid}", headers=env["h"]["own"]).json()
+    assert t["status"] == "done" and "6871" in t["result"]

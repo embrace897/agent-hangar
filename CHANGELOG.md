@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Data Studio and the governed browser in the Helm chart** (`dataStudio.enabled`, `browser.enabled`):
+  - each with its own NetworkPolicy: Data Studio is reached only by the central and the agents, the browser only by the central, and both go out to the internet without private ranges;
+  - Data Studio downloads go through the central (`/ds/f/…`, signed link);
+  - when they're off, the central turns the features off instead of pointing to a name that doesn't exist.
+- **Idle stage hibernates:**
+  - a stage environment unused for `STAGE_IDLE_MIN` minutes (default 30) is stopped in Docker or scaled to 0 in Kubernetes;
+  - the next test, probation task, shadow-mode task or playground call wakes it;
+  - production never hibernates, and replicas share use through the database. In the local install, 17 idle stage containers (~1 GB) were stopped.
+- `hangar cleanup` lists the data volumes of agents that were already deleted and removes them after you confirm (`--yes` to skip the question). `hangar doctor` warns when there are any.
+- `tests/e2e/battery_llm.py`: a battery with a real LLM for what the pilot doesn't cover: simple agent, multi-agent, harness job, image reading (gateway and task attachment), the issue board with a real Digital employee, shadow mode, DLP, budget, the governed browser and memory.
+
+### Fixed
+- **A task no longer ends on an announced step.** When the model stopped saying what it would do next ("vou trocar o filtro…") after using tools, the platform took that sentence as the result. It now gets one more round with a reminder (at most two).
+- **Knowledge-base search has a brake:** after 6 searches in the same task, the tool tells the model to answer with what it found or ask a person. A one-line question was making about 13 reformulated searches.
+- **Golden tasks:** a first run with no baseline and a score of 1–2 is now "abaixo do esperado", not "passou". The run status shows in Portuguese.
+- **Deleting an agent removes its data volumes** (`agent-<slug>-<env>-data`). They were left behind: the local install had 274 orphan volumes.
+- The issue tools say they only apply to tasks that came from an issue; the model was calling them in other tasks.
+
 ## [0.30.1] — 2026-10-13
 
 ### Changed

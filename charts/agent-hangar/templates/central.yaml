@@ -16,6 +16,7 @@ data:
   K8S_PULL_POLICY: {{ .Values.image.pullPolicy | quote }}
   K8S_IMAGE_PULL_SECRET: {{ join "," .Values.image.pullSecrets | quote }}
   AGENT_MEM_LIMIT: {{ .Values.agents.memLimit | quote }}
+  STAGE_IDLE_MIN: {{ .Values.agents.stageIdleMin | quote }}
   AGENT_CPUS: {{ .Values.agents.cpus | quote }}
   JOB_MEM_LIMIT: {{ .Values.agents.jobMemLimit | quote }}
   JOB_CPUS: {{ .Values.agents.jobCpus | quote }}
@@ -50,6 +51,11 @@ data:
   {{- with .Values.mcpOAuth.redirectHosts }}
   OAUTH_REDIRECT_HOSTS: {{ . | quote }}
   {{- end }}
+  # Data Studio e navegador governado: os serviços do chart quando ligados; vazio desliga o recurso (sem nome solto)
+  DATA_STUDIO_URL: {{ if .Values.dataStudio.enabled }}{{ printf "http://%s-data-studio:8000/mcp" $full | quote }}{{ else }}""{{ end }}
+  DATA_STUDIO_FILES_URL: {{ if .Values.dataStudio.enabled }}{{ printf "http://%s-data-studio:8001" $full | quote }}{{ else }}""{{ end }}
+  BROWSER_URL: {{ if .Values.browser.enabled }}{{ printf "http://%s-browser:8000/mcp" $full | quote }}{{ else }}""{{ end }}
+  DESKTOP_URL: ""
   {{- if .Values.memory.enabled }}
   MEMORY_URL: {{ printf "http://%s-memory:8000" $full | quote }}
   MEMORY_LLM_CONNECTION: {{ .Values.memory.llmConnection | quote }}

@@ -7,6 +7,7 @@ const DECISION_KINDS = {};
 const decide = (id, body) => api(`/decisions/${id}`, { method: 'POST', body });
 
 /* ---------- ferramentas da plataforma (Configurações do funcionário) ---------- */
+const GOLD_STATUS = { passed: 'passou', kept: 'mantida', reverted: 'revertida', worse: 'piorou', running: 'rodando', low: 'abaixo do esperado' };
 async function platformToolsCard(box, e) {
   const groups = await api(`/employees/${e.slug}/platform-tools`).catch(() => null);
   if (!groups || !box) return;
@@ -855,7 +856,7 @@ async function goldenCard(box, e) {
       const r = last ? last.results.find(y => y.golden === x.id) : null;
       return `<tr data-g="${x.id}"><td data-noi18n>${esc(x.title)}</td><td class="mute" data-noi18n>${esc(x.expected.slice(0, 100))}</td>
         <td>${r && r.score != null ? `${r.before != null ? r.before + ' → ' : ''}<b>${r.score}</b>` : '—'}</td><td>${e.can_manage ? '<button class="ghost small danger gd-del">×</button>' : ''}</td></tr>`; }).join('')}</table>
-    ${last ? `<div class="small mt">${window.t('Última rodada')}: <span class="pill ${last.status === 'passed' || last.status === 'kept' ? 'ok' : last.status === 'running' ? 'info' : 'bad'}">${esc(window.t(last.status))}</span>
+    ${last ? `<div class="small mt">${window.t('Última rodada')}: <span class="pill ${last.status === 'passed' || last.status === 'kept' ? 'ok' : last.status === 'running' ? 'info' : 'bad'}">${esc(window.t(GOLD_STATUS[last.status] || last.status))}</span>
       <span class="mute" data-noi18n>${esc(last.trigger)}</span></div>` : ''}
     ${e.can_manage ? `<div class="grid g2 mt"><label>Título<input id="gd-title"></label><label>Resposta esperada<input id="gd-exp"></label>
       <label style="grid-column:1/-1">Pedido<textarea id="gd-body" rows="2"></textarea></label></div>

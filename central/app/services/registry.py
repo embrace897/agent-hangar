@@ -112,7 +112,7 @@ def rollback_agent(db: Session, slug: str, version: int, actor="admin") -> Agent
 def delete_agent(db: Session, slug: str, actor="admin"):
     a = get_agent(db, slug)
     for env in ("stage", "prod"):
-        deploy.stop_agent(slug, env)
+        deploy.stop_agent(slug, env, remove_data=True)  # excluído: o volume de dados sai junto
     db.query(UsageEvent).filter(UsageEvent.agent_id == a.id).delete()
     # tudo o que aponta para o agente sai junto (no Postgres, as chaves estrangeiras barrariam a exclusão)
     sids = [x.id for x in db.query(Schedule).filter(Schedule.agent_id == a.id)]

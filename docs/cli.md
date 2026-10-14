@@ -39,6 +39,7 @@ Credentials are read from `HANGAR_URL` / `HANGAR_TOKEN`, or from `~/.config/hang
 hangar setup                             # guided install / reconfigure (Docker)
 hangar setup --answers setup.yaml        # unattended (see setup.example.yaml); --no-start only writes .env
 hangar doctor                            # checks the installation; --json for monitoring
+hangar cleanup                           # removes data volumes of agents already deleted (asks first)
 hangar setup --target kubernetes         # install / upgrade on a cluster with Helm (docs/kubernetes.md)
 hangar doctor --namespace agent-hangar   # pods + every check above, via a temporary port-forward
 hangar setup --configure-only            # cluster installed by Terraform/GitOps: only LLM, admin and AI tools (no helm)

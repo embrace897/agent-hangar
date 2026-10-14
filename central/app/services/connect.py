@@ -264,6 +264,7 @@ def probe(db: Session, slug: str, env: str = "prod") -> dict:
         return {"ok": False, "env": env, "steps": [{"name": "configuração", "ok": False,
                 "detail": "a spec desliga as ferramentas do cliente (llm.client_tools=false)"}]}
     nonce = secrets.token_hex(4)
+    deploy.ensure_up(slug, env)
     url = f"{deploy.internal_url(slug, env)}/v1/chat/completions"
     hdr = {"X-Channel": "connection-test", "X-Session-Id": f"connection-test-{nonce}", "X-Progress": "off"}
     user = {"role": "user", "content": f"Teste de conexão: chame hangar_ping nonce={nonce} e depois responda com o "

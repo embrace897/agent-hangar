@@ -247,3 +247,15 @@ def test_k8s_configure_only_skips_helm(tmp_path, monkeypatch):
     assert "https://h.acme.com/mcp" in (tmp_path / ".hangar" / "clients" / "claude-code.sh").read_text()
     ans.write_text("kubernetes: {namespace: outro}\n")
     assert st.setup(tmp_path, str(ans), configure_only=True) == 1  # Secret não encontrado
+
+
+def test_doctor_lists_only_orphan_agent_volumes(monkeypatch):
+    """Volumes agent-<slug>-<env>-data sem container e cujo agente foi excluído; os dos agentes que existem ficam."""
+    class R:
+        returncode, stdout = 0, "agent-vivo-prod-data\nagent-apagado-stage-data\nagent-a-b-c-prod-data\noutro-volume\n"
+    monkeypatch.setattr(dr.subprocess, "run", lambda *a, **k: R())
+
+    class Http:
+        def get(self, url, headers=None, timeout=None):
+            return type("Resp", (), {"json": lambda self: [{"slug": "vivo"}]})()
+    assert dr.orphan_volumes(Http(), "http://x", {}) == ["agent-a-b-c-prod-data", "agent-apagado-stage-data"]

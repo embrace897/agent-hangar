@@ -31,6 +31,7 @@ def chat(db: Session, slug: str, message: str, env="prod", channel="api", actor=
     t0, ok, data = time.time(), True, None
     try:
         headers = {"X-Channel": channel, **({"X-Session-Id": session} if session else {})}
+        deploy.ensure_up(slug, env)
         r = httpx.post(deploy.internal_url(slug, env) + "/v1/chat/completions", timeout=timeout, headers=headers,
                        json={"messages": [{"role": "user", "content": message}]})
         r.raise_for_status()

@@ -13,7 +13,8 @@ from .platform_tools import Ctx, side_effect, tool
 def _issue(ctx: Ctx, ref: str = "") -> Issue:
     i = im._by_ref(ctx.db, ref) if ref else (ctx.db.get(Issue, ctx.task.issue_id) if ctx.task.issue_id else None)
     if i is None:
-        raise PlatformError("esta tarefa não é de uma issue (ou a issue não existe)")
+        raise PlatformError("esta tarefa não veio de uma issue: as ferramentas de issue não se aplicam aqui (siga a tarefa "
+                            "sem elas; para ler uma issue, passe a chave, ex.: HGR-12)")
     return i
 
 
@@ -23,8 +24,8 @@ def _requester_acc(ctx: Ctx) -> Access | None:
     return Access(ctx.db, principal_for(u)) if u is not None and u.active else None
 
 
-@tool("get_issue", "Lê uma issue do quadro (a sua, sem argumentos, ou outra pela chave, ex.: HGR-12): descrição, status, "
-      "sub-issues, relações e os últimos comentários.",
+@tool("get_issue", "Lê uma issue do quadro pela chave (ex.: HGR-12): descrição, status, sub-issues, relações e os "
+      "últimos comentários. Sem a chave, só numa tarefa que veio de uma issue (o título começa com a chave).",
       {"properties": {"key": {"type": "string", "description": "chave da issue (opcional; padrão: a desta tarefa)"}}}, "issues")
 def get_issue(ctx: Ctx, args: dict):
     i = _issue(ctx, str(args.get("key") or ""))
@@ -33,7 +34,7 @@ def get_issue(ctx: Ctx, args: dict):
     return im._context(ctx.db, i, "", False)
 
 
-@tool("issue_comment", "Comenta na issue desta tarefa (markdown): o andamento, o que encontrou, uma pergunta ou o "
+@tool("issue_comment", "Só em tarefas que vieram de uma issue (o título começa com a chave, ex.: HGR-12). Comenta na issue (markdown): o andamento, o que encontrou, uma pergunta ou o "
       "bloqueio. Quem está inscrito vê na caixa de entrada.",
       {"properties": {"body": {"type": "string"}}, "required": ["body"]}, "issues")
 def issue_comment(ctx: Ctx, args: dict):
@@ -46,7 +47,7 @@ def issue_comment(ctx: Ctx, args: dict):
     return {"comment": c.id, "issue": im.key_of(ctx.db, i)}
 
 
-@tool("issue_set_status", "Muda o status da issue desta tarefa: in_progress, blocked (diga o motivo num comentário), "
+@tool("issue_set_status", "Só em tarefas que vieram de uma issue. Muda o status da issue: in_progress, blocked (diga o motivo num comentário), "
       "in_review (entregue) ou um status do time das mesmas categorias. Concluir e cancelar ficam com quem revisa.",
       {"properties": {"status": {"type": "string"}, "comment": {"type": "string", "description": "opcional"}},
        "required": ["status"]}, "issues")
@@ -59,7 +60,7 @@ def issue_set_status(ctx: Ctx, args: dict):
     return {"issue": out["key"], "status": out["status"]}
 
 
-@tool("create_sub_issue", "Divide a issue desta tarefa: cria uma sub-issue (título, descrição, prioridade, etapa 1, 2, "
+@tool("create_sub_issue", "Só em tarefas que vieram de uma issue. Divide a issue: cria uma sub-issue (título, descrição, prioridade, etapa 1, 2, "
       "3…). Com assignee (o slug de um Digital employee do time ou o e-mail de uma pessoa), ela é atribuída — para outro "
       "Digital employee isso é delegar, e passa pela alçada.",
       {"properties": {"title": {"type": "string"}, "description": {"type": "string"},

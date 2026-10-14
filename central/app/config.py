@@ -62,6 +62,8 @@ def harness_image(harness_id: str) -> str:
 
 # Onde os agentes rodam: docker (containers via socket proxy) | kubernetes (Deployments/Jobs no namespace da central)
 RUNTIME_BACKEND = _env("RUNTIME_BACKEND", "docker").lower()
+# stage sem uso por N minutos hiberna (container parado / réplicas 0) e acorda na próxima chamada; 0 desliga
+STAGE_IDLE_MIN = float(_env("STAGE_IDLE_MIN", "30"))
 K8S_NAMESPACE = _env("K8S_NAMESPACE")  # vazio = o namespace da própria central (ServiceAccount)
 K8S_IMAGE_PULL_SECRET = _env("K8S_IMAGE_PULL_SECRET")  # registry privado: nome(s) do(s) Secret(s), separados por vírgula
 K8S_PULL_POLICY = _env("K8S_PULL_POLICY", "IfNotPresent")

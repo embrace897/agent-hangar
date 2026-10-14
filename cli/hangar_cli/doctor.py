@@ -5,6 +5,7 @@ pública (túnel/ingress) e o certificado TLS, o SSO, o MCP da plataforma, a ext
 Sai com código 1 se algo essencial falhar — dá para usar em CI ou num cron de monitoramento.
 """
 import json
+import re
 import socket
 import ssl
 import subprocess
@@ -157,8 +158,54 @@ def check_extension(http: httpx.Client, base: str) -> list[Check]:
 
 def check_agents(http: httpx.Client, base: str, hdr: dict) -> list[Check]:
     o = http.get(f"{base}/api/overview", headers=hdr, timeout=15).json()
-    return [Check("Agentes", OK, f"{o.get('agents_total', 0)} registrado(s) · {o.get('running_prod', 0)} em produção · "
-                                 f"{o.get('running_stage', 0)} em stage")]
+    out = [Check("Agentes", OK, f"{o.get('agents_total', 0)} registrado(s) · {o.get('running_prod', 0)} em produção · "
+                                f"{o.get('running_stage', 0)} em stage")]
+    orphans = orphan_volumes(http, base, hdr)
+    if orphans:
+        out.append(Check("Volumes órfãos", WARN, f"{len(orphans)} volume(s) de dados de agentes que não existem mais",
+                         "hangar cleanup  (lista e apaga só esses, depois de confirmar)"))
+    return out
+
+
+VOLUME = re.compile(r"agent-(.+)-(stage|prod)-data")
+
+
+def orphan_volumes(http: httpx.Client, base: str, hdr: dict) -> list[str]:
+    """Volumes de dados (agent-<slug>-<env>-data) sem container e cujo agente foi excluído."""
+    try:
+        r = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "dangling=true"], capture_output=True, text=True)
+    except OSError:  # sem Docker nesta máquina (Kubernetes, ou o doctor rodando de fora)
+        return []
+    if r.returncode != 0:
+        return []
+    slugs = {a["slug"] for a in http.get(f"{base}/api/agents", headers=hdr, timeout=15).json()}
+    return sorted(v for v in r.stdout.split() if (m := VOLUME.fullmatch(v)) and m.group(1) not in slugs)
+
+
+def cleanup(root: Path, assume_yes: bool = False) -> int:
+    """hangar cleanup: apaga os volumes de dados de agentes excluídos (só esses; nada em uso)."""
+    env = read_env(root.resolve() / ".env")
+    base = f"http://localhost:{env.get('CENTRAL_PORT') or 8090}"
+    hdr = {"Authorization": f"Bearer {env.get('ADMIN_TOKEN', '')}"}
+    with httpx.Client(follow_redirects=True) as http:
+        orphans = orphan_volumes(http, base, hdr)
+    if not orphans:
+        print("nenhum volume órfão")
+        return 0
+    print(f"{len(orphans)} volume(s) de agentes que não existem mais:")
+    for v in orphans[:20]:
+        print("  " + v)
+    if len(orphans) > 20:
+        print(f"  … e mais {len(orphans) - 20}")
+    if not assume_yes and input("Apagar esses volumes? [s/N] ").strip().lower() not in ("s", "sim", "y", "yes"):
+        print("nada apagado")
+        return 0
+    gone = 0
+    for v in orphans:
+        if subprocess.run(["docker", "volume", "rm", v], capture_output=True).returncode == 0:
+            gone += 1
+    print(f"{gone} volume(s) apagado(s)")
+    return 0
 
 
 def check_k8s(namespace: str, release: str) -> list[Check]:

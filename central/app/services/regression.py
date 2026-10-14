@@ -147,6 +147,9 @@ def score(db, e: Employee, t: EmployeeTask) -> int:
     return 3 if hit >= 0.6 else 1
 
 
+LOW_SCORE = 2  # nota (1-5) que, sem linha de base, marca a rodada como "abaixo do esperado"
+
+
 def task_finished(db, t: EmployeeTask):
     if t.source != "regression":
         return
@@ -175,7 +178,9 @@ def task_finished(db, t: EmployeeTask):
     worse = any(x["score"] <= x["before"] - 2 for x in compared) or (
         compared and sum(x["score"] for x in compared) / len(compared) <= sum(x["before"] for x in compared) / len(compared) - 1)
     if not worse:
-        run.status = "passed"
+        # sem rodada anterior para comparar, a nota absoluta decide: tarefa de ouro com nota 1-2 não passou
+        low = [x for x in res if x["before"] is None and x["score"] <= LOW_SCORE]
+        run.status = "low" if low else "passed"
         db.commit()
         return
     run.status = "worse"
