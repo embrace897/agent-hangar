@@ -25,7 +25,7 @@ function pvStatus(conns) {
     + (models ? `<span class="pv-st">${fmt(models)} ${models > 1 ? 'modelos' : 'modelo'}</span>` : '');
 }
 const kindChips = kinds => Object.entries(kinds || {}).sort((a, b) => b[1] - a[1])
-  .map(([k, n]) => `<span class="chip" title="${esc(MODEL_KIND_HINT[k] || '')}">${esc(MODEL_KIND[k] || k)} · ${n}</span>`).join(' ');
+  .map(([k, n]) => `<span class="chip" title="${esc(MODEL_KIND_HINT[k] || '')}"><span>${esc(MODEL_KIND[k] || k)}</span> <b>${n}</b></span>`).join(' ');
 
 async function providersPage() {
   const [c] = await Promise.all([api('/catalog'), pvLoad()]);
@@ -49,7 +49,8 @@ async function providersPage() {
   <div class="sub">Conecte os provedores que a empresa usa. A central busca a lista de modelos de cada um (tipo de saída, contexto e preço) na hora e depois a cada hora; o construtor de agentes usa essa lista para escolher o modelo de cada agente e para saber quando falta um tipo de modelo.</div>
   <div class="card"><div class="row between" style="align-items:flex-start"><div><b>Modelos disponíveis por tipo</b>
     <div class="mt">${kindChips(total) || '<span class="mute">nenhum ainda: conecte um provedor abaixo</span>'}</div>
-    ${missing.length && c.llm_connections.length ? `<div class="small mute mt">Sem modelo de: ${missing.map(k => `<span title="${esc(MODEL_KIND_HINT[k])}">${esc(MODEL_KIND[k])}</span>`).join(', ')}. Um agente que precisar desses tipos vai pedir para você cadastrar um provedor que os tenha.</div>` : ''}</div>
+    ${missing.length && c.llm_connections.length ? `<div class="small mute mt"><span>Ainda sem modelo de:</span> ${missing.map(k => `<span class="chip" title="${esc(MODEL_KIND_HINT[k])}">${esc(MODEL_KIND[k])}</span>`).join(' ')}
+      <div>Um agente que precisar desses tipos vai pedir para você cadastrar um provedor que os tenha.</div></div>` : ''}</div>
     ${ME.is_admin ? `<label class="small" style="min-width:230px">Código e LLMs<select id="code-policy"><option value="any">Qualquer conexão recebe código</option><option value="approved">Só conexões aprovadas para código</option></select></label>` : ''}</div></div>
   ${PV_GROUPS.map(section).join('')}
   <div class="mute small mt">Logos dos provedores: projeto 9router (licença MIT). As marcas são dos respectivos donos.</div>`;
@@ -78,7 +79,7 @@ async function providerDetail(id) {
   for (let i = 2; used.has(suggested); i++) suggested = `${p.id}-${i}`;
   main.innerHTML = `<a href="#/providers" class="mute small">← Provedores de LLM</a>
   <div class="row mt" style="gap:14px">${pvLogo(p, 48)}<div><h1 style="margin:0">${esc(p.name)}</h1>
-    <div class="mute small">${p.kinds ? `Costuma ter: ${esc(p.kinds)}` : ''}${p.key_url ? ` · <a href="${esc(p.key_url)}" target="_blank" rel="noopener">onde pegar a chave</a>` : ''}</div></div></div>
+    <div class="mute small">${p.kinds ? `<span>Costuma ter:</span> ${p.kinds.split(', ').map(k => `<span class="chip">${esc(MODEL_KIND[k] || CAP_LABEL[k] || k)}</span>`).join(' ')}` : ''}${p.key_url ? ` · <a href="${esc(p.key_url)}" target="_blank" rel="noopener">onde pegar a chave</a>` : ''}</div></div></div>
   ${p.note ? `<div class="sub mt">${esc(p.note)}</div>` : '<div class="mt"></div>'}
   <div id="pv-conns">${conns.map(connCard).join('') || ''}</div>
   ${ME.is_admin ? `<details class="card mt" ${conns.length ? '' : 'open'}><summary><b>${conns.length ? 'Adicionar outra conexão' : 'Conectar'}</b></summary>
@@ -113,7 +114,7 @@ function connCard(x) {
     <div><h2 style="margin:0">${n}</h2><div class="mute small">${copyable(x.base_url)} · chave ${esc(x.api_key || 'nenhuma')} · ${protoPill(x.protocol)}
       ${x.allow_code ? '<span class="pill ok">aprovada para código</span>' : ''}</div>
       <div class="small mt">${x.models_error ? `<span class="bad-text">Lista de modelos: ${esc(x.models_error)}</span>`
-        : x.models_synced_at ? `<span class="mute">Lista atualizada ${ago(x.models_synced_at)}</span>` : '<span class="mute">Lista ainda não buscada</span>'}
+        : x.models_synced_at ? `<span class="mute"><span>Lista atualizada</span> ${ago(x.models_synced_at)}</span>` : '<span class="mute">Lista ainda não buscada</span>'}
         ${x.models_total ? ` · ${kindChips(x.models)}` : ''}</div></div>
     ${ME.is_admin ? `<div class="row" style="flex-wrap:wrap;justify-content:flex-end">
       <button class="ghost cc-test" data-n="${n}">Testar</button><button class="ghost cc-sync" data-n="${n}">Atualizar modelos</button>

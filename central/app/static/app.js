@@ -720,7 +720,7 @@ async function usagePage() {
 async function catalogPage() {
   const c = await api('/catalog');
   main.innerHTML = `<h1>Catálogo</h1><div class="sub">Skills, MCP servers e conexões de LLM reutilizáveis pelos agentes</div>
-  <div class="card row between"><div><b>Conexões de LLM e modelos</b><div class="mute small">${c.llm_connections.length} conexão(ões) · ficam em Configurações → Provedores de LLM, com a lista de modelos de cada provedor</div></div>
+  <div class="card row between"><div><b>Conexões de LLM e modelos</b><div class="mute small">Ficam em Configurações → Provedores de LLM, com a lista de modelos de cada provedor.</div></div>
     <a class="btn ghost" href="#/providers">Abrir provedores</a></div>
   <div class="grid g2 mt"><div class="card"><h2>Skills (${c.skills.length})</h2>${c.skills.map(s => `<div class="mt"><b>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.description)}</div><details><summary>conteúdo</summary><pre>${esc(s.content)}</pre></details></div>`).join('') || '<div class="mute">Nenhuma — registre pelo chat (<code>register_skill</code>) ou abaixo</div>'}
     <details class="mt"><summary>Adicionar skill</summary><input id="sk-name" placeholder="nome" class="mt"><input id="sk-desc" placeholder="descrição" class="mt"><textarea id="sk-content" placeholder="conteúdo (markdown)" rows="4" class="mt"></textarea><button id="sk-add" class="mt">Salvar skill</button></details></div>
