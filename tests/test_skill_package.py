@@ -8,7 +8,6 @@ from app.services import skill_package as sp
 
 from .conftest import ADMIN
 
-
 # valor fictício montado em tempo de execução (um literal aqui seria apontado pelo scanner de segredos do CI)
 FAKE_KEY = "api" + "_key = '" + "abcd1234" + "efgh5678'"
 
