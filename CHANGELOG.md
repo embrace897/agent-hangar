@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-10-14
+
 ### Added
 - **Data Studio and the governed browser in the Helm chart** (`dataStudio.enabled`, `browser.enabled`):
   - each with its own NetworkPolicy: Data Studio is reached only by the central and the agents, the browser only by the central, and both go out to the internet without private ranges;

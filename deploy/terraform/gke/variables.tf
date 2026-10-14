@@ -29,7 +29,7 @@ variable "admin_emails" {
 variable "hangar_version" {
   description = "Versão do Agent Hangar (imagens e chart)"
   type        = string
-  default     = "0.30.1"
+  default     = "0.31.0"
 }
 
 variable "chart_repository" {
