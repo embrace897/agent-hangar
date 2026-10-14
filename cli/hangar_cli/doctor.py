@@ -156,11 +156,11 @@ def check_extension(http: httpx.Client, base: str) -> list[Check]:
     return [Check("Extensão VS Code", OK, f"{base}/downloads/agent-hangar-vscode.vsix")]
 
 
-def check_agents(http: httpx.Client, base: str, hdr: dict) -> list[Check]:
+def check_agents(http: httpx.Client, base: str, hdr: dict, docker: bool = True) -> list[Check]:
     o = http.get(f"{base}/api/overview", headers=hdr, timeout=15).json()
     out = [Check("Agentes", OK, f"{o.get('agents_total', 0)} registrado(s) · {o.get('running_prod', 0)} em produção · "
                                 f"{o.get('running_stage', 0)} em stage")]
-    orphans = orphan_volumes(http, base, hdr)
+    orphans = orphan_volumes(http, base, hdr) if docker else []  # volumes só existem na instalação Docker
     if orphans:
         out.append(Check("Volumes órfãos", WARN, f"{len(orphans)} volume(s) de dados de agentes que não existem mais",
                          "hangar cleanup  (lista e apaga só esses, depois de confirmar)"))
@@ -178,7 +178,13 @@ def orphan_volumes(http: httpx.Client, base: str, hdr: dict) -> list[str]:
         return []
     if r.returncode != 0:
         return []
-    slugs = {a["slug"] for a in http.get(f"{base}/api/agents", headers=hdr, timeout=15).json()}
+    try:
+        r2 = http.get(f"{base}/api/agents", headers=hdr, timeout=15)
+        slugs = {a["slug"] for a in r2.json()} if r2.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        slugs = None
+    if slugs is None:  # sem a lista de agentes não dá para saber o que é órfão: não aponta nada
+        return []
     return sorted(v for v in r.stdout.split() if (m := VOLUME.fullmatch(v)) and m.group(1) not in slugs)
 
 
@@ -244,7 +250,7 @@ def diagnose(root: Path, http: httpx.Client | None = None, docker: bool = True, 
     for fn in (lambda: check_llm(http, base, hdr), lambda: check_memory(http, base, hdr, env),
                lambda: check_public(http, env.get("PUBLIC_BASE_URL", ""), version), lambda: check_sso(http, base),
                lambda: check_mcp(http, base, hdr), lambda: check_extension(http, base),
-               lambda: check_agents(http, base, hdr)):
+               lambda: check_agents(http, base, hdr, docker)):
         try:
             checks += fn()
         except (httpx.HTTPError, ValueError, KeyError) as e:

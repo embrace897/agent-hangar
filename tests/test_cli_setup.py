@@ -257,5 +257,5 @@ def test_doctor_lists_only_orphan_agent_volumes(monkeypatch):
 
     class Http:
         def get(self, url, headers=None, timeout=None):
-            return type("Resp", (), {"json": lambda self: [{"slug": "vivo"}]})()
+            return type("Resp", (), {"status_code": 200, "json": lambda self: [{"slug": "vivo"}]})()
     assert dr.orphan_volumes(Http(), "http://x", {}) == ["agent-a-b-c-prod-data", "agent-apagado-stage-data"]
