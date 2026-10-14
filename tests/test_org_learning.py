@@ -36,9 +36,10 @@ def test_a_knowledge_gap_answered_becomes_an_article_approved_with_edits_and_reu
     with SessionLocal() as db:
         assert db.query(KnowledgeGap).filter(KnowledgeGap.task_id == tid).count() == 1  # a base não respondia
     _done(tid, score=5)
-    with SessionLocal() as db:
-        assert org_learning.sweep(db) == 1
-        assert org_learning.sweep(db) == 0  # uma vez só
+    with SessionLocal() as db:  # sem limite: tarefas de outros testes que já passaram dos 2 minutos entram no mesmo lote
+        assert org_learning.sweep(db, limit=100_000) >= 1
+        assert db.query(TaskEvent).filter(TaskEvent.task_id == tid, TaskEvent.kind == "learning_checked").count() == 1
+        assert org_learning.sweep(db, limit=100_000) == 0  # uma vez só
     req = open_request(client, env, tid)
     assert req["kind"] == "learning" and req["payload"]["kind"] == "article" and "45 dias" in req["payload"]["content"]["text"]
     r = client.post(f"/api/decisions/{req['id']}", headers=env["h"]["mgr"], json={
