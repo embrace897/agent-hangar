@@ -19,7 +19,8 @@ def resolve_spec(db: Session, agent: Agent, env: str, version: int | None = None
             row = db.scalar(select(Skill).where(Skill.name == s))
             if not row:
                 raise PlatformError(f"Skill '{s}' não está no catálogo")
-            skills.append({"name": row.name, "description": row.description, "content": row.content})
+            from .skill_package import for_agent
+            skills.append({"name": row.name, "description": row.description, "content": for_agent(row)})
         else:
             skills.append(s)
     mcps = []

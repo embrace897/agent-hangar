@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Skills tab in the style of Claude's Skills:**
+  - List with search, *Todas*/*Minhas* and sort.
+  - **+ Adicionar** with *Fazer upload de Skill* (`.md` with a YAML header, or a `.zip`/`.skill` with `SKILL.md`, several at once) and *Criar uma Skill* (name, description, `SKILL.md` and extra files, with a draft).
+  - A popup with *Visão Geral* and *Conteúdo*: file tree, formatted or code view, any version.
+  - Download the package and update it from a file.
+- **Security check on upload:** secrets, files outside the package and oversized files are blocked; instruction-override text, external data sends and scripts are flagged.
+- **Skills keep their extra files**, versioned like the content. Agents receive `references/` text along with the `SKILL.md`.
+
+### Changed
+- The Skills tab no longer has the LLM connections and MCP servers boxes; they have their own tabs.
+- The Skill Studio's *Nova skill* form is now the same **+ Adicionar** button.
+
 ## [0.33.0] — 2026-10-14
 
 ### Added

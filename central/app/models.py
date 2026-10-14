@@ -138,6 +138,9 @@ class Skill(OrgScoped, Base):
     created_by: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[str] = mapped_column(String(12), default="active")  # active | deprecated (não use em agentes novos)
     cases: Mapped[list | None] = mapped_column(JSON, nullable=True)  # entradas de teste salvas no Skill Studio
+    # arquivos além do SKILL.md (references/, scripts/, assets/…): [{path, content}] — só texto
+    files: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class McpServer(OrgScoped, Base):
@@ -1085,6 +1088,7 @@ class SkillRevision(OrgScoped, Base):
     changed_by: Mapped[str] = mapped_column(String(254), default="")
     note: Mapped[str] = mapped_column(String(300), default="")
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    files: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class SkillTestRun(OrgScoped, Base):

@@ -140,6 +140,36 @@ at `#/org`. The manager of each employee is still a person; the chief is the lin
 - **Restore and deprecate.** *Restore* applies an old version as a new one. *Deprecate* marks a skill not to be used
   in new agents.
 
+## Skills tab (packages)
+
+*Capacidades → Skills* lists the skills the way Claude does: search, *Todas* / *Minhas*, sort, and **+ Adicionar**
+with two options.
+
+- **Fazer upload de Skill:** a `.md` with `name` and `description` in its YAML header, or a `.zip`/`.skill` with a
+  `SKILL.md`, several at once. Text files next to it (`references/`, `scripts/`, `assets/`…) come along; binaries are
+  skipped.
+- **Criar uma Skill:** name, description, the `SKILL.md` body and extra files (*Adicionar arquivo*). A draft can be
+  kept in the browser.
+
+**Security check** on every upload:
+
+- **Blocks:** files outside the package, secrets in the text (API keys, private keys, passwords: use the vault,
+  `secret://name`), files too large.
+- **Warns:** text that tries to override instructions or send data to an external address, and scripts (agents do not
+  run a skill's scripts).
+
+**The popup.** Clicking a skill opens it in two tabs:
+
+- **Visão Geral:** description, author, team, version, last test.
+- **Conteúdo:** the file tree and each file formatted or as code, for any version in the history.
+
+From the **⋮** menu you can download the package (`<name>/SKILL.md` plus files, any version), update it from a file
+(the name in the header must match) or edit it. Every change is a new version in the Skill Studio, including a
+change to the files only.
+
+**What the agent receives:** the `SKILL.md`, plus the text files under `references/` up to 30,000 characters. The
+other files are only listed.
+
 ## Team packages
 
 `#/packages` moves a team's setup to another team or installation, or starts from a ready-made team. A package
@@ -227,7 +257,9 @@ company sees anything from another — not in lists, not by id, not in search.
 | POST | `/api/inbox/mark` | `{keys, read, archived}` |
 | GET | `/api/search` | `?q=&kinds=agent,employee,task,project,goal,plugin,skill` |
 | GET | `/api/org-chart` | `?team=`: the Digital employees and who each reports to |
-| GET / PUT | `/api/skills`, `/api/skills/{name}` | Skill Studio list / detail; save a new version |
+| GET / PUT | `/api/skills`, `/api/skills/{name}` | Skill Studio list / detail; save a new version (`files: [{path, content}]` replaces the extra files) |
+| POST | `/api/skills/upload` | `{files: [{name, data (base64)}], check_only}`: `.md`/`.zip`/`.skill` with the security check; each file becomes a skill or a new version |
+| GET | `/api/skills/{name}/download?version=` | The package as a `.zip` (`<name>/SKILL.md` + files) |
 | PUT | `/api/skills/{name}/cases` | Saved test cases |
 | POST | `/api/skills/{name}/test` | `{connection}`: run the cases (mock without a connection) |
 | POST | `/api/skills/{name}/restore/{v}` · `/status` | Restore a version · `{status: active|deprecated}` |

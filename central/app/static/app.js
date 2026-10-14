@@ -718,18 +718,6 @@ async function usagePage() {
   <div class="card mt scroll"><h2>Últimas 100 chamadas</h2><table><tr><th>Quando</th><th>Agente</th><th>Env</th><th>Canal</th><th>Protocolo</th><th>Tokens</th><th>Custo</th><th>Latência</th><th></th></tr>
   ${l.map(r => `<tr><td>${ago(r.at)}</td><td><a href="#/agents/${r.agent}">${esc(r.agent)}</a></td><td>${r.env}</td><td>${esc(r.channel)}</td><td>${r.protocol}</td><td>${fmt(r.tokens)}</td><td>${usd(r.cost_usd)}</td><td>${r.latency_ms}ms</td><td>${r.ok ? `${icon('check', 'ok-ic')}` : `${icon('x', 'bad-ic')}`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Sem uso ainda</td></tr>'}</table></div>`;
 }
-async function catalogPage() {
-  const c = await api('/catalog');
-  main.innerHTML = `<h1>Skills</h1><div class="sub">Procedimentos e conhecimento reutilizáveis pelos agentes</div>
-  <div class="card row between"><div><b>Conexões de LLM e modelos</b><div class="mute small">Ficam em Configurações → Provedores de LLM, com a lista de modelos de cada provedor.</div></div>
-    <a class="btn ghost" href="#/providers">Abrir provedores</a></div>
-  <div class="grid g2 mt"><div class="card"><h2>Skills (${c.skills.length})</h2>${c.skills.map(s => `<div class="mt"><b>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.description)}</div><details><summary>conteúdo</summary><pre>${esc(s.content)}</pre></details></div>`).join('') || '<div class="mute">Nenhuma — registre pelo chat (<code>register_skill</code>) ou abaixo</div>'}
-    <details class="mt"><summary>Adicionar skill</summary><input id="sk-name" placeholder="nome" class="mt"><input id="sk-desc" placeholder="descrição" class="mt"><textarea id="sk-content" placeholder="conteúdo (markdown)" rows="4" class="mt"></textarea><button id="sk-add" class="mt">Salvar skill</button></details></div>
-  <div class="card"><h2>Servidores MCP</h2><div class="mute small">Os servidores MCP ficam em Capacidades → Conectores, com catálogo, personalizados, teste de conexão e aprovação de ferramentas.</div>
-    <a class="btn ghost mt" href="#/connectors">Abrir Conectores</a></div></div>`;
-  $('#sk-add').onclick = e => act(e.target, () => api('/catalog/skills', { method: 'POST', body: {
-    name: $('#sk-name').value.trim(), description: $('#sk-desc').value, content: $('#sk-content').value } }).then(catalogPage), 'Skill salva');
-}
 const num = v => v === '' || v == null ? null : Number(v);
 const PROTOCOLS = {
   openai: 'openai — agente de chat, codex, hermes',
@@ -967,7 +955,7 @@ async function route() {
     else if (r === 'connectors' && a === 'item' && b) await connectorItemPage(decodeURIComponent(b));
     else if (r === 'connectors' && a) await connectorDetail(decodeURIComponent(a));
     else if (r === 'connectors') await connectorsPage();
-    else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
+    else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: skillsHome, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
     uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos

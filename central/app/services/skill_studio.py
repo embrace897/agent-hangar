@@ -36,7 +36,7 @@ def record(db: Session, s: Skill, who: str, note: str = "") -> SkillRevision:
     if old is not None:
         return old
     r = SkillRevision(skill_id=s.id, version=s.version, description=s.description, content=s.content,
-                      examples=s.examples or "", test=s.test, changed_by=who, note=note[:300], at=now())
+                      examples=s.examples or "", test=s.test, changed_by=who, note=note[:300], at=now(), files=s.files or [])
     db.add(r)
     db.commit()
     return r
@@ -46,17 +46,25 @@ def _last_run(db: Session, s: Skill) -> SkillTestRun | None:
     return db.scalar(select(SkillTestRun).where(SkillTestRun.skill_id == s.id).order_by(SkillTestRun.id.desc()))
 
 
+def _team_name(db: Session, team_id: int | None) -> str | None:
+    from ..models import Team
+    t = db.get(Team, team_id) if team_id else None
+    return t.name if t else None
+
+
 def skill_dict(db: Session, s: Skill, acc: Access, detail: bool = False) -> dict:
     last = _last_run(db, s)
     d = {"name": s.name, "description": s.description, "version": s.version, "status": s.status or "active",
          "team_id": s.team_id, "cases": len(s.cases or []) + (1 if s.test else 0), "created_by": s.created_by,
          "last_run": {"version": last.version, "passed": last.passed, "at": iso(last.at)} if last else None,
-         "can_edit": can_edit(acc, s)}
+         "can_edit": can_edit(acc, s), "files_count": 1 + len(s.files or []), "updated_at": iso(s.updated_at),
+         "team": _team_name(db, s.team_id)}
     if detail:
         record(db, s, s.created_by or "sistema", "versão inicial")  # skills antigas ganham a revisão atual
         d.update(content=s.content, examples=s.examples or "", test=s.test, case_list=s.cases or [],
+                 files=s.files or [],
                  revisions=[{"version": r.version, "changed_by": r.changed_by, "note": r.note, "at": iso(r.at),
-                             "content": r.content, "description": r.description}
+                             "content": r.content, "description": r.description, "files": r.files or []}
                             for r in db.scalars(select(SkillRevision).where(SkillRevision.skill_id == s.id)
                                                 .order_by(SkillRevision.version.desc()).limit(30))],
                  runs=[{"id": r.id, "version": r.version, "passed": r.passed, "connection": r.connection, "by": r.by,
@@ -76,7 +84,8 @@ def detail(db: Session, acc: Access, name: str) -> dict:
 
 
 def save(db: Session, acc: Access, name: str, description: str, content: str, examples: str = "", test: dict | None = None,
-         note: str = "") -> dict:
+         note: str = "", files: list | None = None) -> dict:
+    """Cria ou atualiza a skill (versão nova a cada mudança). files=None mantém os arquivos; lista substitui."""
     from .catalog import upsert_skill
     s = db.scalar(select(Skill).where(Skill.name == name))
     if s is not None and not can_edit(acc, s):
@@ -86,9 +95,20 @@ def save(db: Session, acc: Access, name: str, description: str, content: str, ex
     if not (content or "").strip():
         raise PlatformError("a skill precisa de conteúdo")
     team_id = s.team_id if s is not None else next((t for t, r in acc.teams.items() if RANK.get(r, 0) >= RANK["developer"]), None)
+    if files is not None:
+        from .skill_package import clean_files
+        files = clean_files(files)
+    before = s.version if s is not None else None
+    files_changed = files is not None and files != ((s.files or []) if s is not None else [])
     if s is not None:
         record(db, s, s.created_by or "sistema", "antes da edição")
     s = upsert_skill(db, name, description, content, acc.p.name, examples, test, team_id=team_id)
+    if files is not None:
+        if files_changed and before is not None and s.version == before:
+            s.version += 1  # só os arquivos mudaram: também é uma versão nova
+        s.files = files
+    s.updated_at = now()
+    db.commit()
     record(db, s, acc.p.name, note)
     return skill_dict(db, s, acc, True)
 
@@ -159,7 +179,7 @@ def restore(db: Session, acc: Access, name: str, version: int) -> dict:
     r = db.scalar(select(SkillRevision).where(SkillRevision.skill_id == s.id, SkillRevision.version == int(version)))
     if r is None:
         raise PlatformError(f"a versão v{version} não está no histórico")
-    return save(db, acc, name, r.description, r.content, r.examples, r.test, f"restaurada a v{r.version}")
+    return save(db, acc, name, r.description, r.content, r.examples, r.test, f"restaurada a v{r.version}", r.files or [])
 
 
 def set_status(db: Session, acc: Access, name: str, status: str) -> dict:

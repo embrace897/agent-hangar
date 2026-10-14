@@ -404,12 +404,10 @@ async function skillsPage() {
       <td>${s.last_run ? `${s.last_run.passed ? '<span class="pill ok">passou</span>' : '<span class="pill bad">falhou</span>'} <span class="mute">v${s.last_run.version} · <span>${when(s.last_run.at)}</span></span>` : '<span class="mute">—</span>'}</td>
       <td>${s.status === 'deprecated' ? '<span class="pill warn">descontinuada</span>' : '<span class="pill ok">ativa</span>'}</td></tr>`).join('')}</table></div>`
     : '<div class="card empty"><div class="mute">Nenhuma skill ainda.</div></div>'}
-  ${canCreate ? `<div class="card mt"><h2>Nova skill</h2><div class="grid g2"><label>Nome<input id="sk-name" placeholder="ex.: tom-de-voz" data-noi18n></label>
-      <label>Descrição<input id="sk-desc"></label></div><label class="mt">Conteúdo (markdown)<textarea id="sk-content" rows="6" class="code" data-noi18n></textarea></label>
-    <div class="row mt"><button id="sk-go">Criar</button></div></div>` : ''}`;
-  const go = $('#sk-go');
-  if (go) go.onclick = ev => act(ev.target, () => api('/skills/' + encodeURIComponent($('#sk-name').value.trim()), { method: 'PUT', body: {
-    description: $('#sk-desc').value.trim(), content: $('#sk-content').value } }).then(s => { location.hash = '#/skills/' + encodeURIComponent(s.name); }), 'Skill criada');
+  ${canCreate ? `<div class="card mt row between"><div><h2 style="margin:0">Nova skill</h2><div class="mute small">Faça upload de um SKILL.md ou de um pacote .zip/.skill, ou crie uma do zero.</div></div>
+    <div class="cx-addw"><button id="sk-add" class="sk-dark">${icon('plus')} Adicionar</button></div></div>` : ''}`;
+  const add = $('#sk-add');
+  if (add) add.onclick = e => { e.stopPropagation(); skAddMenu(add); };
 }
 
 async function skillDetail(name) {

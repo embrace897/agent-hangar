@@ -62,6 +62,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       schedules,
                       secrets_vault,
                       self_org,
+                      skill_package,
                       skill_studio,
                       task_files,
                       task_flow,

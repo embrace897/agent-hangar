@@ -81,6 +81,12 @@ class SkillStudioBody(BaseModel):
     examples: str = ""
     test: dict | None = None
     note: str = ""
+    files: list[dict] | None = None  # [{path, content}] além do SKILL.md; None mantém os atuais
+
+
+class SkillUploadBody(BaseModel):
+    files: list[dict]  # [{name, data (base64)}]: .md com cabeçalho YAML, ou .zip/.skill com SKILL.md
+    check_only: bool = False
 
 
 class CasesBody(BaseModel):
@@ -302,6 +308,37 @@ def skills(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.skill_studio.list_skills(db, acc(request, db)))
 
 
+@router.post("/skills/upload")
+def skill_upload(body: SkillUploadBody, request: Request, db=Depends(db_dep)):
+    """Upload de skills (vários arquivos): verificação de segurança e, se passar, skill nova ou versão nova."""
+    return guard(lambda: {"results": svc.skill_package.upload(db, acc(request, db), body.files, body.check_only)})
+
+
+@router.get("/skills/{name}/download")
+def skill_download(name: str, request: Request, version: int | None = None, db=Depends(db_dep)):
+    """A skill como pacote .zip (pasta <nome>/SKILL.md + arquivos), da versão atual ou de uma do histórico."""
+    from fastapi.responses import Response as Resp
+
+    from ..models import SkillRevision
+
+    def go():
+        acc(request, db)
+        s = svc.skill_studio._get(db, name)
+        files = None
+        if version and version != s.version:
+            r = db.query(SkillRevision).filter(SkillRevision.skill_id == s.id, SkillRevision.version == version).one_or_none()
+            if r is None:
+                raise svc.PlatformError(f"a versão v{version} não está no histórico")
+            class _S:  # a revisão no formato que o zip espera
+                name, description, content = s.name, r.description, r.content
+            data = svc.skill_package.to_zip(_S, r.files or [])
+        else:
+            data = svc.skill_package.to_zip(s, files)
+        return Resp(data, media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="{s.name}{"-v" + str(version) if version else ""}.zip"'})
+    return guard(go)
+
+
 @router.get("/skills/{name}")
 def skill(name: str, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.skill_studio.detail(db, acc(request, db), name))
@@ -310,7 +347,7 @@ def skill(name: str, request: Request, db=Depends(db_dep)):
 @router.put("/skills/{name}")
 def skill_save(name: str, body: SkillStudioBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.skill_studio.save(db, acc(request, db), name, body.description, body.content, body.examples,
-                                               body.test, body.note))
+                                               body.test, body.note, body.files))
 
 
 @router.put("/skills/{name}/cases")
