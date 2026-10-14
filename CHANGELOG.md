@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-10-14
+
 ### Added
 - **Connectors (MCP), in the layout of ChatGPT's plugin catalog** (Capacidades → Conectores):
   - Search, installed connectors, catalog and custom, and sections by category with each connector's icon. Icons are downloaded once and served by the central.

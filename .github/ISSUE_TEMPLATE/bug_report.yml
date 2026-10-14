@@ -18,7 +18,7 @@ body:
     id: version
     attributes:
       label: Version
-      placeholder: "0.32.0 (sidebar footer of the portal, or GET /api/health)"
+      placeholder: "0.33.0 (sidebar footer of the portal, or GET /api/health)"
     validations: {required: true}
   - type: dropdown
     id: install
