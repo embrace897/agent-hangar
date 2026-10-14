@@ -139,17 +139,17 @@ def test_harness_agents_and_mcp_tools(client, lab, uniq):
 
 def test_no_suggestion_when_only_the_price_is_known(client, lab, uniq):
     ids = lab["ids"]
-    for k in ("big", "coder", "plain"):  # tira as notas de raciocínio: só sobra o custo
+    for k in ids:  # tira as notas de raciocínio dos modelos do laboratório: só sobram custo e velocidade
         client.patch(f"/api/catalog/model-profiles/{ids[k]}", headers=ADMIN, json={"scores": {"reasoning": None}})
-    client.patch(f"/api/catalog/model-profiles/{ids['cheap']}", headers=ADMIN, json={"scores": {"reasoning": None}})
-    slug = client.post("/api/agents", headers=ADMIN, json={"name": uniq("ag"), "objective": "Orquestrar", "final_output": "f"}).json()["slug"]
-    client.patch(f"/api/agents/{slug}", headers=ADMIN, json={"llm": {"connection": lab["conn"], "model": ids["coder"]},
-                                                            "sub_agents": []})
-    r = client.get(f"/api/agents/{slug}/model-recommendation?role=planner", headers=ADMIN).json()[0]
-    mine = [c for c in r["candidates"] if c["key"].startswith(ids["big"].split("/")[1][:6])]
-    assert all(c["confidence"] == "baixa" for c in mine)
-    if r["candidates"] and r["candidates"][0]["confidence"] == "baixa":
-        assert r["suggestion"] is None
+    rec = _rec(client, lab, "planner", caps="")
+    assert rec["candidates"] and all(c["confidence"] == "baixa" for c in rec["candidates"])
+    slug = client.post("/api/agents", headers=ADMIN, json={"name": uniq("ag"), "objective": "o", "final_output": "f"}).json()["slug"]
+    client.patch(f"/api/agents/{slug}", headers=ADMIN, json={"llm": {"connection": lab["conn"], "model": ids["coder"]}})
+    with SessionLocal() as db:  # só os modelos do laboratório (os de outros testes ficam de fora)
+        ctx = ms.context(db)
+        ctx["rows"] = [(m, c) for m, c in ctx["rows"] if c.name == lab["conn"]]
+        r = ms.for_agent(db, db.query(Agent).filter(Agent.slug == slug).one(), role="planner", ctx=ctx)
+    assert r["candidates"] and r["suggestion"] is None  # todos sem nota de raciocínio: o preço sozinho não sugere troca
 
 
 def test_the_agent_name_weighs_more_than_the_text():
