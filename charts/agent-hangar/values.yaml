@@ -131,6 +131,7 @@ sso:
 llmModels:
   refreshMin: 60
   catalogUrl: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  publicSources: true   # fichas dos modelos: descrição do OpenRouter, card do Hugging Face e busca na web
 
 # Ferramentas do analista no cluster (desligadas por padrão): o Data Studio roda o código em processos isolados
 # dentro do próprio pod; o navegador governado só fala com a central. Os dois saem só para a internet (sem IPs privados).

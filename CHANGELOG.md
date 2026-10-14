@@ -20,6 +20,11 @@ All notable changes to this project are documented here. The format follows
   - Cost uses the price of the model the agent actually uses.
 - **Builder:** the MCP tool `list_llm_models` lists models by type, along with the types that are available and the types that are missing. Before building, the builder checks that the company has the model types the agent needs and asks for a provider when one is missing.
 - A new connection no longer needs a model name: the default comes from the provider's list.
+- **Model profiles:** what each model is good for, 0–100 scores (reasoning, coding, speed, cost) and the source and date of each piece.
+  - Free and hourly: Artificial Analysis measurements (with the company's key from the vault) and OpenRouter's public description.
+  - Optional research with a monthly budget: one of the company's models summarizes the Hugging Face card and web search results (Brave, Tavily or SearXNG). Page text is treated as data, internal addresses are never fetched, and research scores are marked as estimates.
+  - Admins fix any field; fixed fields are locked. `MODEL_PUBLIC_SOURCES=0` turns public sources off.
+- **Builder:** `check_model_needs` tells it whether the company has the model types an agent needs (embedding, rerank, speech…) and gives the message for the user when one is missing. `get_model_profile` and the profiles in `list_llm_models` let it pick a model per role.
 
 ### Changed
 - *Skills e MCPs* no longer has its own LLM connections table; it links to *Provedores de LLM*, which now holds the code policy too.

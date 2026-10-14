@@ -452,7 +452,14 @@ def list_models(db: Session, connection: str = "", kind: str = "", available_onl
         q = q.where(LlmModel.kind == kind)
     if available_only:
         q = q.where(LlmModel.available.is_(True))
-    return [model_dict(m, c) for m, c in db.execute(q.order_by(LlmConnection.name, LlmModel.model_id))]
+    from . import model_profiles as mp
+    profs, cost = mp.profiles_by_key(db), mp.cost_scores(db)
+    out = []
+    for m, c in db.execute(q.order_by(LlmConnection.name, LlmModel.model_id)):
+        d = model_dict(m, c)
+        d["profile"] = mp.profile_dict(profs.get(mp.key_of(m.model_id)), cost, full=False)
+        out.append(d)
+    return out
 
 
 def kinds_summary(db: Session, conn: LlmConnection) -> dict:

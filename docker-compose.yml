@@ -108,6 +108,7 @@ services:
       BROWSER_URL: ${BROWSER_URL:-http://browser:8000/mcp}
       STAGE_IDLE_MIN: ${STAGE_IDLE_MIN:-30}   # stage sem uso hiberna (container parado) e acorda na próxima chamada; 0 desliga
       LLM_MODELS_REFRESH_MIN: ${LLM_MODELS_REFRESH_MIN:-60}   # lista de modelos de cada provedor; 0 desliga a atualização automática
+      MODEL_PUBLIC_SOURCES: ${MODEL_PUBLIC_SOURCES:-1}   # fichas dos modelos: OpenRouter, Hugging Face e busca na web; 0 = sem internet
       MODEL_CATALOG_URL: ${MODEL_CATALOG_URL-https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json}  # vazio = sem internet
       # desktop governado (perfil desktop): apps de desktop olhando a tela, pela alçada
       DESKTOP_URL: ${DESKTOP_URL:-http://desktop:8000/mcp}

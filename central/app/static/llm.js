@@ -24,6 +24,10 @@ function pvStatus(conns) {
   return `<span class="pv-st ${bad ? 'bad' : 'on'}"><i></i>${conns.length} ${conns.length > 1 ? 'conectadas' : 'conectada'}</span>`
     + (models ? `<span class="pv-st">${fmt(models)} ${models > 1 ? 'modelos' : 'modelo'}</span>` : '');
 }
+const AREA_LABEL = { reasoning: 'Raciocínio', coding: 'Código', speed: 'Velocidade', cost: 'Custo' };
+const SCORE_SRC = { artificial_analysis: 'medida (Artificial Analysis)', research: 'estimativa da pesquisa', admin: 'corrigida por um admin', price: 'pelo preço' };
+const scoreChips = pf => pf && pf.scores ? ['reasoning', 'coding', 'speed', 'cost'].filter(a => pf.scores[a])
+  .map(a => `<span class="chip sc-${esc(pf.scores[a].source)}" title="${esc(SCORE_SRC[pf.scores[a].source] || '')}: ${esc(pf.scores[a].basis || '')}"><span>${esc(AREA_LABEL[a])}</span> <b>${pf.scores[a].value}</b></span>`).join(' ') : '';
 const kindChips = kinds => Object.entries(kinds || {}).sort((a, b) => b[1] - a[1])
   .map(([k, n]) => `<span class="chip" title="${esc(MODEL_KIND_HINT[k] || '')}"><span>${esc(MODEL_KIND[k] || k)}</span> <b>${n}</b></span>`).join(' ');
 
@@ -52,8 +56,10 @@ async function providersPage() {
     ${missing.length && c.llm_connections.length ? `<div class="small mute mt"><span>Ainda sem modelo de:</span> ${missing.map(k => `<span class="chip" title="${esc(MODEL_KIND_HINT[k])}">${esc(MODEL_KIND[k])}</span>`).join(' ')}
       <div>Um agente que precisar desses tipos vai pedir para você cadastrar um provedor que os tenha.</div></div>` : ''}</div>
     ${ME.is_admin ? `<label class="small" style="min-width:230px">Código e LLMs<select id="code-policy"><option value="any">Qualquer conexão recebe código</option><option value="approved">Só conexões aprovadas para código</option></select></label>` : ''}</div></div>
+  ${ME.is_admin ? '<div id="mr-card" class="mt"></div>' : ''}
   ${PV_GROUPS.map(section).join('')}
   <div class="mute small mt">Logos dos provedores: projeto 9router (licença MIT). As marcas são dos respectivos donos.</div>`;
+  if ($('#mr-card')) researchCard($('#mr-card'), c);
   const pol = $('#code-policy');
   if (pol) {
     pol.value = (ME.org && ME.org.code_policy) || 'any';
@@ -154,24 +160,37 @@ async function connWire(x, p) {
       { method: 'PATCH', body: { default: true } }), 'Modelo padrão trocado');
   }
   const kinds = [...new Set(models.map(m => m.kind))];
-  const state = { kind: '', q: '' };
+  const state = { kind: '', q: '', open: '' };
   const draw = () => {
     const list = models.filter(m => (!state.kind || m.kind === state.kind) && (!state.q || m.id.toLowerCase().includes(state.q)));
     const shown = list.slice(0, 200);
     const price = m => m.price_in_per_mtok == null && m.price_out_per_mtok == null ? '<span class="mute">—</span>'
       : `${m.price_in_per_mtok ?? 0} · ${m.price_out_per_mtok ?? 0}`;
-    q('.cc-rows').innerHTML = shown.map(m => `<tr class="${m.available ? '' : 'mute'}"><td><code class="inline" data-noi18n>${esc(m.id)}</code>
+    q('.cc-rows').innerHTML = shown.map(m => `<tr class="${m.available ? '' : 'mute'}"><td><a href="#" class="cc-prof" data-m="${esc(m.id)}" title="ver a ficha"><code class="inline" data-noi18n>${esc(m.id)}</code></a>
         ${m.default ? ' <span class="pill ok">padrão</span>' : ''}${m.available ? '' : ' <span class="pill bad">saiu do provedor</span>'}${m.manual ? ' <span class="pill">incluído à mão</span>' : ''}</td>
       <td>${ME.is_admin ? `<select class="cc-kind" data-m="${esc(m.id)}" title="${esc(SRC_LABEL[m.kind_source] || '')}" style="width:auto;min-height:30px;padding:3px 8px">
           ${PV.kinds.map(k => `<option value="${k}" ${k === m.kind ? 'selected' : ''}>${esc(MODEL_KIND[k])}</option>`).join('')}</select>`
         : esc(MODEL_KIND[m.kind] || m.kind)}</td>
       <td>${(m.caps || []).map(cp => `<span class="chip">${esc(CAP_LABEL[cp] || cp)}</span>`).join(' ')}</td>
+      <td>${scoreChips(m.profile) || '<span class="mute">—</span>'}</td>
       <td class="mute">${m.context_length ? fmt(m.context_length) : '—'}</td>
       <td title="${esc(SRC_LABEL[m.price_source] || '')}">${price(m)}</td>
       <td>${ME.is_admin && m.kind === 'text' && m.available && !m.default ? `<a href="#" class="small cc-mkdef" data-m="${esc(m.id)}">tornar padrão</a>` : ''}
         ${ME.is_admin && (m.manual || !m.available) ? ` <a href="#" class="small cc-rm" data-m="${esc(m.id)}">tirar</a>` : ''}</td></tr>`).join('')
-      || `<tr><td colspan="6" class="empty">${models.length ? 'Nenhum modelo com esse filtro' : (p.list === 'none' ? 'Este provedor não publica a lista: inclua abaixo os modelos que vai usar.' : 'Nenhum modelo ainda')}</td></tr>`;
+      || `<tr><td colspan="7" class="empty">${models.length ? 'Nenhum modelo com esse filtro' : (p.list === 'none' ? 'Este provedor não publica a lista: inclua abaixo os modelos que vai usar.' : 'Nenhum modelo ainda')}</td></tr>`;
     q('.cc-count').textContent = list.length > shown.length ? `mostrando ${shown.length} de ${list.length}; refine a busca` : `${list.length} modelo(s)`;
+    root.querySelectorAll('.cc-prof').forEach(a => a.onclick = e => { e.preventDefault(); state.open = state.open === a.dataset.m ? '' : a.dataset.m; draw(); });
+    const pfBox = q('.cc-pf');  // a ficha aparece abaixo da tabela (dentro dela ficaria cortada em telas estreitas)
+    pfBox.hidden = !state.open;
+    if (state.open && pfBox.dataset.m !== state.open) {
+      pfBox.dataset.m = state.open;
+      pfBox.innerHTML = `<div class="row between"><h3 style="margin:0"><code class="inline" data-noi18n>${esc(state.open)}</code></h3><a href="#" class="small cc-pf-close">Fechar</a></div><div class="cc-pf-body mt"><span class="mute small">carregando a ficha…</span></div>`;
+      pfBox.querySelector('.cc-pf-close').onclick = e => { e.preventDefault(); state.open = ''; draw(); };
+      profileView(pfBox.querySelector('.cc-pf-body'), state.open, () => api(`/catalog/models?connection=${encodeURIComponent(x.name)}&all=true`)
+        .then(l => { models.splice(0, models.length, ...l); pfBox.dataset.m = ''; draw(); }));
+      pfBox.scrollIntoView({ block: 'nearest' });
+    }
+    if (!state.open) pfBox.dataset.m = '';
     root.querySelectorAll('.cc-kind').forEach(s => s.onchange = () => act(s, async () => {
       const r = await api(`/catalog/llm/${encodeURIComponent(x.name)}/models/${encodeURIComponent(s.dataset.m)}`, { method: 'PATCH', body: { kind: s.value } });
       Object.assign(models.find(m => m.id === r.id), r);
@@ -184,8 +203,9 @@ async function connWire(x, p) {
   box.innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:8px"><div class="row" style="flex-wrap:wrap;gap:6px">
       <button class="ghost cc-f on" data-k="">Todos</button>${kinds.map(k => `<button class="ghost cc-f" data-k="${k}">${esc(MODEL_KIND[k] || k)}</button>`).join('')}</div>
       <input class="cc-q" placeholder="buscar modelo" style="max-width:240px"></div>
-    <div class="scroll mt"><table><tr><th>Modelo</th><th>Tipo</th><th>Recursos</th><th>Contexto</th><th>US$/1M (entrada · saída)</th><th></th></tr><tbody class="cc-rows"></tbody></table></div>
+    <div class="scroll mt"><table><tr><th>Modelo</th><th>Tipo</th><th>Recursos</th><th title="0 a 100; passe o mouse para ver de onde veio cada nota">Notas</th><th>Contexto</th><th>US$/1M (entrada · saída)</th><th></th></tr><tbody class="cc-rows"></tbody></table></div>
     <div class="mute small cc-count"></div>
+    <div class="card mt cc-pf" hidden></div>
     ${ME.is_admin ? `<details class="mt" ${p.list === 'none' && !models.length ? 'open' : ''}><summary class="small">Incluir um modelo à mão (provedor sem lista ou modelo que a lista não mostra)</summary>
       <div class="grid g4 mt"><input class="cm-id" placeholder="id do modelo"><select class="cm-kind"><option value="">tipo: deduzir pelo nome</option>${PV.kinds.map(k => `<option value="${k}">${esc(MODEL_KIND[k])}</option>`).join('')}</select>
         <input class="cm-pin" type="number" step="0.01" min="0" placeholder="US$/1M entrada"><input class="cm-pout" type="number" step="0.01" min="0" placeholder="US$/1M saída"></div>
@@ -208,5 +228,84 @@ async function modelOptions(select, conn) {
   if (!conn) { select.innerHTML = '<option value="">padrão da conexão</option>'; select.disabled = true; return; }
   const list = await api(`/catalog/models?connection=${encodeURIComponent(conn)}&kind=text`).catch(() => []);
   select.disabled = !list.length;
-  select.innerHTML = '<option value="">padrão da conexão</option>' + list.map(m => `<option value="${esc(m.id)}">${esc(m.id)}${m.default ? ' (padrão)' : ''}${m.price_in_per_mtok != null ? ` · US$ ${m.price_in_per_mtok}/${m.price_out_per_mtok ?? 0}` : ''}${(m.caps || []).includes('vision') ? ' · lê imagens' : ''}</option>`).join('');
+  select.innerHTML = '<option value="">padrão da conexão</option>' + list.map(m => `<option value="${esc(m.id)}">${esc(m.id)}${m.default ? ' (padrão)' : ''}${m.price_in_per_mtok != null ? ` · US$ ${m.price_in_per_mtok}/${m.price_out_per_mtok ?? 0}` : ''}${(m.caps || []).includes('vision') ? ' · lê imagens' : ''}${m.profile && m.profile.scores ? ['reasoning', 'coding'].filter(a => m.profile.scores[a]).map(a => ` · ${AREA_LABEL[a].toLowerCase()} ${m.profile.scores[a].value}`).join('') : ''}</option>`).join('');
+}
+
+/* a ficha de um modelo: para que é bom, notas com a origem, fontes; o admin pesquisa e corrige */
+async function profileView(box, modelId, reload) {
+  let pf = null;
+  try { pf = await api(`/catalog/model-profiles/${encodeURIComponent(modelId)}`); } catch (e) { pf = null; }
+  const list = (t, xs) => xs && xs.length ? `<div class="mt"><b class="small">${esc(t)}</b><ul class="small" style="margin:4px 0 0 18px;padding:0">${xs.map(v => `<li data-noi18n>${esc(v)}</li>`).join('')}</ul></div>` : '';
+  const scores = pf ? Object.entries(pf.scores || {}) : [];
+  box.innerHTML = pf ? `<div class="grid g2"><div>
+      ${pf.summary ? `<div data-noi18n>${esc(pf.summary)}</div>` : '<div class="mute">Sem resumo ainda.</div>'}
+      ${pf.best_for && pf.best_for.length ? `<div class="mt"><b class="small">Bom para</b> ${pf.best_for.map(v => `<span class="chip" data-noi18n>${esc(v)}</span>`).join(' ')}</div>` : ''}
+      ${list('Pontos fortes', pf.strengths)}${list('Limitações', pf.weaknesses)}</div>
+    <div>${scores.length ? `<table class="small"><tr><th>Área</th><th>Nota</th><th>Origem</th></tr>${scores.map(([a, v]) => `<tr><td>${esc(AREA_LABEL[a] || a)}</td><td><b>${v.value}</b></td>
+        <td><span>${esc(SCORE_SRC[v.source] || v.source)}</span>${v.basis ? `<div class="mute" data-noi18n>${esc(v.basis)}</div>` : ''}</td></tr>`).join('')}</table>` : '<div class="mute small">Sem notas ainda.</div>'}
+      ${(pf.sources || []).length ? `<div class="mt small"><b>Fontes</b>${pf.sources.map(s => `<div><a href="${esc(s.url)}" target="_blank" rel="noopener" data-noi18n>${esc(s.title)}</a> <span class="mute">· ${ago(s.fetched_at)}</span></div>`).join('')}</div>` : ''}
+      <div class="mute small mt">${pf.researched_at ? `<span>Pesquisada</span> ${ago(pf.researched_at)}${pf.research_cost_usd ? ` · US$ ${pf.research_cost_usd}` : ''}` : '<span>Ainda não pesquisada com LLM</span>'}
+        ${pf.research_status === 'error' || pf.research_status === 'partial' ? ` · <span class="bad-text" data-noi18n>${esc(pf.research_error)}</span>` : ''}
+        ${(pf.locked || []).length ? ` · <span>corrigido por um admin:</span> ${pf.locked.map(f => esc(AREA_LABEL[f] || f)).join(', ')}` : ''}</div></div></div>`
+    : '<div class="mute small">Este modelo ainda não tem ficha. As fontes sem custo entram de hora em hora; a pesquisa com LLM precisa estar configurada em Pesquisa de modelos.</div>';
+  if (!ME.is_admin) return;
+  box.insertAdjacentHTML('beforeend', `<div class="row mt" style="flex-wrap:wrap;gap:8px;align-items:flex-start"><button class="ghost pf-go">Pesquisar agora</button>
+    <details style="flex:1;min-width:260px"><summary class="small">Corrigir a ficha</summary>
+      <label class="mt">Resumo<textarea class="pf-sum" rows="3">${esc(pf ? pf.summary : '')}</textarea></label>
+      <label class="mt">Bom para (vírgula)<input class="pf-best" value="${esc(pf ? (pf.best_for || []).join(', ') : '')}"></label>
+      <div class="grid g4 mt">${['reasoning', 'coding', 'speed', 'cost'].map(a => `<label>${esc(AREA_LABEL[a])}<input class="pf-sc" data-a="${a}" type="number" min="0" max="100" value="${pf && pf.scores && pf.scores[a] ? pf.scores[a].value : ''}"></label>`).join('')}</div>
+      <div class="mute small mt">O que você corrigir fica travado: a pesquisa não muda mais. Nota vazia volta a vir das fontes.</div>
+      <button class="pf-save mt">Salvar ficha</button></details></div>`);
+  box.querySelector('.pf-go').onclick = e => act(e.target, async () => {
+    const r = await api(`/catalog/model-profiles/${encodeURIComponent(modelId)}/research`, { method: 'POST' });
+    toast(r.ok ? `Ficha pesquisada (${r.sources} fonte(s), US$ ${r.cost_usd})` : `Pesquisa sem resultado: ${r.error}`, !r.ok);
+    await reload();
+  });
+  box.querySelector('.pf-save').onclick = e => act(e.target, async () => {
+    const scores = {}, unlock = [];
+    box.querySelectorAll('.pf-sc').forEach(i => {
+      if (i.value === '') { if (pf && (pf.locked || []).includes(i.dataset.a)) unlock.push(i.dataset.a); } else scores[i.dataset.a] = Number(i.value);
+    });
+    await api(`/catalog/model-profiles/${encodeURIComponent(modelId)}`, { method: 'PATCH', body: { summary: box.querySelector('.pf-sum').value,
+      best_for: box.querySelector('.pf-best').value.split(',').map(v => v.trim()).filter(Boolean), scores, unlock } });
+    toast('Ficha salva');
+    await reload();
+  });
+}
+
+/* como as fichas são pesquisadas: conexão que resume, busca na web, Artificial Analysis e orçamento */
+async function researchCard(box, c) {
+  const s = await api('/catalog/model-profiles/settings');
+  const conns = c.llm_connections.filter(x => x.protocol === 'openai');
+  box.innerHTML = `<details class="card" ${s.connection ? '' : 'open'}><summary><b>Pesquisa de modelos (fichas)</b>
+      <span class="mute small"> · <span>${s.researcher_ready ? 'ligada' : 'desligada'}</span> · <span>gasto no mês</span> US$ ${s.spent_this_month_usd} / ${s.monthly_budget_usd}</span></summary>
+    <div class="mute small mt">Cada modelo ganha uma ficha: para que é bom, notas de 0 a 100 por área e de onde veio cada informação. Sem custo e de hora em hora: a descrição pública do OpenRouter e, com a chave, as medições do Artificial Analysis. Com a pesquisa ligada, um modelo da empresa lê o card do Hugging Face e a busca na web e resume a ficha (primeiro os modelos em uso).</div>
+    ${s.public_sources ? '' : '<div class="small mt"><b>Fontes públicas desligadas nesta instalação (MODEL_PUBLIC_SOURCES=0).</b></div>'}
+    <div class="grid g4 mt">
+      <label>Conexão que pesquisa<select id="mr-conn"><option value="">nenhuma (só fontes sem custo)</option>${conns.map(x => `<option value="${esc(x.name)}" ${x.name === s.connection ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>Modelo<select id="mr-model"><option value="">padrão da conexão</option></select></label>
+      <label>Pesquisa automática<select id="mr-auto"><option value="off">desligada (só sob pedido)</option><option value="used">modelos em uso e padrões</option><option value="all">todos os modelos de texto</option></select></label>
+      <label>Orçamento do mês (US$)<input id="mr-budget" type="number" step="0.5" min="0" value="${s.monthly_budget_usd}"></label></div>
+    <div class="grid g4 mt">
+      <label>Busca na web<select id="mr-web"><option value="">nenhuma</option><option value="brave">Brave Search</option><option value="tavily">Tavily</option><option value="searxng">SearXNG (próprio)</option></select></label>
+      <label>Chave da busca (cofre)<input id="mr-skey" placeholder="secret://brave-search" value="${esc(s.search_key)}"></label>
+      <label>Endereço do SearXNG<input id="mr-surl" placeholder="https://searx.empresa.com" value="${esc(s.search_url)}"></label>
+      <label>Chave do Artificial Analysis (cofre)<input id="mr-aa" placeholder="secret://artificial-analysis" value="${esc(s.aa_key)}"></label></div>
+    <div class="mute small mt">As chaves ficam no cofre (Configurações → Segredos); aqui vai só a referência secret://nome.</div>
+    <div class="row mt"><button id="mr-save">Salvar</button><button id="mr-refresh" class="ghost">Atualizar fichas agora (fontes sem custo)</button></div></details>`;
+  $('#mr-auto').value = s.auto;
+  $('#mr-web').value = s.web;
+  const fill = async () => { await modelOptions($('#mr-model'), $('#mr-conn').value); $('#mr-model').value = s.model || ''; };
+  $('#mr-conn').onchange = fill;
+  if (s.connection) fill();
+  $('#mr-save').onclick = e => act(e.target, async () => {
+    await api('/catalog/model-profiles/settings', { method: 'PUT', body: { connection: $('#mr-conn').value, model: $('#mr-model').value,
+      auto: $('#mr-auto').value, monthly_budget_usd: Number($('#mr-budget').value || 0), web: $('#mr-web').value,
+      search_key: $('#mr-skey').value.trim(), search_url: $('#mr-surl').value.trim(), aa_key: $('#mr-aa').value.trim() } });
+    await researchCard(box, c);
+  }, 'Pesquisa de modelos salva');
+  $('#mr-refresh').onclick = e => act(e.target, async () => {
+    const r = await api('/catalog/model-profiles/refresh', { method: 'POST' });
+    toast(`${r.profiles_updated} ficha(s) atualizada(s) de ${r.models} modelo(s)`);
+  });
 }

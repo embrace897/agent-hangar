@@ -275,6 +275,11 @@ Agents reach the memory at `/internal/memory/mcp` with their internal token and 
 | POST | `/api/catalog/llm/{name}/models/sync` | Refresh the connection's model list now: `{ok, total, added, lost, error}`. Admin |
 | POST | `/api/catalog/llm/{name}/models` | `{model_id, kind?, price_in_per_mtok?, price_out_per_mtok?}`: add a model by hand (providers without a list). Admin |
 | PATCH | `/api/catalog/llm/{name}/models/{model_id}` | `{kind}` fixes the type, `{set_price, price_in_per_mtok, price_out_per_mtok}` the price (refreshes keep it), `{default: true}` makes it the connection's default. Admin |
+| GET · PUT | `/api/catalog/model-profiles/settings` | How profiles are researched: `connection`, `model`, `auto` (`off`/`used`/`all`), `monthly_budget_usd`, `per_run`, `max_age_days`, `web` (`brave`/`tavily`/`searxng`), `search_key` and `aa_key` as `secret://name`, `search_url`. PUT is admin |
+| POST | `/api/catalog/model-profiles/refresh` | Fill profiles from the free sources now. Admin |
+| GET | `/api/catalog/model-profiles/{model}` | A model's profile: summary, strengths, weaknesses, best_for, scores `{area: {value, source, basis}}`, metrics, sources |
+| POST | `/api/catalog/model-profiles/{model}/research` | Research the profile now (spends from the monthly budget). Admin |
+| PATCH | `/api/catalog/model-profiles/{model}` | Fix `summary`, `strengths`, `weaknesses`, `best_for`, `scores` (0–100, `null` clears); fixed fields are locked, `unlock: [fields]` releases them. Admin |
 | DELETE | `/api/catalog/llm/{name}/models/{model_id}` | Only models added by hand or gone from the provider, and not used by an agent. Admin |
 | POST | `/api/apply` | GitOps document `{skills, mcp_servers, agents}` (idempotent) |
 | GET | `/api/templates`, `/api/templates/{id}` | Gallery |
@@ -309,7 +314,7 @@ The client acts with the key owner's roles. The tools are:
 - **Guidance:** `platform_guide`, `get_spec_schema`, `whoami`.
 - **Access:** `request_agent_access`, `list_approvals`, `decide_approval`.
 - **Schedules:** `schedule_agent`, `list_schedules`, `update_schedule`, `delete_schedule`, `run_schedule_now`, `schedule_runs`.
-- **Catalog:** `list_catalog`, `list_llm_models`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
+- **Catalog:** `list_catalog`, `list_llm_models`, `get_model_profile`, `check_model_needs`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
 - **Templates:** `list_templates`, `apply_template`.
 - **Build:** `register_agent`, `design_agent` (merge patch plus `remove`), `rollback_agent`, `build_multi_agent`.
 - **Inspect:** `list_agents`, `get_agent`, `get_agent_spec` (spec, plus which version runs in prod and in stage).

@@ -67,6 +67,9 @@ STAGE_IDLE_MIN = float(_env("STAGE_IDLE_MIN", "30"))
 # Lista de modelos de cada provedor de LLM: atualizada a cada N minutos (0 desliga a atualização automática)
 LLM_MODELS_REFRESH_MIN = float(_env("LLM_MODELS_REFRESH_MIN", "60"))
 # Tabela pública de modelos (preço, contexto e tipo) do LiteLLM; vazio = não baixar (ambiente sem internet)
+# Fichas dos modelos: fontes públicas sem chave (descrição do OpenRouter, card do Hugging Face, páginas da busca na web).
+# 0 = ambiente sem internet: só o que a empresa cadastrar e o Artificial Analysis (se tiver chave e saída liberada)
+MODEL_PUBLIC_SOURCES = _env("MODEL_PUBLIC_SOURCES", "1") not in ("0", "false", "no")
 MODEL_CATALOG_URL = _env("MODEL_CATALOG_URL",
                          "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json")
 K8S_NAMESPACE = _env("K8S_NAMESPACE")  # vazio = o namespace da própria central (ServiceAccount)

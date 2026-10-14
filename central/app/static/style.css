@@ -460,3 +460,4 @@ a.btn.ghost{background:var(--panel);color:var(--ink);border-color:var(--line)}a.
 .pv-st.bad{color:var(--stop);background:var(--stop-bg);border-radius:99px;padding:0 8px}
 .pv-st i{width:6px;height:6px;border-radius:50%;background:currentColor}
 button.cc-f{min-height:30px;padding:3px 10px;font-weight:500}button.cc-f.on{border-color:var(--ink);background:var(--panel-2)}
+.chip.sc-research{border-style:dashed}.chip.sc-admin{border-color:var(--info)}

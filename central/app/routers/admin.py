@@ -479,6 +479,40 @@ def llm_model_edit(name: str, model_id: str, b: ModelEdit, request: Request, db=
     return guard(go)
 
 
+@router.get("/catalog/model-profiles/settings")
+def model_research_settings(db=Depends(db_dep)):
+    """Como as fichas dos modelos são pesquisadas (conexão, busca na web, Artificial Analysis, orçamento)."""
+    return svc.model_profiles.settings_view(db)
+
+
+@router.put("/catalog/model-profiles/settings", dependencies=[Depends(require_admin)])
+def model_research_save(b: dict, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.model_profiles.save_settings(db, b, actor(request)))
+
+
+@router.post("/catalog/model-profiles/refresh", dependencies=[Depends(require_admin)])
+def model_profiles_refresh(db=Depends(db_dep)):
+    """Fontes sem custo agora (Artificial Analysis com a chave da empresa e a descrição do OpenRouter)."""
+    return guard(lambda: svc.model_profiles.refresh_structured(db))
+
+
+@router.get("/catalog/model-profiles/{key:path}")
+def model_profile_get(key: str, db=Depends(db_dep)):
+    return guard(lambda: svc.model_profiles.get(db, key))
+
+
+@router.post("/catalog/model-profiles/{key:path}/research", dependencies=[Depends(require_admin)])
+def model_profile_research(key: str, request: Request, db=Depends(db_dep)):
+    """Pesquisa a ficha agora (gasta do orçamento do mês)."""
+    return guard(lambda: svc.model_profiles.research(db, svc.model_profiles.key_of(key), actor(request)))
+
+
+@router.patch("/catalog/model-profiles/{key:path}", dependencies=[Depends(require_admin)])
+def model_profile_edit(key: str, b: dict, request: Request, db=Depends(db_dep)):
+    """Corrige a ficha (summary, strengths, weaknesses, best_for, scores {área: 0–100 | null}); unlock=[campos]."""
+    return guard(lambda: svc.model_profiles.edit(db, key, b, actor(request)))
+
+
 @router.delete("/catalog/llm/{name}/models/{model_id:path}", dependencies=[Depends(require_admin)])
 def llm_model_remove(name: str, model_id: str, request: Request, db=Depends(db_dep)):
     guard(lambda: svc.llm_models.remove_model(db, svc.get_connection(db, name), model_id, actor(request)))

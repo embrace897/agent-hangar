@@ -178,6 +178,31 @@ class LlmConnection(OrgScoped, Base):
     models_error: Mapped[str] = mapped_column(Text, default="")
 
 
+class ModelProfile(OrgScoped, Base):
+    """A ficha de um modelo: para que ele é bom, notas por área (0–100) e de onde veio cada informação. A chave é o nome
+    normalizado (o mesmo modelo via OpenRouter e via LiteLLM tem uma ficha só). O que o admin corrige fica em `locked`
+    e a pesquisa não sobrescreve."""
+    __tablename__ = "model_profiles"
+    __table_args__ = (UniqueConstraint("org_id", "key", name="uq_modelprofile_org_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    strengths: Mapped[list] = mapped_column(JSON, default=list)
+    weaknesses: Mapped[list] = mapped_column(JSON, default=list)
+    best_for: Mapped[list] = mapped_column(JSON, default=list)
+    scores: Mapped[dict] = mapped_column(JSON, default=dict)  # {área: {value, source, basis}}
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)  # números brutos (índices, tokens/s…)
+    sources: Mapped[list] = mapped_column(JSON, default=list)  # [{kind, title, url, fetched_at}]
+    locked: Mapped[list] = mapped_column(JSON, default=list)  # campos corrigidos pelo admin
+    structured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    researched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    research_status: Mapped[str] = mapped_column(String(10), default="")  # ok | partial | error
+    research_error: Mapped[str] = mapped_column(Text, default="")
+    research_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class LlmModel(OrgScoped, Base):
     """Um modelo que o provedor da conexão oferece (a lista vem do próprio provedor, a cada hora). `kind` é o tipo de
     saída (text, embedding, rerank, image, tts, stt…): o construtor usa para saber se a empresa tem o modelo que um
@@ -273,6 +298,9 @@ class Organization(Base):
     calendar: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # dias úteis, expediente e feriados da empresa
     governance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # DLP e retenção por classificação
     issue_prefix: Mapped[str] = mapped_column(String(10), default="HGR")  # issues do quadro: HGR-123
+    # pesquisa das fichas dos modelos: conexão/modelo que resume, busca na web, chave do Artificial Analysis (secret://),
+    # modo automático, orçamento do mês e o gasto por mês
+    model_research: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class Team(Base):

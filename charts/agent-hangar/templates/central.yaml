@@ -19,6 +19,7 @@ data:
   STAGE_IDLE_MIN: {{ .Values.agents.stageIdleMin | quote }}
   LLM_MODELS_REFRESH_MIN: {{ .Values.llmModels.refreshMin | quote }}
   MODEL_CATALOG_URL: {{ .Values.llmModels.catalogUrl | quote }}
+  MODEL_PUBLIC_SOURCES: {{ ternary "1" "0" .Values.llmModels.publicSources | quote }}
   AGENT_CPUS: {{ .Values.agents.cpus | quote }}
   JOB_MEM_LIMIT: {{ .Values.agents.jobMemLimit | quote }}
   JOB_CPUS: {{ .Values.agents.jobCpus | quote }}
