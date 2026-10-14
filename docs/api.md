@@ -266,10 +266,16 @@ Agents reach the memory at `/internal/memory/mcp` with their internal token and 
 | POST | `/api/jobs/{id}/cancel` | Cancel |
 | GET | `/api/jobs/{id}/events` | **SSE**: `status`, `log`, `done` |
 | GET | `/api/catalog` | Skills, MCP servers, connections (keys masked) |
-| POST | `/api/catalog/skills` · `/api/catalog/mcps` · `/api/catalog/llm` | Upsert |
+| POST | `/api/catalog/skills` · `/api/catalog/mcps` · `/api/catalog/llm` | Upsert. For `/llm`, `model_name` is optional (the default comes from the provider's model list, fetched on save) and `provider` names the card (`openai`, `openrouter`, `litellm`…) |
 | DELETE | `/api/catalog/llm/{name}` | Refused while an agent uses it |
 | POST | `/api/catalog/llm/{name}/test` | Real, minimal call to the connection's LLM (checks URL, key and model): `{ok, latency_ms, detail}`. Admin |
 | PATCH | `/api/catalog/llm/{name}/code` | `{allow_code}`: approve a connection to receive code (coding mode, code evaluations) when `code_policy` is `approved`. Admin |
+| GET | `/api/catalog/providers` | Known LLM providers (logo, base URL, protocol, usual model types) and the model types |
+| GET | `/api/catalog/models?kind=&connection=&all=` | Models of the company's connections: type, features, context, price, `available`, `default`. `all=true` includes models gone from the provider |
+| POST | `/api/catalog/llm/{name}/models/sync` | Refresh the connection's model list now: `{ok, total, added, lost, error}`. Admin |
+| POST | `/api/catalog/llm/{name}/models` | `{model_id, kind?, price_in_per_mtok?, price_out_per_mtok?}`: add a model by hand (providers without a list). Admin |
+| PATCH | `/api/catalog/llm/{name}/models/{model_id}` | `{kind}` fixes the type, `{set_price, price_in_per_mtok, price_out_per_mtok}` the price (refreshes keep it), `{default: true}` makes it the connection's default. Admin |
+| DELETE | `/api/catalog/llm/{name}/models/{model_id}` | Only models added by hand or gone from the provider, and not used by an agent. Admin |
 | POST | `/api/apply` | GitOps document `{skills, mcp_servers, agents}` (idempotent) |
 | GET | `/api/templates`, `/api/templates/{id}` | Gallery |
 | POST | `/api/templates/{id}/apply` | `{connection?, harness_connection?}` |
@@ -303,7 +309,7 @@ The client acts with the key owner's roles. The tools are:
 - **Guidance:** `platform_guide`, `get_spec_schema`, `whoami`.
 - **Access:** `request_agent_access`, `list_approvals`, `decide_approval`.
 - **Schedules:** `schedule_agent`, `list_schedules`, `update_schedule`, `delete_schedule`, `run_schedule_now`, `schedule_runs`.
-- **Catalog:** `list_catalog`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
+- **Catalog:** `list_catalog`, `list_llm_models`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
 - **Templates:** `list_templates`, `apply_template`.
 - **Build:** `register_agent`, `design_agent` (merge patch plus `remove`), `rollback_agent`, `build_multi_agent`.
 - **Inspect:** `list_agents`, `get_agent`, `get_agent_spec` (spec, plus which version runs in prod and in stage).

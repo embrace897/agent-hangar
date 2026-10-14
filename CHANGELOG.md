@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **LLM providers page, in the style of 9router:**
+  - It replaces the connections table. There is one card per provider (logos from 9router, MIT), grouped as gateways, API key providers, local, and custom endpoints compatible with OpenAI or Anthropic.
+  - Each provider page shows its connections and their models, with filters by type and search.
+- **Model list per provider:**
+  - Fetched when the connection is saved and then every hour (`LLM_MODELS_REFRESH_MIN`).
+  - Each model is stored with its output type (text, embedding, rerank, image, video, TTS, STT, moderation), features (reads images, tools, reasoning), context and price.
+  - The type and price come from the provider, then from LiteLLM's public model table (`MODEL_CATALOG_URL`), then from the model's name. Admins can correct both, and refreshes don't undo it.
+  - Models that leave the provider are kept as unavailable. The admins' inbox warns when an agent still uses one.
+- **Choosing a model:**
+  - Agents pick a model from that list: the new agent form has a model picker.
+  - A model that isn't in the connection's list is refused.
+  - Cost uses the price of the model the agent actually uses.
+- **Builder:** the MCP tool `list_llm_models` lists models by type, along with the types that are available and the types that are missing. Before building, the builder checks that the company has the model types the agent needs and asks for a provider when one is missing.
+- A new connection no longer needs a model name: the default comes from the provider's list.
+
+### Changed
+- *Skills e MCPs* no longer has its own LLM connections table; it links to *Provedores de LLM*, which now holds the code policy too.
+
 ## [0.31.0] — 2026-10-14
 
 ### Added

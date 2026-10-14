@@ -63,16 +63,29 @@ def upsert_mcp(db: Session, name, url, description="", actor="admin", tool_prefi
 
 # ------------------------------------------------------------------ conexões de LLM
 def upsert_llm_connection(db: Session, name, base_url, model_name, api_key="", description="", actor="admin",
-                          protocol="openai", price_in_per_mtok=None, price_out_per_mtok=None) -> LlmConnection:
-    if not (name and base_url and model_name):
+                          protocol="openai", price_in_per_mtok=None, price_out_per_mtok=None, provider: str | None = None,
+                          require_model: bool = True) -> LlmConnection:
+    """Cria ou atualiza a conexão. `require_model=False`: o modelo padrão pode vir da lista do provedor (quem chama
+    sincroniza em seguida, ver llm_models.sync_connection)."""
+    from . import llm_models
+    if not (name and base_url and (model_name or not require_model)):
         raise PlatformError("name, base_url e model_name são obrigatórios")
+    if provider is not None and provider not in llm_models.BY_ID:
+        raise PlatformError(f"provider desconhecido: {provider}. Opções: {', '.join(llm_models.BY_ID)}")
     if not base_url.startswith(("http://", "https://")):
         raise PlatformError("base_url deve ser uma URL http(s), ex.: https://openrouter.ai/api/v1")
     if protocol not in PROTOCOLS:
         raise PlatformError("protocol deve ser 'openai' (chat, codex, hermes), 'anthropic' (harness claude-code) "
                             "ou 'deepseek' (harness deepseek-harness, API nativa da DeepSeek)")
     c = db.scalar(select(LlmConnection).where(LlmConnection.name == name)) or LlmConnection(name=name)
-    c.base_url, c.model_name, c.description, c.protocol = base_url.rstrip("/"), model_name, description or "", protocol
+    if c.id is None and provider is None:  # conexão nova sem provedor: o endereço diz qual é (senão "custom")
+        provider = next((p["id"] for p in llm_models.PROVIDERS if p["base_url"] and p["group"] != "custom"
+                         and p["base_url"].split("//")[-1].split("/")[0] in base_url), "custom")
+    if provider is not None:
+        c.provider = provider
+    c.base_url, c.description, c.protocol = base_url.rstrip("/"), description or "", protocol
+    if model_name or c.model_name is None:
+        c.model_name = model_name or ""
     c.price_in_per_mtok, c.price_out_per_mtok = price_in_per_mtok, price_out_per_mtok
     if api_key:  # reenviar vazio preserva a chave atual (útil para só trocar a URL/modelo)
         c.api_key = crypto.encrypt(api_key)
@@ -89,6 +102,10 @@ def delete_llm_connection(db: Session, name, actor="admin"):
     in_use = [a.slug for a in db.scalars(select(Agent)) if uses_connection(spec_of(a), name)]
     if in_use:
         raise PlatformError(f"Conexão em uso por: {', '.join(in_use)}. Troque o LLM desses agentes antes.")
+    from sqlalchemy import delete
+
+    from ..models import LlmModel
+    db.execute(delete(LlmModel).where(LlmModel.connection_id == c.id))
     db.delete(c)
     db.commit()
     audit(db, actor, "llm_connection.delete", name)
@@ -115,10 +132,17 @@ def mask_key(k: str) -> str:
 
 def llm_connection_dict(c: LlmConnection) -> dict:
     """Nunca devolve a chave — só os 4 últimos caracteres, para o admin reconhecer qual é."""
+    from sqlalchemy.orm import object_session
+
+    from . import llm_models
+    db = object_session(c)
+    kinds = llm_models.kinds_summary(db, c) if db is not None and c.id else {}
     return {"name": c.name, "base_url": c.base_url, "model_name": c.model_name, "description": c.description,
             "protocol": c.protocol, "api_key": mask_key(c.api_key), "has_key": bool(c.api_key),
             "price_in_per_mtok": c.price_in_per_mtok, "price_out_per_mtok": c.price_out_per_mtok,
-            "allow_code": bool(c.allow_code), "created_at": iso(c.created_at)}
+            "allow_code": bool(c.allow_code), "created_at": iso(c.created_at), "provider": c.provider or "custom",
+            "models": kinds, "models_total": sum(kinds.values()), "models_synced_at": iso(c.models_synced_at),
+            "models_error": c.models_error or ""}
 
 
 def test_connection(db: Session, name: str) -> dict:
@@ -205,9 +229,10 @@ def resolve_llm(db: Session, spec: dict, env: str) -> dict:
         raise PlatformError(
             f"Conexão '{conn_name}' é protocol='{conn.protocol}'; agentes de chat precisam de uma conexão "
             "protocol='openai' (endpoint /v1/chat/completions).")
+    from . import llm_models
     return {"connection": conn.name, "base_url": conn.base_url, "api_key": crypto.decrypt(conn.api_key),
             "model": model or conn.model_name, "temperature": temperature,
-            "prices": (conn.price_in_per_mtok, conn.price_out_per_mtok)}
+            "prices": llm_models.prices_for(db, conn, model or conn.model_name)}
 
 
 def resolve_harness(db: Session, spec: dict, env: str) -> dict:
@@ -225,6 +250,7 @@ def resolve_harness(db: Session, spec: dict, env: str) -> dict:
     if not conn_name:
         return {"harness_id": harness_id, "connection": "", "base_url": "", "api_key": "", "model": "",
                 "mock": True, "prices": (None, None)}
+    from . import llm_models
     conn = get_connection(db, conn_name)
     wanted = HARNESS_PROTOCOL[harness_id]
     if conn.protocol != wanted:
@@ -232,7 +258,7 @@ def resolve_harness(db: Session, spec: dict, env: str) -> dict:
                             f"precisa de uma conexão protocol='{wanted}'.")
     return {"harness_id": harness_id, "connection": conn.name, "base_url": conn.base_url,
             "api_key": crypto.decrypt(conn.api_key), "model": conn.model_name, "mock": False,
-            "prices": (conn.price_in_per_mtok, conn.price_out_per_mtok)}
+            "prices": llm_models.prices_for(db, conn, conn.model_name)}
 
 
 def cost_usd(tokens_in: int, tokens_out: int, prices: tuple) -> float:

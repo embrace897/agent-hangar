@@ -59,6 +59,19 @@ def _check_refs(db: Session, slug: str, spec: dict):
         get_agent(db, s)
 
 
+def _check_models(db: Session, old: dict, new: dict):
+    """Um modelo novo na spec precisa estar na lista da conexão (quando o provedor tem lista). Só os pares que mudaram:
+    um agente que já usa um modelo que sumiu continua editável (a caixa de entrada avisa o admin)."""
+    from .llm_models import _effective, check_model
+    before = {p for env in ("stage", "prod") for p in _effective(old, env)}
+    for env in ("stage", "prod"):
+        for conn, model in _effective(new, env):
+            if model and (conn, model) not in before:
+                err = check_model(db, conn, model)
+                if err:
+                    raise PlatformError(err)
+
+
 def _commit_version(db: Session, a: Agent, spec: dict, actor: str, action: str, detail: str, acc=None) -> Agent:
     """Valida, e só cria uma versão nova se a spec realmente mudou. Com `acc`, um sub_agent novo exige permissão de
     uso sobre ele (agente de outro time: pedido de acesso aprovado)."""
@@ -67,6 +80,7 @@ def _commit_version(db: Session, a: Agent, spec: dict, actor: str, action: str, 
     except specmod.SpecError as e:
         raise PlatformError(str(e)) from None
     _check_refs(db, a.slug, spec)
+    _check_models(db, specmod.normalize_legacy(spec_of(a)), spec)
     if acc is not None:
         from .composer import check_sub_agents
         check_sub_agents(db, acc, specmod.normalize_legacy(spec_of(a)), spec)

@@ -128,8 +128,10 @@ FLUXO
 1. Entenda o pedido. Se faltar algo essencial, PERGUNTE: nome, objetivo, saída final esperada,
    sistemas/dados que acessa, riscos (ações destrutivas, dados sensíveis).
 2. plan_agent (acima). Se um template resolve o pedido, use apply_template (e ajuste com design_agent).
-3. list_catalog -> conexões de LLM disponíveis. Sem conexão de LLM: pergunte ao usuário
-   url, model_name e api key e registre com register_llm_connection (ou siga em mock/echo para testar).
+3. list_catalog -> conexões de LLM disponíveis; list_llm_models -> os modelos de cada uma, por tipo (text, embedding,
+   rerank, image, tts, stt…). Confira se há modelo para cada tipo que o agente precisa; se faltar, diga ao usuário qual
+   tipo falta e peça para um admin cadastrar o provedor. Sem conexão de LLM: peça ao usuário url e api key e registre
+   com register_llm_connection (ou siga em mock/echo para testar).
 4. compose_agent (com peças) ou register_agent(name, objective, final_output) -> devolve o slug.
 5. design_agent(slug, ...) define o comportamento. É um JSON Merge Patch: objetos mesclam, listas e
    valores substituem, e null (ou o parâmetro `remove`) APAGA o campo. Ex.: trocar de conexão e voltar
@@ -264,19 +266,43 @@ async def list_catalog(ctx: Context) -> dict:
 
 
 @mcp.tool()
-async def register_llm_connection(ctx: Context, name: str, base_url: str, model_name: str, api_key: str,
+async def register_llm_connection(ctx: Context, name: str, base_url: str, api_key: str, model_name: str = "",
                                   description: str = "", protocol: str = "openai",
                                   price_in_per_mtok: float | None = None,
-                                  price_out_per_mtok: float | None = None) -> dict:
-    """(Admin) Registra (ou atualiza) uma conexão de LLM: endpoint + model_name padrão + api key (idealmente
-    virtual). protocol="openai" (chat, codex, hermes), "anthropic" (claude-code) ou "deepseek"
-    (deepseek-harness). Preços por 1M tokens (US$) são opcionais e habilitam o cálculo de custo. A chave é
-    guardada criptografada e nunca é devolvida."""
+                                  price_out_per_mtok: float | None = None, provider: str = "") -> dict:
+    """(Admin) Registra (ou atualiza) uma conexão de LLM: endpoint + api key (idealmente virtual) e, opcional, o
+    model_name padrão — sem ele, o padrão sai da lista de modelos que o provedor devolve. protocol="openai" (chat,
+    codex, hermes), "anthropic" (claude-code) ou "deepseek" (deepseek-harness). provider: openai, openrouter, litellm,
+    anthropic, gemini… (vazio = deduzido do endereço). A lista de modelos é buscada na hora e depois a cada hora; veja
+    com list_llm_models. A chave é guardada criptografada e nunca é devolvida."""
     def go(db, acc):
         _admin(acc)
         c = svc.upsert_llm_connection(db, name, base_url, model_name, api_key, description, acc.p.name, protocol,
-                                      price_in_per_mtok, price_out_per_mtok)
-        return {"registered": c.name, "base_url": c.base_url, "model_name": c.model_name, "protocol": c.protocol}
+                                      price_in_per_mtok, price_out_per_mtok, provider or None, require_model=False)
+        r = svc.llm_models.sync_connection(db, c, acc.p.name)
+        if not c.model_name:
+            raise svc.PlatformError(r["error"] or "o provedor não devolveu modelo de texto: informe model_name")
+        return {"registered": c.name, "base_url": c.base_url, "model_name": c.model_name, "protocol": c.protocol,
+                "provider": c.provider, "models": svc.llm_models.kinds_summary(db, c),
+                "models_error": r["error"]}
+    return await _run(ctx, go)
+
+
+@mcp.tool()
+async def list_llm_models(ctx: Context, kind: str = "", connection: str = "") -> dict:
+    """Modelos que a empresa tem, de todas as conexões de LLM (a lista vem de cada provedor e é atualizada a cada
+    hora). kind filtra pelo tipo de saída: text | embedding | rerank | image | video | tts | stt | moderation | other.
+    Cada modelo traz caps (vision, tools, reasoning), contexto e preço por 1M tokens (US$).
+    ANTES DE CONSTRUIR: confira se existe modelo para cada tipo que o agente precisa (ex.: RAG precisa de embedding e,
+    de preferência, rerank; voz precisa de stt e tts; ler imagens precisa de um text com cap vision). Se faltar um tipo,
+    NÃO improvise: diga ao usuário qual tipo falta e por quê, e peça para um admin cadastrar um provedor que o tenha
+    (console → Configurações → Provedores de LLM). Para usar um modelo que não é o padrão da conexão:
+    design_agent(llm={"connection": "<conexão>", "model": "<id>"})."""
+    def go(db, acc):
+        models = svc.llm_models.list_models(db, connection, kind)
+        have = sorted({m["kind"] for m in svc.llm_models.list_models(db, connection)})
+        return {"models": models[:300], "total": len(models), "kinds_available": have,
+                "kinds_missing": [k for k in svc.llm_models.KINDS if k not in have and k != "other"]}
     return await _run(ctx, go)
 
 

@@ -45,6 +45,43 @@ the smoke tests still validate the plumbing.
 A connection is an external LLM endpoint: `base_url` + default `model_name` + API key (stored encrypted with
 `HANGAR_SECRET_KEY`) + `protocol` + optional prices per 1M tokens. The hangar never hosts a model.
 
+### Providers and their models
+
+Admins add connections in **Configurações → Provedores de LLM**. There is one card per known provider (OpenAI,
+Anthropic, Gemini, OpenRouter, LiteLLM, DeepSeek, Groq, Mistral and others, plus Ollama), and one for any endpoint
+compatible with OpenAI or Anthropic.
+
+When a connection is saved, the central asks the provider for its model list. It refreshes the list every
+`LLM_MODELS_REFRESH_MIN` minutes (default 60; 0 turns it off). Only one replica refreshes. Each model is stored with:
+
+- **output type:** text, embedding, rerank, image, video, tts, stt or moderation.
+  - It comes from the provider when the provider says it (OpenRouter, LiteLLM `/model/info`, Together, Mistral,
+    Cohere).
+  - Otherwise it comes from LiteLLM's public model table (`MODEL_CATALOG_URL`; empty for air-gapped installs).
+  - Otherwise it is inferred from the model name.
+  - An admin can correct it, and refreshes don't undo the correction.
+- **features:** reads images, tools, reasoning.
+- **context length**.
+- **price per 1M tokens:** the provider's price, or the public table's price only when the name matches that
+  provider.
+
+How the list is kept:
+
+- **Model gone from the provider:** it stays in the list, marked unavailable. If an agent uses it, admins see it in
+  their inbox.
+- **Provider without a list** (Perplexity, Voyage, Jina): the admin adds models by hand.
+
+How agents use the list:
+
+- **Choosing a model:** an agent picks any model of its connection (`llm.model`). A model that isn't in the
+  connection's list is refused.
+- **Cost:** it uses the price of the model the agent actually uses. A price typed on the connection applies only to
+  its default model.
+
+The builder reads the list through `list_llm_models` (by type, with the missing types). Before building an agent
+that needs, say, embeddings or speech-to-text, it checks that the company has such a model. If not, it asks for a
+provider that has one.
+
 | Protocol | Used by |
 |---|---|
 | `openai` | chat agents, `codex`, `hermes`, LLM-as-judge |

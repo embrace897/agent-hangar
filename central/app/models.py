@@ -171,6 +171,34 @@ class LlmConnection(OrgScoped, Base):
     allow_code: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     max_classification: Mapped[str] = mapped_column(String(12), default="confidential")  # o mais sensível que pode receber
+    # o provedor do catálogo (openai, openrouter, litellm…; "custom" = compatível informado à mão): logo, endereço da
+    # lista de modelos e como ler o tipo de cada um
+    provider: Mapped[str] = mapped_column(String(40), default="custom")
+    models_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    models_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class LlmModel(OrgScoped, Base):
+    """Um modelo que o provedor da conexão oferece (a lista vem do próprio provedor, a cada hora). `kind` é o tipo de
+    saída (text, embedding, rerank, image, tts, stt…): o construtor usa para saber se a empresa tem o modelo que um
+    agente precisa. `kind_source` diz de onde veio o tipo; o que o admin corrige ("admin") a coleta não sobrescreve."""
+    __tablename__ = "llm_models"
+    __table_args__ = (UniqueConstraint("connection_id", "model_id", name="uq_llmmodel_conn_model"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("llm_connections.id", ondelete="CASCADE"), index=True)
+    model_id: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(16), default="text")
+    kind_source: Mapped[str] = mapped_column(String(10), default="name")  # provider | catalog | name | admin
+    caps: Mapped[list] = mapped_column(JSON, default=list)  # vision, tools, reasoning, audio_in…
+    context_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_in_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_out_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_source: Mapped[str] = mapped_column(String(10), default="")  # provider | catalog | admin
+    available: Mapped[bool] = mapped_column(Boolean, default=True)  # sumiu da lista do provedor = False
+    manual: Mapped[bool] = mapped_column(Boolean, default=False)  # incluído pelo admin (provedor sem lista)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 

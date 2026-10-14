@@ -20,6 +20,7 @@ os.environ.update({
     "GUIDE_AUTOGEN": "0",  # os testes chamam guides.generate_draft() direto
     "DATA_STUDIO_URL": "http://data-studio.test/mcp",  # os testes trocam analysis.HTTP
     "DATA_STUDIO_FILES_URL": "http://data-studio.test:8001",
+    "MODEL_CATALOG_URL": "",  # nada de baixar a tabela pública de modelos nos testes
 })
 sys.path.insert(0, os.path.join(ROOT, "central"))
 
@@ -37,6 +38,16 @@ def _no_docker(*a, **k):
 deploy.client = _no_docker
 deploy.cleanup_job_containers = lambda *a, **k: None
 deploy.states = lambda max_age=3.0: {}
+
+
+def _no_models_api(url, *a, **k):  # nenhum teste pergunta a lista de modelos a um provedor de verdade
+    from app.services.llm_models import ModelsError
+    raise ModelsError(f"sem rede nos testes: {url}")
+
+
+from app.services import llm_models  # noqa: E402
+
+llm_models._get = _no_models_api
 
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 

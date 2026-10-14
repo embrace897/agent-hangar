@@ -17,6 +17,8 @@ data:
   K8S_IMAGE_PULL_SECRET: {{ join "," .Values.image.pullSecrets | quote }}
   AGENT_MEM_LIMIT: {{ .Values.agents.memLimit | quote }}
   STAGE_IDLE_MIN: {{ .Values.agents.stageIdleMin | quote }}
+  LLM_MODELS_REFRESH_MIN: {{ .Values.llmModels.refreshMin | quote }}
+  MODEL_CATALOG_URL: {{ .Values.llmModels.catalogUrl | quote }}
   AGENT_CPUS: {{ .Values.agents.cpus | quote }}
   JOB_MEM_LIMIT: {{ .Values.agents.jobMemLimit | quote }}
   JOB_CPUS: {{ .Values.agents.jobCpus | quote }}

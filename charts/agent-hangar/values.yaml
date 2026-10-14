@@ -126,6 +126,12 @@ sso:
   github: {clientId: "", clientSecret: "", orgs: ""}
   oauth2: {clientId: "", clientSecret: "", label: "", authorizeUrl: "", tokenUrl: "", userinfoUrl: "", scopes: ""}
 
+# Lista de modelos de cada provedor de LLM (tipo, contexto e preço): atualizada a cada refreshMin minutos (0 desliga).
+# catalogUrl: tabela pública de modelos do LiteLLM para completar tipo e preço; vazio em cluster sem saída para a internet.
+llmModels:
+  refreshMin: 60
+  catalogUrl: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+
 # Ferramentas do analista no cluster (desligadas por padrão): o Data Studio roda o código em processos isolados
 # dentro do próprio pod; o navegador governado só fala com a central. Os dois saem só para a internet (sem IPs privados).
 dataStudio:

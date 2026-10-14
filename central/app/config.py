@@ -64,6 +64,11 @@ def harness_image(harness_id: str) -> str:
 RUNTIME_BACKEND = _env("RUNTIME_BACKEND", "docker").lower()
 # stage sem uso por N minutos hiberna (container parado / réplicas 0) e acorda na próxima chamada; 0 desliga
 STAGE_IDLE_MIN = float(_env("STAGE_IDLE_MIN", "30"))
+# Lista de modelos de cada provedor de LLM: atualizada a cada N minutos (0 desliga a atualização automática)
+LLM_MODELS_REFRESH_MIN = float(_env("LLM_MODELS_REFRESH_MIN", "60"))
+# Tabela pública de modelos (preço, contexto e tipo) do LiteLLM; vazio = não baixar (ambiente sem internet)
+MODEL_CATALOG_URL = _env("MODEL_CATALOG_URL",
+                         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json")
 K8S_NAMESPACE = _env("K8S_NAMESPACE")  # vazio = o namespace da própria central (ServiceAccount)
 K8S_IMAGE_PULL_SECRET = _env("K8S_IMAGE_PULL_SECRET")  # registry privado: nome(s) do(s) Secret(s), separados por vírgula
 K8S_PULL_POLICY = _env("K8S_PULL_POLICY", "IfNotPresent")

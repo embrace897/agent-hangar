@@ -105,6 +105,12 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
         if p and can_manage(db, acc, p):
             add(f"budget:{i.id}", "budget", scope_name(db, p), i.opened_at, "#/budgets", incident=i.id, budget_kind=i.kind,
                 scope_type=p.scope_type, scope=scope_name(db, p), blocked=i.kind == "hard_stop")
+    if acc.p.is_admin:  # modelo que sumiu do provedor e algum agente ainda usa
+        from .llm_models import lost_in_use
+        for x in lost_in_use(db):
+            add(f"llm_model:{x['connection']}:{x['model']}", "llm_model",
+                f"O modelo {x['model']} saiu do provedor ({x['connection']}) e é usado por {', '.join(x['agents'])}",
+                x["at"], "#/providers", connection=x["connection"], model=x["model"], agents=x["agents"], blocked=True)
     rows = list(out.values())
     counts = {"all": sum(not r["archived"] for r in rows), "unread": sum(r["unread"] and not r["archived"] for r in rows),
               "decisions": sum(r["kind"] == "decision" and not r["archived"] for r in rows),

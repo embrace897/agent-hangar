@@ -255,7 +255,8 @@ app.include_router(gateway.router)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 # carimbo de versão dos arquivos da UI: muda a cada atualização, então o navegador nunca mistura versões
 UI_VERSION = hashlib.sha256(b"".join(open(os.path.join(STATIC, f), "rb").read()
-                                     for f in sorted(os.listdir(STATIC)))).hexdigest()[:12]
+                                     for f in sorted(os.listdir(STATIC))
+                                     if os.path.isfile(os.path.join(STATIC, f)))).hexdigest()[:12]
 _INDEX = open(os.path.join(STATIC, "index.html"), encoding="utf-8").read().replace("__V__", UI_VERSION)
 # portal do usuário (/app): mesma base de código da UI, com a página Início e só o que o dia a dia de quem não
 # é admin precisa. O console /ui é só de admins.

@@ -38,6 +38,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       knowledge,
                       learning,
                       llm,
+                      llm_models,
                       maximizer,
                       mcp_gateway,
                       mcp_oauth,

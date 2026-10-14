@@ -68,10 +68,11 @@ class McpBody(BaseModel):
 class LlmConnectionBody(BaseModel):
     name: str
     base_url: str
-    model_name: str
+    model_name: str = ""  # vazio: o padrão sai da lista de modelos do provedor
+    provider: str | None = None
     api_key: str = ""  # vazio ao editar preserva a chave já salva
     description: str = ""
-    protocol: str = "openai"
+    protocol: str | None = None  # vazio: o do provedor (anthropic para a Anthropic, openai para os outros)
     price_in_per_mtok: float | None = None
     price_out_per_mtok: float | None = None
 
@@ -408,9 +409,80 @@ def add_mcp(b: McpBody, request: Request, db=Depends(db_dep)):
 
 @router.post("/catalog/llm", dependencies=[Depends(require_admin)])
 def add_llm_connection(b: LlmConnectionBody, request: Request, db=Depends(db_dep)):
-    return guard(lambda: svc.llm_connection_dict(svc.upsert_llm_connection(
-        db, b.name, b.base_url, b.model_name, b.api_key, b.description, actor(request), b.protocol,
-        b.price_in_per_mtok, b.price_out_per_mtok)))
+    """Salva a conexão e já busca a lista de modelos do provedor. Conexão nova sem modelo padrão e sem lista
+    (chave errada, provedor fora do ar) não fica salva: o erro volta para o admin corrigir."""
+    def go():
+        new = db.scalar(select(LlmConnection).where(LlmConnection.name == b.name)) is None
+        protocol = b.protocol or svc.llm_models.provider(b.provider or "custom")["protocol"]
+        c = svc.upsert_llm_connection(db, b.name, b.base_url, b.model_name, b.api_key, b.description, actor(request),
+                                      protocol, b.price_in_per_mtok, b.price_out_per_mtok, b.provider, require_model=False)
+        r = svc.llm_models.sync_connection(db, c, actor(request))
+        if not c.model_name:
+            if new:
+                db.delete(c)
+                db.commit()
+            raise svc.PlatformError(r["error"] or "o provedor não devolveu nenhum modelo de texto: informe o modelo padrão")
+        return {**svc.llm_connection_dict(c), "sync": r}
+    return guard(go)
+
+
+@router.get("/catalog/providers")
+def llm_providers():
+    """Os provedores conhecidos (logo, endereço, protocolo e os tipos de modelo que costumam ter)."""
+    return {"providers": svc.llm_models.providers_view(), "kinds": list(svc.llm_models.KINDS)}
+
+
+@router.get("/catalog/models")
+def llm_models_list(kind: str = "", connection: str = "", all: bool = False, db=Depends(db_dep)):
+    """Modelos das conexões da empresa (para escolher o modelo de um agente). all=true inclui os que sumiram."""
+    return guard(lambda: svc.llm_models.list_models(db, connection, kind, available_only=not all))
+
+
+@router.post("/catalog/llm/{name}/models/sync", dependencies=[Depends(require_admin)])
+def llm_models_sync(name: str, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.llm_models.sync_connection(db, svc.get_connection(db, name), actor(request)))
+
+
+class ManualModel(BaseModel):
+    model_id: str
+    kind: str = ""
+    price_in_per_mtok: float | None = None
+    price_out_per_mtok: float | None = None
+    context_length: int | None = None
+
+
+@router.post("/catalog/llm/{name}/models", dependencies=[Depends(require_admin)])
+def llm_model_add(name: str, b: ManualModel, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.llm_models.model_dict(svc.llm_models.add_manual(
+        db, svc.get_connection(db, name), b.model_id, b.kind, b.price_in_per_mtok, b.price_out_per_mtok,
+        b.context_length, actor(request))))
+
+
+class ModelEdit(BaseModel):
+    kind: str | None = None
+    set_price: bool = False
+    price_in_per_mtok: float | None = None
+    price_out_per_mtok: float | None = None
+    default: bool = False
+
+
+@router.patch("/catalog/llm/{name}/models/{model_id:path}", dependencies=[Depends(require_admin)])
+def llm_model_edit(name: str, model_id: str, b: ModelEdit, request: Request, db=Depends(db_dep)):
+    """Corrige o tipo ou o preço de um modelo (a coleta não desfaz) ou o torna o padrão da conexão."""
+    def go():
+        c = svc.get_connection(db, name)
+        if b.default:
+            svc.llm_models.set_default(db, c, model_id, actor(request))
+        m = svc.llm_models.edit_model(db, c, model_id, b.kind, b.price_in_per_mtok, b.price_out_per_mtok, b.set_price,
+                                      actor(request)) if (b.kind is not None or b.set_price) else svc.llm_models._model(db, c, model_id)
+        return svc.llm_models.model_dict(m, c)
+    return guard(go)
+
+
+@router.delete("/catalog/llm/{name}/models/{model_id:path}", dependencies=[Depends(require_admin)])
+def llm_model_remove(name: str, model_id: str, request: Request, db=Depends(db_dep)):
+    guard(lambda: svc.llm_models.remove_model(db, svc.get_connection(db, name), model_id, actor(request)))
+    return {"ok": True}
 
 
 class CodeApproval(BaseModel):

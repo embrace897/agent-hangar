@@ -303,6 +303,10 @@ def _loop():
             hibernate_idle_stages()
         except Exception:
             log.exception("falha ao hibernar os stages ociosos")
+        try:
+            refresh_llm_models()
+        except Exception:
+            log.exception("falha ao atualizar as listas de modelos")
 
 
 def hibernate_idle_stages() -> list[str]:
@@ -314,6 +318,17 @@ def hibernate_idle_stages() -> list[str]:
     if out:
         log.info("stage ocioso hibernado: %s", ", ".join(out))
     return out
+
+
+def refresh_llm_models() -> bool:
+    """A cada 5 minutos (uma réplica só) confere quais conexões estão com a lista de modelos vencida e atualiza em
+    segundo plano — os provedores respondem devagar e o laço do agendador não espera."""
+    from .. import shared
+    if config.LLM_MODELS_REFRESH_MIN <= 0 or not shared.take_once("llm-models-refresh", 300):
+        return False
+    from . import llm_models
+    _pool.submit(llm_models.refresh_due)
+    return True
 
 
 def start():

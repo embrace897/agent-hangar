@@ -197,6 +197,7 @@ async function newAgentPage() {
         <option value="claude-code">Harness claude-code</option><option value="codex">Harness codex</option>
         <option value="hermes">Harness hermes</option><option value="deepseek-harness">Harness deepseek-harness</option></select></label>
       <label>Conexão de LLM<select id="na-conn">${opt(conns, 'nenhuma (mock — só para testar o fluxo)')}</select></label></div>
+    <label class="mt" id="na-model-l">Modelo <span class="mute">(da lista do provedor; vazio = o padrão da conexão)</span><select id="na-model" disabled><option value="">padrão da conexão</option></select></label>
     <div class="row mt"><button id="na-go">Criar</button><label class="row small"><input type="checkbox" id="na-ship" style="width:auto"> testar e shipar em seguida</label></div>
     <div class="mute small mt" id="na-hint">Escolhendo peças no passo 1, o botão vira <b>Montar agente</b>: as instruções acima viram só a parte nova.</div></div>`;
   let PLAN = null;
@@ -236,24 +237,26 @@ async function newAgentPage() {
     $('#pl-out').querySelectorAll('input,textarea').forEach(x => x.addEventListener('change', refreshBtn));
     refreshBtn();
   });
+  $('#na-conn').onchange = () => modelOptions($('#na-model'), $('#na-conn').value);
+  $('#na-kind').addEventListener('change', () => { $('#na-model-l').hidden = $('#na-kind').value !== 'chat'; });
   $('#na-go').onclick = e => act(e.target, async () => {
     const body = { name: $('#na-name').value.trim(), objective: $('#na-obj').value.trim(), final_output: $('#na-out').value.trim(), owner: $('#na-owner').value.trim(), team: $('#na-team').value, visibility: $('#na-vis').value || null };
     if (!body.name || !body.objective || !body.final_output) throw new Error('Nome, objetivo e saída final são obrigatórios');
     const p = picked();
     if (p && (p.specialists.length || p.base || p.skills.length || p.mcps.length || p.new_skills.length)) {
-      const conn = $('#na-conn').value;
+      const conn = $('#na-conn').value, model = $('#na-model').value;
       const r = await api('/compose', { method: 'POST', body: { name: body.name, objective: body.objective, final_output: body.final_output,
         team: body.team, visibility: body.visibility || '', instructions: $('#na-ins').value, ...p, plan_id: PLAN.plan_id,
-        ...(conn ? { llm: { connection: conn } } : {}) } });
+        ...(conn ? { llm: { connection: conn, ...(model ? { model } : {}) } } : {}) } });
       toast(`Agente montado: ${r.tests_copied} teste(s) reaproveitado(s), ~${r.reused_tokens_estimate} tokens que não precisaram ser escritos`);
       if ($('#na-ship').checked) shipResult(await api(`/agents/${r.slug}/ship`, { method: 'POST' }));
       location.hash = '#/agents/' + r.slug;
       return;
     }
     const a = await api('/agents', { method: 'POST', body });
-    const kind = $('#na-kind').value, conn = $('#na-conn').value;
+    const kind = $('#na-kind').value, conn = $('#na-conn').value, model = $('#na-model').value;
     const patch = { instructions: $('#na-ins').value };
-    if (kind === 'chat') { if (conn) patch.llm = { connection: conn }; } else patch.harness = { id: kind, ...(conn ? { connection: conn } : {}) };
+    if (kind === 'chat') { if (conn) patch.llm = { connection: conn, ...(model ? { model } : {}) }; } else patch.harness = { id: kind, ...(conn ? { connection: conn } : {}) };
     await api('/agents/' + a.slug, { method: 'PATCH', body: patch });
     if ($('#na-ship').checked) shipResult(await api(`/agents/${a.slug}/ship`, { method: 'POST' }));
     location.hash = '#/agents/' + a.slug;
@@ -717,55 +720,14 @@ async function usagePage() {
 async function catalogPage() {
   const c = await api('/catalog');
   main.innerHTML = `<h1>Catálogo</h1><div class="sub">Skills, MCP servers e conexões de LLM reutilizáveis pelos agentes</div>
-  <div class="card"><div class="row between"><h2>Conexões de LLM (${c.llm_connections.length})</h2>
-    <span class="mute small">Nenhum LLM roda em Docker aqui — cada conexão é uma URL externa (gateway LiteLLM da empresa, OpenRouter, OpenAI…) + model_name + api key virtual.</span></div>
-    ${ME.is_admin ? `<div class="card warn-card mt"><div class="row between" style="align-items:flex-start"><div><b>Código e LLMs</b>
-      <div class="small">No modo agente de código (VS Code, Cline, Continue) e nas avaliações de código, arquivos e saídas de terminal dos devs vão para o LLM do agente.
-        Com <b>só conexões aprovadas</b>, esse modo só funciona com conexões marcadas como aprovadas para código (ex.: o gateway corporativo). Segredos óbvios (chaves, tokens) são sempre mascarados antes de ir ao modelo.</div></div>
-      <select id="code-policy" style="width:auto"><option value="any">Qualquer conexão</option><option value="approved">Só conexões aprovadas</option></select></div></div>` : ''}
-    <div class="scroll"><table><tr><th>Nome</th><th>Protocolo</th><th>URL</th><th>Modelo padrão</th><th>Preço (US$/1M in · out)</th><th>Chave</th><th>Código</th><th></th></tr>
-    ${c.llm_connections.map(x => `<tr><td><b>${esc(x.name)}</b><div class="mute small">${esc(x.description)}</div></td><td>${protoPill(x.protocol)}</td><td>${copyable(x.base_url)}</td><td>${esc(x.model_name)}</td>
-      <td class="mute">${x.price_in_per_mtok == null && x.price_out_per_mtok == null ? '—' : `${x.price_in_per_mtok ?? 0} · ${x.price_out_per_mtok ?? 0}`}</td><td class="mute">${esc(x.api_key)}</td>
-      <td>${x.allow_code ? '<span class="pill ok">aprovada</span>' : '<span class="pill">não aprovada</span>'}
-        ${ME.is_admin ? `<div><a href="#" class="small llm-code" data-n="${esc(x.name)}" data-v="${x.allow_code ? 0 : 1}">${x.allow_code ? 'retirar' : 'aprovar'}</a></div>` : ''}</td>
-      <td class="row" style="flex-wrap:nowrap"><button class="ghost llm-test" data-n="${esc(x.name)}">Testar</button><button class="ghost llm-del" data-n="${esc(x.name)}">Remover</button></td></tr>`).join('') || `<tr><td colspan="8" class="empty">Nenhuma — sem conexão, os agentes rodam em ${esc(c.fallback_model)}</td></tr>`}</table></div>
-    <details class="mt"><summary>Adicionar / editar conexão (mesmo nome = edição; chave vazia mantém a atual)</summary><div class="grid g4 mt">
-      <input id="lc-name" placeholder="nome (ex.: litellm-corp)"><input id="lc-url" placeholder="base_url (https://.../v1)">
-      <input id="lc-model" placeholder="model_name (ex.: gpt-4o-mini)"><input id="lc-key" placeholder="api key virtual" type="password"></div>
-      <div class="grid g4 mt"><select id="lc-protocol">${PROTO_OPTIONS('openai')}</select>
-        <input id="lc-pin" type="number" step="0.01" min="0" placeholder="US$ por 1M tokens de entrada">
-        <input id="lc-pout" type="number" step="0.01" min="0" placeholder="US$ por 1M tokens de saída"></div>
-      <input id="lc-desc" placeholder="descrição (opcional)" class="mt"><button id="lc-add" class="mt">Salvar conexão</button></details></div>
+  <div class="card row between"><div><b>Conexões de LLM e modelos</b><div class="mute small">${c.llm_connections.length} conexão(ões) · ficam em Configurações → Provedores de LLM, com a lista de modelos de cada provedor</div></div>
+    <a class="btn ghost" href="#/providers">Abrir provedores</a></div>
   <div class="grid g2 mt"><div class="card"><h2>Skills (${c.skills.length})</h2>${c.skills.map(s => `<div class="mt"><b>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.description)}</div><details><summary>conteúdo</summary><pre>${esc(s.content)}</pre></details></div>`).join('') || '<div class="mute">Nenhuma — registre pelo chat (<code>register_skill</code>) ou abaixo</div>'}
     <details class="mt"><summary>Adicionar skill</summary><input id="sk-name" placeholder="nome" class="mt"><input id="sk-desc" placeholder="descrição" class="mt"><textarea id="sk-content" placeholder="conteúdo (markdown)" rows="4" class="mt"></textarea><button id="sk-add" class="mt">Salvar skill</button></details></div>
   <div class="card"><h2>MCP servers (${c.mcp_servers.length})</h2>${c.mcp_servers.map(m => `<div class="mt"><b>${esc(m.name)}</b>${m.tool_prefix ? ' <span class="chip">catálogo Docker</span>' : ''}<div>${copyable(m.url)}</div><div class="mute small">${esc(m.description)}</div></div>`).join('') || '<div class="mute">Nenhum</div>'}
     <details class="mt"><summary>Adicionar MCP server</summary><input id="mc-name" placeholder="nome" class="mt"><input id="mc-url" placeholder="url (Streamable HTTP)" class="mt"><input id="mc-desc" placeholder="descrição" class="mt"><button id="mc-add" class="mt">Salvar MCP</button></details></div></div>
   ${ME.is_admin ? '<div id="rm-card" class="mt"></div><div id="gw-card" class="mt"></div>' : ''}`;
   if (ME.is_admin) { remoteMcps($('#rm-card')); gatewayCatalog($('#gw-card')); }
-  const pol = $('#code-policy');
-  if (pol) {
-    pol.value = (ME.org && ME.org.code_policy) || 'any';
-    pol.onchange = () => act(pol, async () => {
-      const o = await api('/org', { method: 'PATCH', body: { code_policy: pol.value } });
-      ME.org = o;
-      toast(o.code_policy === 'approved' ? 'Agora só conexões aprovadas recebem código' : 'Qualquer conexão pode receber código');
-    });
-  }
-  document.querySelectorAll('.llm-test').forEach(b => b.onclick = e => act(e.target, async () => {
-    const r = await api(`/catalog/llm/${encodeURIComponent(b.dataset.n)}/test`, { method: 'POST' });
-    toast(`${b.dataset.n}: ${r.ok ? '✓ ' : '✗ '}${r.detail}`, !r.ok);
-  }));
-  document.querySelectorAll('.llm-code').forEach(a => a.onclick = e => {
-    e.preventDefault();
-    act(a, () => api(`/catalog/llm/${encodeURIComponent(a.dataset.n)}/code`, { method: 'PATCH', body: { allow_code: a.dataset.v === '1' } }).then(catalogPage),
-      a.dataset.v === '1' ? 'Conexão aprovada para código' : 'Aprovação retirada');
-  });
-  $('#lc-add').onclick = e => act(e.target, () => api('/catalog/llm', { method: 'POST', body: {
-    name: $('#lc-name').value.trim(), base_url: $('#lc-url').value.trim(),
-    model_name: $('#lc-model').value.trim(), api_key: $('#lc-key').value, description: $('#lc-desc').value,
-    protocol: $('#lc-protocol').value, price_in_per_mtok: num($('#lc-pin').value), price_out_per_mtok: num($('#lc-pout').value) } }).then(catalogPage), 'Conexão salva');
-  document.querySelectorAll('.llm-del').forEach(b => b.onclick = e => confirm(`Remover a conexão "${b.dataset.n}"?`) &&
-    act(e.target, () => api('/catalog/llm/' + encodeURIComponent(b.dataset.n), { method: 'DELETE' }).then(catalogPage), 'Removida'));
   $('#sk-add').onclick = e => act(e.target, () => api('/catalog/skills', { method: 'POST', body: {
     name: $('#sk-name').value.trim(), description: $('#sk-desc').value, content: $('#sk-content').value } }).then(catalogPage), 'Skill salva');
   $('#mc-add').onclick = e => act(e.target, () => api('/catalog/mcps', { method: 'POST', body: {
@@ -779,62 +741,6 @@ const PROTOCOLS = {
 };
 const PROTO_OPTIONS = sel => Object.entries(PROTOCOLS).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${v}</option>`).join('');
 const protoPill = p => p === 'anthropic' ? '<span class="pill info">anthropic</span>' : p === 'deepseek' ? '<span class="pill warn">deepseek</span>' : '<span class="pill">openai</span>';
-
-/* ---------- Provedores: um cartão pronto por provedor de LLM conhecido ---------- */
-const PROVIDERS = [
-  { id: 'litellm', name: 'LiteLLM (gateway próprio)', protocol: 'openai',
-    baseUrl: 'http://host.docker.internal:4000/v1',
-    note: 'Seu próprio gateway. Use host.docker.internal (não "litellm") — o nome de serviço só resolve de dentro da rede Docker do projeto do LiteLLM, uma rede diferente desta. Alimenta agentes de chat e o harness codex; se seu LiteLLM expuser /v1/messages para um modelo Anthropic, dá pra registrar de novo aqui com protocolo anthropic para servir o harness claude-code.' },
-  { id: 'openrouter', name: 'OpenRouter', protocol: 'openai', baseUrl: 'https://openrouter.ai/api/v1',
-    note: 'Alimenta agentes de chat e o harness codex. Não serve o harness claude-code (só fala o protocolo da OpenAI, não o da Anthropic).' },
-  { id: 'openai', name: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1',
-    note: 'Alimenta agentes de chat e o harness codex (o caminho mais direto para o codex).' },
-  { id: 'anthropic', name: 'Anthropic', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com',
-    note: 'Único protocolo que serve o harness claude-code de verdade.' },
-  { id: 'deepseek', name: 'DeepSeek', protocol: 'deepseek', baseUrl: 'https://api.deepseek.com',
-    note: 'API oficial da DeepSeek. Com protocolo deepseek serve o harness deepseek-harness; registre de novo com protocolo openai (base https://api.deepseek.com/v1) para agentes de chat.' },
-  { id: 'gemini', name: 'Google Gemini', protocol: 'openai',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    note: 'Endpoint do Gemini compatível com OpenAI. Alimenta agentes de chat e o harness codex.' },
-  { id: 'ollama', name: 'Ollama (modelo local)', protocol: 'openai',
-    baseUrl: 'http://host.docker.internal:11434/v1',
-    note: 'Modelo rodando na sua própria máquina, fora do Docker. A chave geralmente não é validada — pode deixar qualquer valor (ex.: "ollama").' },
-  { id: 'custom', name: 'Outro / customizado', protocol: 'openai', baseUrl: '',
-    note: 'Qualquer endpoint compatível com OpenAI (Bedrock, Vertex AI, Groq, Together, etc.) ou com a API da Anthropic — escolha o protocolo certo abaixo.' },
-];
-
-function providerCard(p) {
-  return `<div class="card" id="pv-${p.id}"><h2>${esc(p.name)}</h2><div class="mute small">${esc(p.note)}</div>
-    <div class="grid g4 mt">
-      <input id="pv-${p.id}-name" placeholder="nome da conexão" value="${esc(p.id)}">
-      <input id="pv-${p.id}-url" placeholder="base_url" value="${esc(p.baseUrl)}">
-      <input id="pv-${p.id}-model" placeholder="model_name (ex.: gpt-4o-mini)">
-      <input id="pv-${p.id}-key" placeholder="api key" type="password">
-    </div>
-    <div class="grid g4 mt">
-      <select id="pv-${p.id}-protocol">${PROTO_OPTIONS(p.protocol)}</select>
-      <input id="pv-${p.id}-pin" type="number" step="0.01" min="0" placeholder="US$/1M entrada (opcional)">
-      <input id="pv-${p.id}-pout" type="number" step="0.01" min="0" placeholder="US$/1M saída (opcional)">
-      <button id="pv-${p.id}-add">Salvar conexão</button>
-    </div></div>`;
-}
-
-async function providersPage() {
-  const c = await api('/catalog');
-  main.innerHTML = `<h1>Provedores</h1><div class="sub">Adicione o(s) provedor(es) de LLM que você tem — a conexão fica disponível para qualquer agente ou harness via design_agent(llm=...) / design_agent(harness=...)</div>
-  ${c.llm_connections.length ? `<div class="card"><h2>Já conectados (${c.llm_connections.length})</h2><table><tr><th>Nome</th><th>Protocolo</th><th>URL</th><th>Modelo</th></tr>
-    ${c.llm_connections.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${protoPill(x.protocol)}</td><td class="mute small">${esc(x.base_url)}</td><td>${esc(x.model_name)}</td></tr>`).join('')}</table>
-    <div class="mute small mt">Gerenciar (editar/remover) na aba <a href="#/catalog">Catálogo</a>.</div></div>` : ''}
-  <div class="grid g2 mt">${PROVIDERS.map(providerCard).join('')}</div>`;
-  PROVIDERS.forEach(p => {
-    $(`#pv-${p.id}-add`).onclick = e => act(e.target, () => api('/catalog/llm', { method: 'POST', body: {
-      name: $(`#pv-${p.id}-name`).value.trim(), base_url: $(`#pv-${p.id}-url`).value.trim(),
-      model_name: $(`#pv-${p.id}-model`).value.trim(), api_key: $(`#pv-${p.id}-key`).value,
-      protocol: $(`#pv-${p.id}-protocol`).value, description: `Provedor: ${p.name}`,
-      price_in_per_mtok: num($(`#pv-${p.id}-pin`).value), price_out_per_mtok: num($(`#pv-${p.id}-pout`).value) } }).then(providersPage),
-      `Conexão "${$(`#pv-${p.id}-name`).value.trim()}" salva`);
-  });
-}
 
 async function connectPage() {
   const c = await api('/connect');
@@ -1058,6 +964,7 @@ async function route() {
     else if (r === 'workforce') await workforcePage(a);
     else if (r === 'teams' && a === 'new') await teamsPage(true);
     else if (r === 'teams' && a) await teamDetail(a);
+    else if (r === 'providers' && a) await providerDetail(decodeURIComponent(a));
     else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
