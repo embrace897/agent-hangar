@@ -149,6 +149,35 @@ class McpServer(OrgScoped, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     # só as ferramentas com este prefixo (ex.: "duckduckgo__" num gateway que agrega vários servidores)
     tool_prefix: Mapped[str] = mapped_column(String(100), default="")
+    # Conectores (MCP personalizado ou do catálogo): os agentes chamam `url` (a ponte da central) e a central fala com
+    # `upstream_url` com a credencial do cofre. Ferramentas novas ou alteradas no servidor ficam bloqueadas até um
+    # admin aprovar (defesa contra troca silenciosa de descrição — "tool poisoning").
+    source: Mapped[str] = mapped_column(String(12), default="manual")  # manual | custom | curated | remote | docker
+    upstream_url: Mapped[str] = mapped_column(String(500), default="")
+    transport: Mapped[str] = mapped_column(String(8), default="http")  # http (Streamable HTTP) | sse (legado)
+    auth: Mapped[str] = mapped_column(String(8), default="none")  # none | bearer | headers | oauth
+    headers: Mapped[list] = mapped_column(JSON, default=list)  # [{name, value}] — value secreto = "secret://nome"
+    timeout_s: Mapped[int] = mapped_column(Integer, default=60)
+    icon: Mapped[str] = mapped_column(String(300), default="")  # chave do cache de ícones
+    category: Mapped[str] = mapped_column(String(40), default="")
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # escopo: time (vazio = empresa)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # escopo: pessoal
+    status: Mapped[str] = mapped_column(String(10), default="")  # ok | auth | error
+    status_detail: Mapped[str] = mapped_column(Text, default="")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    server_info: Mapped[dict] = mapped_column(JSON, default=dict)  # nome, versão, protocolo, capacidades
+    tools: Mapped[list] = mapped_column(JSON, default=list)  # [{name, description, hash, state}]
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+
+
+class IconCache(Base):
+    """Ícones dos conectores, baixados uma vez pela central e servidos por ela (o navegador não sai para a internet
+    a cada página; depois do primeiro download funciona sem internet). Global: a mesma marca para todas as empresas."""
+    __tablename__ = "icon_cache"
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(60), default="image/png")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class LlmConnection(OrgScoped, Base):

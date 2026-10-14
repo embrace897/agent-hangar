@@ -1,5 +1,7 @@
 # Remote MCPs with OAuth (Activepieces, Notion, Linear…)
 
+> New connectors are added in **Capacidades → Conectores** ([connectors.md](connectors.md)), which uses this same OAuth flow and adds the bridge, tool approval and status checks.
+
 Many MCP servers require a login: Activepieces, Notion, Linear, Atlassian, and the remote servers of Docker's
 catalog. Agent Hangar connects to them **once, as an admin**, and gives them to agents without ever handing
 out the credential.

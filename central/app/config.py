@@ -64,6 +64,8 @@ def harness_image(harness_id: str) -> str:
 RUNTIME_BACKEND = _env("RUNTIME_BACKEND", "docker").lower()
 # stage sem uso por N minutos hiberna (container parado / réplicas 0) e acorda na próxima chamada; 0 desliga
 STAGE_IDLE_MIN = float(_env("STAGE_IDLE_MIN", "30"))
+# Status dos conectores (MCP com ponte): testados a cada N minutos (0 desliga)
+CONNECTOR_CHECK_MIN = float(_env("CONNECTOR_CHECK_MIN", "30"))
 # Lista de modelos de cada provedor de LLM: atualizada a cada N minutos (0 desliga a atualização automática)
 LLM_MODELS_REFRESH_MIN = float(_env("LLM_MODELS_REFRESH_MIN", "60"))
 # Tabela pública de modelos (preço, contexto e tipo) do LiteLLM; vazio = não baixar (ambiente sem internet)

@@ -28,6 +28,9 @@ def resolve_spec(db: Session, agent: Agent, env: str, version: int | None = None
             row = db.scalar(select(McpServer).where(McpServer.name == m))
             if not row:
                 raise PlatformError(f"MCP '{m}' não está no catálogo")
+            from .connectors import can_use
+            if not can_use(agent, row):
+                raise PlatformError(f"o conector '{m}' é de outro time ou pessoal: este agente não pode usá-lo")
             mcps.append({"name": row.name, "url": row.url, **({"tool_prefix": row.tool_prefix} if row.tool_prefix else {})})
         else:
             mcps.append(m)

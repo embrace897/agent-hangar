@@ -406,7 +406,7 @@ const HUBS_CONSOLE = [
   { id: 'trabalho', tabs: [['queues', 'Filas'], ['playbooks', 'Playbooks'], ['meetings', 'Reuniões'], ['memos', 'Memorandos de decisão'],
     ['watchers', 'Vigias'], ['tickets', 'Sistemas de chamados'], ['work', 'Comigo']] },
   { id: 'projetos', tabs: [['projects', 'Projetos'], ['goals', 'Metas'], ['files', 'Entregáveis']] },
-  { id: 'capacidades', tabs: [['catalog', 'Skills e MCPs'], ['skills', 'Skill Studio'], ['plugins', 'Plugins'], ['extraction', 'Extração de documentos'],
+  { id: 'capacidades', tabs: [['connectors', 'Conectores'], ['connectors/custom', 'Adicionar personalizado', 'admin'], ['catalog', 'Skills'], ['skills', 'Skill Studio'], ['plugins', 'Plugins'], ['extraction', 'Extração de documentos'],
     ['calculators', 'Calculadoras'], ['message-templates', 'Modelos de mensagem'], ['procedures', 'Procedimentos do navegador']] },
   { id: 'conhecimento', tabs: [['knowledge', 'Base de conhecimento'], ['learned', 'O que a empresa aprendeu'], ['learning', 'Trilhas']] },
   { id: 'valor', tabs: [['value', 'Valor e oportunidades'], ['usage', 'Uso e custo'], ['budgets', 'Orçamentos']] },
@@ -420,7 +420,7 @@ const HUBS = () => (USER_MODE ? HUBS_PORTAL : HUBS_CONSOLE);
 const hubOk = need => !need || (need === 'admin' && ME.is_admin) || (need === 'auditor' && ME.is_auditor)
   || (need === 'builder' && (ME.can_create_agents || ME.is_admin)) || (need === 'instance' && ME.instance_admin);
 const hubTabs = h => h.tabs.filter(t => hubOk(t[2]));
-const hubKey = (r, a) => (r === 'issues' && a === 'settings' ? 'issues/settings' : r);
+const hubKey = (r, a) => (r === 'issues' && a === 'settings' ? 'issues/settings' : r === 'connectors' && a === 'custom' ? 'connectors/custom' : r);
 function hubOf(r, a) { const k = hubKey(r, a); return HUBS().find(h => h.tabs.some(t => t[0] === k)); }
 
 function hubGo(id) {  // #/hub/<id>: a última aba usada (ou a primeira)

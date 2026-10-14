@@ -17,6 +17,7 @@ data:
   K8S_IMAGE_PULL_SECRET: {{ join "," .Values.image.pullSecrets | quote }}
   AGENT_MEM_LIMIT: {{ .Values.agents.memLimit | quote }}
   STAGE_IDLE_MIN: {{ .Values.agents.stageIdleMin | quote }}
+  CONNECTOR_CHECK_MIN: {{ .Values.connectors.checkMin | quote }}
   LLM_MODELS_REFRESH_MIN: {{ .Values.llmModels.refreshMin | quote }}
   MODEL_CATALOG_URL: {{ .Values.llmModels.catalogUrl | quote }}
   MODEL_PUBLIC_SOURCES: {{ ternary "1" "0" .Values.llmModels.publicSources | quote }}

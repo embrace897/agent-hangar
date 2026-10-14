@@ -59,6 +59,29 @@ def _parse(doc: dict) -> dict[str, dict]:
     return out
 
 
+def _parse_remotes(doc: dict) -> dict[str, dict]:
+    """Os servidores "remote" do catálogo (HTTP, rodam no fornecedor): viram conectores pela ponte da central."""
+    out = {}
+    for name, v in ((doc or {}).get("registry") or {}).items():
+        if v.get("type") != "remote":
+            continue
+        rem = v.get("remote") if isinstance(v.get("remote"), dict) else {}
+        url = rem.get("url") or ""
+        if not url.startswith(("http://", "https://")):
+            continue
+        meta = v.get("metadata") or {}
+        out[name] = {"name": name, "title": v.get("title") or name, "description": v.get("description", ""),
+                     "icon": v.get("icon", ""), "url": url, "category": meta.get("category", ""),
+                     "transport": "sse" if (rem.get("transport_type") == "sse" or url.rstrip("/").endswith("/sse")) else "http",
+                     "oauth": bool(v.get("oauth")), "tags": meta.get("tags") or []}
+    return out
+
+
+def remotes() -> dict[str, dict]:
+    catalog()
+    return _CACHE.get("remotes") or {}
+
+
 def catalog(force: bool = False) -> dict[str, dict]:
     if not force and _CACHE["servers"] and time.time() - _CACHE["at"] < config.MCP_GATEWAY_CATALOG_TTL_S:
         return _CACHE["servers"]
@@ -66,7 +89,8 @@ def catalog(force: bool = False) -> dict[str, dict]:
         with HTTP() as http:
             r = http.get(config.MCP_GATEWAY_CATALOG_URL)
             r.raise_for_status()
-        _CACHE.update(at=time.time(), servers=_parse(yaml.safe_load(r.text)))
+        doc = yaml.safe_load(r.text)
+        _CACHE.update(at=time.time(), servers=_parse(doc), remotes=_parse_remotes(doc))
     except Exception as e:
         if not _CACHE["servers"]:
             raise PlatformError(f"não foi possível ler o catálogo Docker MCP ({type(e).__name__}): {e}") from None

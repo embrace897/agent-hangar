@@ -13,6 +13,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       code_eval,
                       composer,
                       connect,
+                      connectors,
                       correspondence,
                       decision_kinds,
                       decision_memos,

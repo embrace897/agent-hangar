@@ -6,7 +6,7 @@ from collections import defaultdict
 
 STATIC = os.path.join(os.path.dirname(__file__), "..", "central", "app", "static")
 SCRIPTS = ["icons.js", "org.js", "employees.js", "plugins.js", "home.js", "work.js", "ux.js", "analyst.js", "member.js",
-           "issues.js", "llm.js", "app.js"]  # i18n.js é uma IIFE
+           "issues.js", "llm.js", "connectors.js", "app.js"]  # i18n.js é uma IIFE
 DECL = re.compile(r"^(?:const|let|var|class|async function|function)\s+([A-Za-z_$][\w$]*)", re.M)
 
 

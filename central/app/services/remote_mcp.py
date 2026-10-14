@@ -128,7 +128,7 @@ def start(db: Session, acc: Access, name: str, url: str, description: str = "", 
     if not re.match(r"^https?://", url or ""):
         raise PlatformError("url do MCP deve ser http(s)")
     other = db.scalar(select(McpServer).where(McpServer.name == name))
-    if other and other.url != proxy_url(name):
+    if other and other.url != proxy_url(name) and other.auth != "oauth":
         raise PlatformError(f"já existe um MCP '{name}' no catálogo")
     meta = discover(url)
     r = db.scalar(select(RemoteMcp).where(RemoteMcp.name == name)) or RemoteMcp(name=name)
@@ -184,7 +184,12 @@ def finish(db: Session, acc: Access, code: str, state: str, cookie: str) -> Remo
     _save_tokens(r, body)
     r.connected_by = acc.p.name
     db.commit()
-    upsert_mcp(db, r.name, proxy_url(r.name), r.description or f"MCP remoto (OAuth): {r.url}", acc.p.name, tool_prefix="")
+    conn = db.scalar(select(McpServer).where(McpServer.name == r.name))
+    if conn is not None and conn.auth == "oauth":  # conector: segue pela ponte (ferramentas aprovadas, status)
+        from . import connectors
+        connectors.oauth_done(db, r.name)
+    else:
+        upsert_mcp(db, r.name, proxy_url(r.name), r.description or f"MCP remoto (OAuth): {r.url}", acc.p.name, tool_prefix="")
     audit(db, acc.p.name, "remote_mcp.connected", r.name, r.url)
     return r
 

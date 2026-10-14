@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Connectors (MCP), in the layout of ChatGPT's plugin catalog** (Capacidades → Conectores):
+  - Search, installed connectors, catalog and custom, and sections by category with each connector's icon. Icons are downloaded once and served by the central.
+  - The list brings together official vendor servers (Notion, Linear, Atlassian, Asana, GitHub, Sentry, Stripe, PayPal, Square, Supabase, Neon, Canva, Figma, Intercom, monday.com, Webflow, Vercel), the Docker MCP catalog (remote and container servers) and the company's own.
+- **Custom MCP server** (sub-tab *Adicionar personalizado*):
+  - Icon, name, description, URL and transport: automatic, Streamable HTTP or legacy SSE.
+  - Authentication: none, Bearer token, custom headers or OAuth (discovery, dynamic registration and PKCE). Secrets go to the vault.
+  - Timeout and scope: company, team or personal.
+  - *Testar conexão* checks the handshake, protocol version and capabilities, and lists tools, resources and prompts, with distinct errors.
+  - A risk acknowledgement is required.
+- **Import `mcpServers` JSON** (Claude Desktop, Cursor, `.mcp.json`): remote entries become connectors and secret-looking headers go to the vault.
+- **The bridge:** agents reach every remote connector through the central (`/internal/mcp-proxy/<name>`). The credential never reaches the agent, and legacy SSE servers work too.
+- **Tool governance:** only approved tools reach agents.
+  - A tool that appears or changes its description is blocked until an admin approves it, as a defense against tool poisoning. Connectors are re-tested every `CONNECTOR_CHECK_MIN` minutes.
+  - The admin inbox shows waiting tools and expired authentication.
+  - Each tool's action type (read, write, send, publish, delete, financial) feeds the Digital employees' authority.
+
+### Changed
+- *Skills e MCPs* is now *Skills*; MCP servers live in Conectores.
+
 ## [0.32.0] — 2026-10-14
 
 ### Added

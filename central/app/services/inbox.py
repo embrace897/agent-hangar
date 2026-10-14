@@ -111,6 +111,13 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
             add(f"llm_model:{x['connection']}:{x['model']}", "llm_model",
                 f"O modelo {x['model']} saiu do provedor ({x['connection']}) e é usado por {', '.join(x['agents'])}",
                 x["at"], "#/providers", connection=x["connection"], model=x["model"], agents=x["agents"], blocked=True)
+    if acc.p.is_admin:  # conector esperando um admin: ferramenta nova/alterada ou autenticação vencida
+        from .connectors import attention
+        for x in attention(db):
+            title = (f"Conector {x['name']}: {len(x['tools'])} ferramenta(s) nova(s) ou alterada(s) esperando aprovação"
+                     if x["kind"] == "tools" else f"Conector {x['name']} precisa de nova autenticação")
+            add(f"connector:{x['name']}:{x['kind']}", "connector", title, x["at"], f"#/connectors/{x['name']}",
+                connector=x["name"], blocked=True)
     if acc.p.is_admin:  # agente com um modelo bem melhor para o papel (sugestão; nada muda sozinho)
         from .model_selection import cached_suggestions
         for x in cached_suggestions(db):

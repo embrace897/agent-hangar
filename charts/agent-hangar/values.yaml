@@ -126,6 +126,10 @@ sso:
   github: {clientId: "", clientSecret: "", orgs: ""}
   oauth2: {clientId: "", clientSecret: "", label: "", authorizeUrl: "", tokenUrl: "", userinfoUrl: "", scopes: ""}
 
+# Conectores (MCP): o status de cada um e as ferramentas novas/alteradas são conferidos a cada checkMin minutos (0 desliga)
+connectors:
+  checkMin: 30
+
 # Lista de modelos de cada provedor de LLM (tipo, contexto e preço): atualizada a cada refreshMin minutos (0 desliga).
 # catalogUrl: tabela pública de modelos do LiteLLM para completar tipo e preço; vazio em cluster sem saída para a internet.
 llmModels:

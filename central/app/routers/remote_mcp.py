@@ -48,7 +48,7 @@ def remote_callback(request: Request, code: str = "", state: str = "", error: st
                     error_description: str = "", db=Depends(db_dep)):
     def back(msg: str | None = None, name: str = "") -> RedirectResponse:
         q = urllib.parse.urlencode({"remote_error": msg} if msg else {"remote_ok": name})
-        resp = RedirectResponse(f"/ui/#/catalog?{q}", 303)
+        resp = RedirectResponse(f"/ui/#/connectors{'/' + urllib.parse.quote(name) if name else ''}?{q}", 303)
         resp.delete_cookie(COOKIE, path="/api/remote-mcps")
         return resp
     if error:

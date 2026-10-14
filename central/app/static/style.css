@@ -461,3 +461,23 @@ a.btn.ghost{background:var(--panel);color:var(--ink);border-color:var(--line)}a.
 .pv-st i{width:6px;height:6px;border-radius:50%;background:currentColor}
 button.cc-f{min-height:30px;padding:3px 10px;font-weight:500}button.cc-f.on{border-color:var(--ink);background:var(--panel-2)}
 .chip.sc-research{border-style:dashed}.chip.sc-admin{border-color:var(--info)}
+/* Conectores (MCP): como a página de plugins do ChatGPT */
+.cx-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.cx-addw{position:relative}.cx-menu{position:absolute;right:0;top:44px;z-index:20;min-width:280px;padding:6px;display:flex;flex-direction:column}
+.cx-menu a{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);color:var(--ink);text-decoration:none}.cx-menu a:hover{background:var(--panel-2)}
+.cx-search{width:100%;max-width:640px;border-radius:999px;padding:9px 16px;margin:4px 0 8px}
+.cx-sec{margin-top:22px}.cx-sec h2{font-size:16px;margin:0 0 8px}.cx-sec h2 a{color:var(--ink);text-decoration:none}
+.cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px}
+@media (max-width:760px){.cx-grid{grid-template-columns:1fr}.cx-head{flex-direction:column}}
+.cx-row{display:flex;align-items:center;gap:12px;padding:9px 6px;border-radius:var(--r);color:var(--ink);text-decoration:none;min-width:0}
+.cx-row:hover{background:var(--panel-2)}
+.cx-txt{display:flex;flex-direction:column;min-width:0;flex:1}.cx-txt b{font-weight:600}
+.cx-txt .small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cx-plus{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:var(--mute)}
+.cx-row:hover .cx-plus{background:var(--panel);color:var(--ink)}
+.cx-ic{flex:none;border-radius:8px;object-fit:contain;background:#fff;border:1px solid var(--line-2);padding:2px;box-sizing:border-box}
+.cx-ini{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;background:var(--panel-2);color:var(--ink);font-weight:700}
+.cx-installed{display:flex;gap:10px;flex-wrap:wrap}.cx-tile{position:relative;display:inline-flex}
+.cx-dot{position:absolute;right:-2px;top:-2px;width:9px;height:9px;border-radius:50%;background:var(--hold);border:2px solid var(--bg)}
+.cx-upload{width:52px;height:52px;border:1px dashed var(--line);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;background:var(--panel-2)}
+.cc-tools{max-height:320px;overflow:auto;margin-top:8px;display:flex;flex-direction:column;gap:8px}

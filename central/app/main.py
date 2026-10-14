@@ -18,6 +18,7 @@ from .routers import (
     access,
     admin,
     analyst,
+    connectors,
     employees,
     gateway,
     internal,
@@ -246,6 +247,7 @@ app.include_router(notify.hooks)  # Slack e link assinado: autenticados pela ass
 app.include_router(scim.router)
 app.include_router(schedules.router)
 app.include_router(remote_mcp.router)
+app.include_router(connectors.router)  # conectores (MCP): catálogo, cadastro e a ponte dos agentes
 app.include_router(oauth.router)
 app.include_router(memory.router)
 app.include_router(internal.router)

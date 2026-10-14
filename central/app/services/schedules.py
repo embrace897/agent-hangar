@@ -307,6 +307,10 @@ def _loop():
             refresh_llm_models()
         except Exception:
             log.exception("falha ao atualizar as listas de modelos")
+        try:
+            check_connectors()
+        except Exception:
+            log.exception("falha ao conferir os conectores")
 
 
 def hibernate_idle_stages() -> list[str]:
@@ -318,6 +322,17 @@ def hibernate_idle_stages() -> list[str]:
     if out:
         log.info("stage ocioso hibernado: %s", ", ".join(out))
     return out
+
+
+def check_connectors() -> bool:
+    """Status dos conectores com ponte (uma réplica a cada CONNECTOR_CHECK_MIN): 401 vira pedido de reautenticação e
+    ferramenta nova/alterada fica bloqueada até um admin aprovar."""
+    from .. import shared
+    if config.CONNECTOR_CHECK_MIN <= 0 or not shared.take_once("connectors-check", config.CONNECTOR_CHECK_MIN * 60):
+        return False
+    from . import connectors
+    _pool.submit(connectors.check_all)
+    return True
 
 
 def refresh_llm_models() -> bool:

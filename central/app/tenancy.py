@@ -24,7 +24,7 @@ _org: contextvars.ContextVar[int | None] = contextvars.ContextVar("hangar_org", 
 # quem chama sempre enxerga a própria pessoa (quem administra a instalação age dentro de outra empresa)
 _me: contextvars.ContextVar[int | None] = contextvars.ContextVar("hangar_me", default=None)
 # tabelas da instalação (não de uma empresa): a própria empresa, o efêmero, o login e a infraestrutura compartilhada
-GLOBAL_TABLES = {"organizations", "ephemeral", "oauth_clients", "gateway_servers", "sso_providers", "group_mappings",
+GLOBAL_TABLES = {"organizations", "ephemeral", "icon_cache", "oauth_clients", "gateway_servers", "sso_providers", "group_mappings",
                  "scim_groups", "user_sessions"}
 # de onde tirar a empresa de um registro novo criado sem contexto: a primeira coluna que apontar para um pai
 PARENTS = ("task_id", "employee_id", "agent_id", "plugin_id", "install_id", "skill_id", "policy_id", "team_id",

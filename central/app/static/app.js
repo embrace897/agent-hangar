@@ -720,19 +720,15 @@ async function usagePage() {
 }
 async function catalogPage() {
   const c = await api('/catalog');
-  main.innerHTML = `<h1>Catálogo</h1><div class="sub">Skills, MCP servers e conexões de LLM reutilizáveis pelos agentes</div>
+  main.innerHTML = `<h1>Skills</h1><div class="sub">Procedimentos e conhecimento reutilizáveis pelos agentes</div>
   <div class="card row between"><div><b>Conexões de LLM e modelos</b><div class="mute small">Ficam em Configurações → Provedores de LLM, com a lista de modelos de cada provedor.</div></div>
     <a class="btn ghost" href="#/providers">Abrir provedores</a></div>
   <div class="grid g2 mt"><div class="card"><h2>Skills (${c.skills.length})</h2>${c.skills.map(s => `<div class="mt"><b>${esc(s.name)}</b><div class="mute small" data-noi18n>${esc(s.description)}</div><details><summary>conteúdo</summary><pre>${esc(s.content)}</pre></details></div>`).join('') || '<div class="mute">Nenhuma — registre pelo chat (<code>register_skill</code>) ou abaixo</div>'}
     <details class="mt"><summary>Adicionar skill</summary><input id="sk-name" placeholder="nome" class="mt"><input id="sk-desc" placeholder="descrição" class="mt"><textarea id="sk-content" placeholder="conteúdo (markdown)" rows="4" class="mt"></textarea><button id="sk-add" class="mt">Salvar skill</button></details></div>
-  <div class="card"><h2>MCP servers (${c.mcp_servers.length})</h2>${c.mcp_servers.map(m => `<div class="mt"><b>${esc(m.name)}</b>${m.tool_prefix ? ' <span class="chip">catálogo Docker</span>' : ''}<div>${copyable(m.url)}</div><div class="mute small">${esc(m.description)}</div></div>`).join('') || '<div class="mute">Nenhum</div>'}
-    <details class="mt"><summary>Adicionar MCP server</summary><input id="mc-name" placeholder="nome" class="mt"><input id="mc-url" placeholder="url (Streamable HTTP)" class="mt"><input id="mc-desc" placeholder="descrição" class="mt"><button id="mc-add" class="mt">Salvar MCP</button></details></div></div>
-  ${ME.is_admin ? '<div id="rm-card" class="mt"></div><div id="gw-card" class="mt"></div>' : ''}`;
-  if (ME.is_admin) { remoteMcps($('#rm-card')); gatewayCatalog($('#gw-card')); }
+  <div class="card"><h2>Servidores MCP</h2><div class="mute small">Os servidores MCP ficam em Capacidades → Conectores, com catálogo, personalizados, teste de conexão e aprovação de ferramentas.</div>
+    <a class="btn ghost mt" href="#/connectors">Abrir Conectores</a></div></div>`;
   $('#sk-add').onclick = e => act(e.target, () => api('/catalog/skills', { method: 'POST', body: {
     name: $('#sk-name').value.trim(), description: $('#sk-desc').value, content: $('#sk-content').value } }).then(catalogPage), 'Skill salva');
-  $('#mc-add').onclick = e => act(e.target, () => api('/catalog/mcps', { method: 'POST', body: {
-    name: $('#mc-name').value.trim(), url: $('#mc-url').value.trim(), description: $('#mc-desc').value } }).then(catalogPage), 'MCP salvo');
 }
 const num = v => v === '' || v == null ? null : Number(v);
 const PROTOCOLS = {
@@ -966,6 +962,11 @@ async function route() {
     else if (r === 'teams' && a === 'new') await teamsPage(true);
     else if (r === 'teams' && a) await teamDetail(a);
     else if (r === 'providers' && a) await providerDetail(decodeURIComponent(a));
+    else if (r === 'connectors' && a === 'custom') await connectorCustomPage();
+    else if (r === 'connectors' && a === 'import') await connectorImportPage();
+    else if (r === 'connectors' && a === 'item' && b) await connectorItemPage(decodeURIComponent(b));
+    else if (r === 'connectors' && a) await connectorDetail(decodeURIComponent(a));
+    else if (r === 'connectors') await connectorsPage();
     else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: catalogPage, providers: providersPage, connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
