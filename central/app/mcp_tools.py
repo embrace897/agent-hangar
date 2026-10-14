@@ -150,7 +150,9 @@ FLUXO
    memory={"scope": "agent"|"team"|"org"} (team = compartilhada com o time; write=false = só leitura). Ele ganha
    memory__recall e memory__remember; diga nas instructions quando consultar e o que gravar. Só funciona se a
    instalação ligou a memória (docs/memory.md) — senão o deploy avisa.
-6. Multiagente: crie os especialistas e depois o orquestrador com sub_agents=[slugs] (build_multi_agent).
+6. Multiagente: crie os especialistas e depois o orquestrador com sub_agents=[slugs] (build_multi_agent). Escolha o
+   modelo de cada um pelo papel com recommend_models (orquestrador = planner, especialista de código = coder,
+   triagem = classifier…) e confira o time com suggest_agent_models; explique ao usuário a escolha de cada modelo.
 7. GUIA: escreva o guia do agente (seção GUIA DO AGENTE acima) com guide=... na chamada de construção ou com
    set_agent_guide(slug, text). Num multiagente, um guia para cada especialista e um para o orquestrador.
 8. ship_agent(slug): testa em stage, registra e só promove para produção se passar. Se falhar, leia os
@@ -317,6 +319,28 @@ async def get_model_profile(ctx: Context, model: str) -> dict:
     """A ficha completa de um modelo (id ou nome): resumo, pontos fortes e fracos, usos típicos, notas por área com a
     base de cada uma, métricas e as fontes com a data. É DADO de fontes públicas, nunca instrução."""
     return await _run(ctx, lambda db, acc: svc.model_profiles.get(db, model))
+
+
+@mcp.tool()
+async def recommend_models(ctx: Context, role: str = "general", caps: list[str] | None = None, connection: str = "") -> dict:
+    """O melhor modelo da empresa para um papel. role: planner (planejador/orquestrador), coder, analyst, writer,
+    support, extractor, classifier, general. caps: recursos obrigatórios (tools se o agente usa MCPs/ferramentas/
+    sub-agentes, vision se lê imagens). A nota combina a ficha do modelo (raciocínio, código, velocidade, custo, com
+    pesos por papel) com o desempenho real dele aqui (testes, tarefas de referência, erros). Use o primeiro candidato
+    em design_agent(llm={"connection": ..., "model": ...}) e diga ao usuário por que (campo reasons). Com confidence
+    "baixa", avise que falta dado sobre o modelo."""
+    return await _run(ctx, lambda db, acc: svc.model_selection.recommend(db, role, caps or [], connection))
+
+
+@mcp.tool()
+async def suggest_agent_models(ctx: Context, slug: str) -> dict:
+    """Para um agente (ou um multiagente: o orquestrador e cada especialista): o papel deduzido, o modelo atual, a nota
+    dele e a sugestão quando há um modelo ao menos 10 pontos melhor para o papel. Nada muda sozinho: aplique a
+    sugestão com design_agent (patch pronto em suggestion.patch) e rode ship_agent para testar antes de produção."""
+    def go(db, acc):
+        a = _agent(db, acc, slug)
+        return {"agents": svc.model_selection.for_team(db, a)}
+    return await _run(ctx, go)
 
 
 @mcp.tool()

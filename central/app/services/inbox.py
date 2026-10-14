@@ -111,6 +111,13 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
             add(f"llm_model:{x['connection']}:{x['model']}", "llm_model",
                 f"O modelo {x['model']} saiu do provedor ({x['connection']}) e é usado por {', '.join(x['agents'])}",
                 x["at"], "#/providers", connection=x["connection"], model=x["model"], agents=x["agents"], blocked=True)
+    if acc.p.is_admin:  # agente com um modelo bem melhor para o papel (sugestão; nada muda sozinho)
+        from .model_selection import cached_suggestions
+        for x in cached_suggestions(db):
+            s = x["suggestion"]
+            add(f"model_suggestion:{x['agent']}:{s['model']}", "model_suggestion",
+                f"{x['name']}: {s['model']} é melhor para {x['role_label']} que {x['current']['model']}",
+                x.get("at"), f"#/agents/{x['agent']}", agent=x["agent"], model=s["model"], connection=s["connection"])
     rows = list(out.values())
     counts = {"all": sum(not r["archived"] for r in rows), "unread": sum(r["unread"] and not r["archived"] for r in rows),
               "decisions": sum(r["kind"] == "decision" and not r["archived"] for r in rows),

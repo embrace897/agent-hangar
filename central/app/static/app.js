@@ -406,7 +406,8 @@ function overview(t, a) {
     <div class="card"><h2>Endpoints (produção)</h2><div class="mute small">Header <code>Authorization: Bearer &lt;chave invoke&gt;</code> (gere em <a href="#/keys">Chaves de API</a>); opcional <code>X-Channel: slack</code> para métricas por canal.
       ${a.harness ? ' Agente com harness: cada chamada (OpenAI, A2A, ACP ou MCP) vira um job num container efêmero.' : ''}</div>
       ${Object.entries(a.endpoints).map(([k, v]) => `<h3>${k}</h3>${copyable(v)}`).join('')}
-      <h3>Stage</h3>${copyable(a.endpoints.openai.replace('/gw/', '/gw-stage/'))}</div></div><div id="lineage"></div>`;
+      <h3>Stage</h3>${copyable(a.endpoints.openai.replace('/gw/', '/gw-stage/'))}</div></div><div id="model-rec"></div><div id="lineage"></div>`;
+  if (!a.harness) modelRecCard($('#model-rec'), a, can(a, 'edit'));
   lineageCard(a.slug);
 }
 

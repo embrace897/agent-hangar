@@ -24,6 +24,11 @@ All notable changes to this project are documented here. The format follows
   - Free and hourly: Artificial Analysis measurements (with the company's key from the vault) and OpenRouter's public description.
   - Optional research with a monthly budget: one of the company's models summarizes the Hugging Face card and web search results (Brave, Tavily or SearXNG). Page text is treated as data, internal addresses are never fetched, and research scores are marked as estimates.
   - Admins fix any field; fixed fields are locked. `MODEL_PUBLIC_SOURCES=0` turns public sources off.
+- **Model per role:**
+  - Each role (planner, coder, analyst, writer, support, extractor, classifier, general) weighs reasoning, coding, speed and cost differently.
+  - Real results here adjust the score, up to half of it: stage tests on that model, golden tasks and failed calls.
+  - Only models with the features the agent needs are considered, and code goes only to approved connections when the policy requires it.
+  - The agent page (*Modelo por papel*, the whole team for a multi-agent), the admins' inbox and MCP (`recommend_models`, `suggest_agent_models`) suggest a model when one is 10+ points better with real evidence. Nothing changes by itself: applying creates a version that goes through the tests.
 - **Builder:** `check_model_needs` tells it whether the company has the model types an agent needs (embedding, rerank, speech…) and gives the message for the user when one is missing. `get_model_profile` and the profiles in `list_llm_models` let it pick a model per role.
 
 ### Changed

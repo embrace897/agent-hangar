@@ -45,6 +45,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       meetings,
                       memory,
                       model_profiles,
+                      model_selection,
                       notify,
                       org,
                       org_chart,

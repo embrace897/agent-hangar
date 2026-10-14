@@ -228,6 +228,13 @@ class GuideBody(BaseModel):
     text: str = Field(max_length=20_000)
 
 
+@router.get("/agents/{slug}/model-recommendation")
+def agent_model_recommendation(slug: str, request: Request, role: str = "", db=Depends(db_dep)):
+    """O papel do agente, o modelo atual e o melhor modelo da empresa para esse papel (multiagente: o time todo)."""
+    a = _agent(request, db, slug)
+    return guard(lambda: svc.model_selection.for_team(db, a) if not role else [svc.model_selection.for_agent(db, a, role)])
+
+
 @router.get("/agents/{slug}/guide")
 def agent_guide(slug: str, request: Request, db=Depends(db_dep)):
     """Fluxo, ficha e texto do guia (o que é, o que faz, como usar) — para quem vê o agente, inclusive no catálogo."""
@@ -477,6 +484,14 @@ def llm_model_edit(name: str, model_id: str, b: ModelEdit, request: Request, db=
                                       actor(request)) if (b.kind is not None or b.set_price) else svc.llm_models._model(db, c, model_id)
         return svc.llm_models.model_dict(m, c)
     return guard(go)
+
+
+@router.get("/catalog/models/recommend")
+def llm_models_recommend(role: str = "general", caps: str = "", connection: str = "", limit: int = 5, db=Depends(db_dep)):
+    """Os melhores modelos da empresa para um papel (planner, coder, analyst, writer, support, extractor, classifier,
+    general), combinando a ficha com o desempenho real aqui dentro. caps: tools,vision."""
+    return guard(lambda: svc.model_selection.recommend(db, role, [c for c in caps.split(",") if c], connection,
+                                                       max(1, min(limit, 50))))
 
 
 @router.get("/catalog/model-profiles/settings")

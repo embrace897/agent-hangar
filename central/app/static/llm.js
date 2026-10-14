@@ -309,3 +309,36 @@ async function researchCard(box, c) {
     toast(`${r.profiles_updated} ficha(s) atualizada(s) de ${r.models} modelo(s)`);
   });
 }
+
+/* página do agente: o papel dele, o modelo atual e o melhor modelo da empresa para esse papel (multiagente: o time) */
+const ROLE_OPTIONS = { planner: 'planejador / orquestrador', coder: 'código', analyst: 'análise de dados', writer: 'redação',
+  support: 'atendimento', extractor: 'extração de dados', classifier: 'classificação / triagem', general: 'geral' };
+async function modelRecCard(box, a, canEdit, role = '') {
+  let team;
+  try { team = await api(`/agents/${a.slug}/model-recommendation${role ? `?role=${role}` : ''}`); } catch (e) { return; }
+  const rows = team.filter(x => x.supported);
+  if (!rows.length) return;
+  const cand = c => c ? `<code class="inline" data-noi18n>${esc(c.model)}</code> <span class="mute small">(${esc(c.connection)})</span>` : '';
+  const why = rs => (rs || []).map(r => `<span class="chip" data-noi18n>${esc(r)}</span>`).join(' ');
+  box.innerHTML = `<div class="card mt"><div class="row between"><h2 style="margin:0">Modelo por papel</h2>
+      <span class="mute small">sugestão: nada muda sozinho; aplicar cria uma versão nova, que passa pelos testes</span></div>
+    ${rows.map((x, i) => `<div class="mt" style="${i ? 'border-top:1px solid var(--line-2);padding-top:12px' : ''}">
+      <div class="row between" style="flex-wrap:wrap;gap:8px"><div><b data-noi18n>${esc(x.name)}</b> <span class="mute small">· <span>papel</span>:</span>
+        ${i === 0 && canEdit ? `<select class="mr-role" data-noi18n style="width:auto;min-height:30px;padding:3px 8px">${Object.entries(ROLE_OPTIONS).map(([k, v]) => `<option value="${k}" ${k === x.role ? 'selected' : ''}>${esc(window.t(v, 'papel'))}</option>`).join('')}</select>`
+          : `<span class="chip" data-noi18n>${esc(window.t(ROLE_OPTIONS[x.role] || x.role, 'papel'))}</span>`}
+        ${(x.caps || []).map(c => `<span class="chip">${esc(CAP_LABEL[c] || c)}</span>`).join(' ')}</div></div>
+      <div class="small mt"><span class="mute">Atual:</span> ${x.current.model ? `${cand({ model: x.current.model, connection: x.current.connection })} ${x.current.score != null ? `<b>${x.current.score}</b>` : '<span class="mute">sem nota</span>'}` : '<span class="mute">nenhum (mock)</span>'}</div>
+      ${x.suggestion ? `<div class="small mt"><span class="mute">Recomendado:</span> ${cand(x.suggestion)} <b>${x.suggestion.score}</b>${x.suggestion.gain != null ? ` <span class="pill ok">+${x.suggestion.gain}</span>` : ''}
+          ${canEdit && x.agent === a.slug ? `<button class="ghost mr-apply" data-c="${esc(x.suggestion.connection)}" data-m="${esc(x.suggestion.model)}" style="margin-left:8px">Usar este modelo</button>`
+            : x.agent !== a.slug ? ` <a href="#/agents/${esc(x.agent)}" class="small">abrir o agente</a>` : ''}
+          <div class="mt">${why((x.candidates[0] || {}).reasons)}</div></div>`
+        : x.note ? `<div class="small mt"><span class="pill warn">sem comparação</span> <span>${esc(x.note)}</span></div>`
+          : `<div class="small mt mute">O modelo atual já é o melhor da empresa para este papel (ou a diferença é menor que 10 pontos).</div>`}
+      ${x.candidates.length > 1 ? `<details class="mt"><summary class="small">Outros candidatos</summary><table class="small"><tr><th>Modelo</th><th>Nota</th><th>Confiança</th><th>Por quê</th></tr>
+        ${x.candidates.map(c => `<tr><td>${cand(c)}</td><td><b>${c.score}</b></td><td data-noi18n>${esc(window.t(c.confidence, 'confianca'))}</td><td>${why(c.reasons)}</td></tr>`).join('')}</table></details>` : ''}</div>`).join('')}</div>`;
+  const sel = box.querySelector('.mr-role');
+  if (sel) sel.onchange = () => modelRecCard(box, a, canEdit, sel.value);
+  box.querySelectorAll('.mr-apply').forEach(b => b.onclick = e => confirm(`Trocar o modelo de "${a.name}" para ${b.dataset.m}? Vira uma versão nova; rode os testes antes de levar para produção.`)
+    && act(e.target, () => api('/agents/' + a.slug, { method: 'PATCH', body: { llm: { connection: b.dataset.c, model: b.dataset.m } } }).then(route),
+      'Modelo trocado: nova versão criada (rode os testes para levar à produção)'));
+}

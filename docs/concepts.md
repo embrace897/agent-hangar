@@ -127,6 +127,53 @@ The builder reads profiles through `list_llm_models` and `get_model_profile`. It
 caps)` before building. If the company lacks a model type the agent needs, it shows the user which one is missing and
 where to add it.
 
+
+### Choosing a model per role
+
+Each role weighs the profile's areas differently:
+
+| Role | Weights |
+|---|---|
+| planner / orchestrator | reasoning 60, cost 20, coding 10, speed 10 |
+| coder | coding 60, reasoning 20, speed 10, cost 10 |
+| analyst | reasoning 50, coding 20, cost 20, speed 10 |
+| writer | reasoning 40, cost 30, speed 30 |
+| support | speed 35, cost 35, reasoning 30 |
+| extractor | cost 40, reasoning 30, speed 30 |
+| classifier | cost 50, speed 30, reasoning 20 |
+| general | reasoning 35, cost 30, speed 20, coding 15 |
+
+A model's score for the role also counts how it actually performed here:
+
+- stage tests of the agents that ran on it (the tested version says which model it was);
+- golden tasks of the Digital employees using it;
+- failed calls in the last 30 days.
+
+Real results weigh up to half of the score, growing with the number of executions.
+
+Ranking and confidence depend on the quality area: reasoning, or coding for the coder role.
+
+- **Confidence:** high when the quality score is measured (Artificial Analysis or an admin) or there are 20+ real
+  executions; medium when it comes from research; low when there is none.
+- **Missing quality score:** the model ranks after the ones that have it, so price alone never wins.
+
+Candidates are filtered to what the agent can use:
+
+- text models with the features the agent needs (tools when it has MCPs, tools, plugins, sub-agents or memory;
+  vision when it reads images);
+- connections with the `openai` protocol;
+- for the coder role, only connections approved for code when the company's code policy requires it.
+
+The role is inferred from the agent: sub-agents mean planner, workspace tests mean coder, and otherwise words in its
+name first, then in its objective and instructions. It can also be chosen by hand.
+
+**Nothing changes by itself.** The platform shows a suggestion when another model is at least 10 points better for the
+role, with medium or high confidence. It appears in three places: the agent page (*Modelo por papel*, which covers the
+whole team of a multi-agent), the admins' inbox, and MCP (`recommend_models`, `suggest_agent_models`).
+
+Applying it is an ordinary spec change: a new version, which goes through the tests before production. If the current
+model has no quality score, there is no comparison; the page asks for its profile to be researched instead.
+
 ## Gateway and channels
 
 Clients reach agents through the hangar at `/gw/<slug>/…` (prod) and `/gw-stage/<slug>/…`, authenticated with an

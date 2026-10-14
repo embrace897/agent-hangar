@@ -1,7 +1,7 @@
 /* O trabalho do dia a dia: caixa de entrada, busca, projetos, metas, orçamentos e a conversa da tarefa. */
 const GOAL_STATUS = { planned: ['Planejada', ''], active: ['Ativa', 'info'], achieved: ['Atingida', 'ok'], dropped: ['Abandonada', 'bad'] };
 const INBOX_VIEWS = { all: 'Tudo', unread: 'Não lidas', decisions: 'Decisões', blocked: 'Travadas', mine: 'Que eu pedi', archived: 'Arquivadas' };
-const INBOX_ICON = { decision: 'approve', task: 'briefcase', budget: 'wallet', issue: 'template', llm_model: 'chip' };
+const INBOX_ICON = { decision: 'approve', task: 'briefcase', budget: 'wallet', issue: 'template', llm_model: 'chip', model_suggestion: 'chip' };
 const SEARCH_KIND = { agent: 'Agentes', employee: 'Digital employees', task: 'Tarefas', issue: 'Issues', project: 'Projetos', goal: 'Metas', plugin: 'Plugins', skill: 'Skills' };
 const BUDGET_SCOPE = { org: 'Empresa', team: 'Time', agent: 'Agente', project: 'Projeto' };
 const BUDGET_STATE = { ok: ['ok', 'ok'], warning: ['aviso', 'warn'], stopped: ['parado', 'bad'] };
