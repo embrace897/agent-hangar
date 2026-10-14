@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-10-14
+
 ### Added
 - **LLM providers page, in the style of 9router:**
   - It replaces the connections table. There is one card per provider (logos from 9router, MIT), grouped as gateways, API key providers, local, and custom endpoints compatible with OpenAI or Anthropic.
