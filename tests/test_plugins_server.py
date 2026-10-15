@@ -115,7 +115,7 @@ def test_install_runs_an_isolated_container_and_agents_see_only_declared_tools(c
         "LOG_LEVEL": "info", "ERP_TENANT": "acme", "ERP_REGION": "br", "ERP_KEY": "k-123-secret"}
     # a saída para a internet vai pelo proxy da central, com a senha própria da instalação
     assert proxy["HTTPS_PROXY"].endswith(f"@{config.PLUGIN_EGRESS_HOST}:{config.PLUGIN_EGRESS_PORT}")
-    assert proxy["HTTPS_PROXY"].startswith("http://i") and proxy["NO_PROXY"] == ""
+    assert proxy["HTTPS_PROXY"].startswith("http://i") and proxy["NO_PROXY"] == "127.0.0.1,localhost"  # só o próprio container fica fora do proxy
     srv = r.json()["server"]
     assert srv["state"] == "running" and srv["image"] == DIGEST and "k-123-secret" not in r.text
     # testar: o servidor oferece as declaradas; a extra fica escondida

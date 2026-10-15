@@ -283,7 +283,7 @@ def plugin_url(name: str, port: int, path: str) -> str:
 
 
 def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: float, command: list[str] | None = None,
-               labels: dict | None = None, port: int = 8000):
+               labels: dict | None = None, port: int = 8000, tmp: str = "size=64m"):
     """Servidor MCP de um plugin: rede própria (PLUGINS_NETWORK), sem capabilities, só leitura, com limites. A central
     não baixa imagens (o proxy do Docker não libera): a imagem precisa existir no host."""
     c = client()
@@ -295,7 +295,7 @@ def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: f
         return c.containers.run(
             image, command=command, name=name, detach=True, environment=environment, network=config.PLUGINS_NETWORK,
             hostname=name, labels={"central.plugin": name, **(labels or {})},
-            mem_limit=mem_limit, nano_cpus=int(cpus * 1e9), pids_limit=128, read_only=True, tmpfs={"/tmp": "size=64m"},
+            mem_limit=mem_limit, nano_cpus=int(cpus * 1e9), pids_limit=256, read_only=True, tmpfs={"/tmp": tmp},
             cap_drop=["ALL"], security_opt=["no-new-privileges"], restart_policy={"Name": "unless-stopped"})
     except docker.errors.APIError as e:
         err = _explain(e, image)

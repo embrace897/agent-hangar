@@ -54,6 +54,11 @@ services:
     image: ${HANGAR_REGISTRY:-agent-hangar}/agent-runtime:${HANGAR_VERSION:-latest}
     build: { context: ./runtime, args: { PYTHON_IMAGE: "${PYTHON_IMAGE:-python:3.12-slim}" } }
 
+  mcp-stdio-runner:             # conectores stdio (npx/uvx): um container isolado por servidor, criado pela central
+    <<: *build-only
+    image: ${HANGAR_REGISTRY:-agent-hangar}/mcp-stdio-runner:${HANGAR_VERSION:-latest}
+    build: { context: ./mcp-servers/stdio-runner, args: { NODE_IMAGE: "${NODE_IMAGE_STDIO:-node:24-slim}" } }
+
   harness-base:
     <<: *build-only
     image: ${HANGAR_REGISTRY:-agent-hangar}/harness-base:${HANGAR_VERSION:-latest}

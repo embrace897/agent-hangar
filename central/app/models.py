@@ -171,6 +171,8 @@ class McpServer(OrgScoped, Base):
     server_info: Mapped[dict] = mapped_column(JSON, default=dict)  # nome, versão, protocolo, capacidades
     tools: Mapped[list] = mapped_column(JSON, default=list)  # [{name, description, hash, state}]
     created_by: Mapped[str] = mapped_column(String(254), default="")
+    # servidor local (stdio) num container isolado: {runner: npx|uvx, package, entry, args, env:[{name, value}], egress}
+    stdio: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class IconCache(Base):

@@ -77,6 +77,46 @@ then on:
   Digital employees' authority the same way the action catalog does. A tool the server marks `readOnlyHint` starts
   as read.
 
+## Local servers (stdio)
+
+*Adicionar personalizado → Túnel (stdio)* runs an MCP server that is meant to run locally, such as an `npx` or `uvx`
+package. Only admins add them, because they run code.
+
+**The package**
+
+- **Runner:** `npx` (Node) or `uvx` (Python).
+- **Pinned version required:** `name@1.2.3` for npm, `name==1.2.3` for Python (`name@1.2.3` is accepted and
+  converted). The package never changes without you knowing.
+- **Command and arguments:** the arguments are passed as a list, with no shell. For `uvx`, the package's command
+  defaults to the package name.
+- **Environment variables:** values marked as secret go to the vault. They reach only the server's container, never
+  the agents.
+- **Allowed domains:** the package registry is always allowed (`registry.npmjs.org`, or `pypi.org` and
+  `files.pythonhosted.org`); you add any others the server needs.
+
+**The container.** Each server gets one container of its own (`mcp-stdio-<name>`, image `mcp-stdio-runner`), the same
+way code plugins run:
+
+- an isolated network (`hangar_plugins`, `internal: true`);
+- a read-only disk, with packages installed in a temporary area (`MCP_STDIO_TMP`, default 1 GB);
+- no privileges (`cap_drop: ALL`, `no-new-privileges`), with memory and CPU limits (`MCP_STDIO_MEM`, `MCP_STDIO_CPUS`).
+
+**How it is reached**
+
+- **Outbound:** internet access only goes through the central's proxy, which allows the registry and the declared
+  domains. Every refused attempt shows on the connector page.
+- **Inbound:** a bridge inside the container turns stdio into HTTP. Only the central can call it, with a token derived
+  from the internal secret. Agents still go through the central's bridge, with the same tool approval as remote
+  connectors.
+- **Kubernetes:** the server becomes a Deployment with the `plugin` role, under the chart's NetworkPolicy.
+
+**Lifecycle**
+
+- **Testing:** *Testar conexão* starts a temporary container, installs the package, lists tools, resources and prompts,
+  and removes it.
+- **Status check:** if the container stops, the status check brings it back up.
+- **Removal:** removing the connector removes its container.
+
 ## Secrets
 
 The connector stores no secret values. The token and the headers marked as secret go to the vault, and the connector
@@ -88,8 +128,7 @@ keeps only `secret://name`. The page shows only the reference.
 
 - **Remote entries** (`url`) become connectors, through the bridge.
 - **Headers:** the ones that look like secrets (`Authorization`, `*token*`, `*key*`, `*secret*`…) go to the vault.
-- **Local entries** (`command`, stdio) are listed but not imported yet. They will run in an isolated container per
-  server, with no access to the central's machine and controlled network egress.
+- **Local entries** (`command`): `npx` and `uvx` become local servers (below). The import asks for a pinned version when the JSON has none; other commands (`node`, `python`, `docker`, binaries) are not imported.
 
 ## API
 
@@ -97,7 +136,7 @@ keeps only `secret://name`. The page shows only the reference.
 |---|---|---|
 | GET | `/api/connectors` | Catalog by section, plus installed connectors |
 | GET | `/api/connectors/icon?key=` | A connector's icon (cached by the central) |
-| POST | `/api/connectors/test` | `{url, transport, auth, token, headers, timeout_s}`: test without saving |
+| POST | `/api/connectors/test` | `{url, transport, auth, token, headers, timeout_s}` or `{stdio: {runner, package, entry, args, env, egress}}`: test without saving (stdio in a temporary container) |
 | POST | `/api/connectors` | Create: `{name, url, transport, auth, token, headers, scope, team, icon_data, tools, accept_risk}`. With OAuth it returns `authorize_url` |
 | GET · DELETE | `/api/connectors/{name}` | Details: status, server, tools, who uses it. Delete is refused while an agent uses it |
 | POST | `/api/connectors/{name}/check` | Reconnect: test now and update status and tools |

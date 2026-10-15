@@ -27,22 +27,27 @@ _server: asyncio.base_events.Server | None = None
 _TPL = re.compile(r"\{\{\s*settings\.([a-zA-Z0-9_]+)\s*\}\}")
 
 
-def token(install_id: int) -> str:
-    """Senha do proxy da instalação: derivada do segredo interno (nada a guardar; muda se o segredo mudar)."""
+def token(install_id: int | str) -> str:
+    """Senha do proxy: derivada do segredo interno (nada a guardar; muda se o segredo mudar). install_id é o id da
+    instalação de plugin (int) ou "c<id>" de um conector stdio."""
     return hmac.new(config.INTERNAL_SECRET.encode(), f"egress:{install_id}".encode(), hashlib.sha256).hexdigest()[:40]
 
 
-def proxy_url(install_id: int) -> str:
-    return f"http://i{install_id}:{token(install_id)}@{config.PLUGIN_EGRESS_HOST}:{config.PLUGIN_EGRESS_PORT}"
+def proxy_url(install_id: int | str) -> str:
+    user = install_id if isinstance(install_id, str) else f"i{install_id}"
+    return f"http://{user}:{token(install_id)}@{config.PLUGIN_EGRESS_HOST}:{config.PLUGIN_EGRESS_PORT}"
 
 
-def env(install_id: int) -> dict:
+LOOPBACK = "127.0.0.1,localhost"  # o próprio container (health check) não passa pelo proxy; nada fora dele
+
+
+def env(install_id: int | str) -> dict:
     """Variáveis que levam o servidor do plugin a sair pelo proxy (Python, Go, curl; Node 24+ com NODE_USE_ENV_PROXY)."""
     if config.PLUGIN_EGRESS != "proxy":
         return {}
     url = proxy_url(install_id)
-    return {"HTTP_PROXY": url, "HTTPS_PROXY": url, "http_proxy": url, "https_proxy": url, "NO_PROXY": "",
-            "no_proxy": "", "NODE_USE_ENV_PROXY": "1"}
+    return {"HTTP_PROXY": url, "HTTPS_PROXY": url, "http_proxy": url, "https_proxy": url, "NO_PROXY": LOOPBACK,
+            "no_proxy": LOOPBACK, "NODE_USE_ENV_PROXY": "1"}
 
 
 def allowed(patterns: list[str], host: str, port: int) -> bool:
@@ -62,8 +67,15 @@ def allowed(patterns: list[str], host: str, port: int) -> bool:
     return False
 
 
-def _patterns_from_db(install_id: int) -> list[str] | None:
+def _patterns_from_db(install_id: int | str) -> list[str] | None:
     from . import db as dbmod
+    if isinstance(install_id, str) and install_id.startswith("t"):  # teste de um conector stdio (container temporário)
+        from . import shared
+        hit = shared.get(f"egress-test:{install_id}")
+        return list(hit["patterns"]) if hit else None
+    if isinstance(install_id, str):  # conector stdio: o registro do pacote + o que o admin liberou
+        from .services import connectors
+        return connectors.egress_patterns(int(install_id[1:]))
     from .models import Plugin, PluginInstall
     from .services import plugins as pl
     with dbmod.SessionLocal() as s:
@@ -79,8 +91,13 @@ def _patterns_from_db(install_id: int) -> list[str] | None:
         return out
 
 
-def _note_denied(install_id: int, host: str, port: int, why: str):
+def _note_denied(install_id: int | str, host: str, port: int, why: str):
     from . import db as dbmod
+    if isinstance(install_id, str):
+        if install_id.startswith("c"):
+            from .services import connectors
+            connectors.note_denied(int(install_id[1:]), f"{host}:{port}", why)
+        return
     from .models import PluginInstall, now
     from .services.common import iso
     with dbmod.SessionLocal() as s:
@@ -103,13 +120,16 @@ async def _patterns(install_id: int) -> list[str] | None:
     return pats
 
 
-def _who(headers: dict) -> int | None:
+def _who(headers: dict) -> int | str | None:
     raw = headers.get("proxy-authorization", "")
     if not raw.lower().startswith("basic "):
         return None
     try:
         user, _, pw = base64.b64decode(raw[6:].strip()).decode().partition(":")
-        iid = int(user.removeprefix("i"))
+        if user[:1] == "c" and user[1:].isdigit() or user[:1] == "t" and re.fullmatch(r"t[0-9a-f]{6}", user):
+            iid = user
+        else:
+            iid = int(user.removeprefix("i"))
     except (ValueError, UnicodeDecodeError):
         return None
     return iid if hmac.compare_digest(pw, token(iid)) else None
@@ -191,7 +211,7 @@ async def _handle(r: asyncio.StreamReader, w: asyncio.StreamWriter):
     if pats is None:
         return await _reply(w, 403, "instalação desligada ou removida")
     if not allowed(pats, host, port):
-        why = "host não declarado em server.egress"
+        why = "host não liberado" if isinstance(iid, str) else "host não declarado em server.egress"
         log.info("egress: instalação %s recusada para %s:%s (%s)", iid, host, port, why)
         await asyncio.to_thread(_note_denied, iid, host, port, why)
         return await _reply(w, 403, f"egress recusado: {host}:{port} não está em server.egress")

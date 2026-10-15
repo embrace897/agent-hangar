@@ -52,6 +52,11 @@ OAUTH_REFRESH_TTL_DAYS = int(_env("OAUTH_REFRESH_TTL_DAYS", "30"))
 REGISTRY = _env("HANGAR_REGISTRY", "agent-hangar").rstrip("/")
 IMAGE_TAG = _env("HANGAR_VERSION", "latest")
 RUNTIME_IMAGE = _env("RUNTIME_IMAGE", f"{REGISTRY}/agent-runtime:{IMAGE_TAG}")
+# Conectores stdio (npx/uvx): a imagem da ponte, os limites de cada container e o tamanho de /tmp (os pacotes)
+MCP_STDIO_IMAGE = _env("MCP_STDIO_IMAGE", f"{REGISTRY}/mcp-stdio-runner:{IMAGE_TAG}")
+MCP_STDIO_MEM = _env("MCP_STDIO_MEM", "768m")
+MCP_STDIO_CPUS = float(_env("MCP_STDIO_CPUS", "1"))
+MCP_STDIO_TMP = _env("MCP_STDIO_TMP", "size=1g,exec")
 
 
 def harness_image(harness_id: str) -> str:

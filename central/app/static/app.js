@@ -970,7 +970,7 @@ const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisio
 setInterval(() => {
   const parts = location.hash.split('/');
   if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs', 'extraction', 'calculators', 'playbooks', 'message-templates',
-    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets', 'connect-ai', 'access', 'members', 'org', 'issues', 'my-issues'].includes(parts[1].split('?')[0])) return;
+    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets', 'connect-ai', 'access', 'members', 'org', 'issues', 'my-issues', 'connectors', 'skills'].includes(parts[1].split('?')[0])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

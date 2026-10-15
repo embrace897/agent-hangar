@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Local MCP servers (stdio) as connectors** (*Adicionar personalizado → Túnel (stdio)*, admins only):
+  - `npx` or `uvx` packages with a pinned version, arguments without a shell, environment variables (secrets in the vault) and allowed domains.
+  - Each server runs in its own container (image `mcp-stdio-runner`): isolated network, read-only disk, no privileges, with limits. Internet goes only through the central's proxy (the package registry and the declared domains), and refused attempts show on the connector.
+  - A bridge turns stdio into HTTP for the central only. Agents use it through the same bridge and tool approval as remote connectors.
+  - *Testar conexão* runs in a temporary container. The status check restarts a stopped container, and removing the connector removes it. In Kubernetes it runs as a `plugin` Deployment.
+- Importing `mcpServers` now brings in `npx`/`uvx` entries, asking for a pinned version when the JSON has none.
+
+### Fixed
+- Containers behind the outbound proxy (plugins and local connectors) no longer send their own health check (`127.0.0.1`) through the proxy, where it was refused.
+- The Conectores pages and the Skill Studio no longer reload every 15 seconds; the reload was wiping half-filled forms.
+
 ## [0.34.0] — 2026-10-14
 
 ### Added

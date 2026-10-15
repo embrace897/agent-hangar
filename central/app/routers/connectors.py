@@ -43,6 +43,7 @@ class TestBody(BaseModel):
     token: str = ""
     headers: list[dict] = []
     timeout_s: int = 30
+    stdio: dict | None = None  # servidor local (npx/uvx): testado num container temporário
 
 
 @router.post("/api/connectors/test")

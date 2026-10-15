@@ -124,10 +124,17 @@ async function connectorCustomPage() {
       <div><b>Ícone (opcional)</b><div class="mute small">PNG, JPEG, WebP ou SVG. Melhor com 256 × 256 px ou mais. Até 64 KB.</div></div></div>
     <label class="mt">Nome<input id="cc-name" placeholder="ferramenta-personalizada"></label>
     <label class="mt">Descrição (opcional)<input id="cc-desc" placeholder="Explique em poucas palavras o que ele faz"></label>
-    <div class="row between mt"><b>Conexão</b><div class="seg"><button class="ghost small on" data-c="url">URL do servidor</button><button class="ghost small" data-c="stdio" title="Servidor local (stdio) em container isolado: fase B">Túnel (stdio)</button></div></div>
+    <div class="row between mt"><b>Conexão</b><div class="seg"><button class="ghost small on" data-c="url">URL do servidor</button>${ME.is_admin ? '<button class="ghost small" data-c="stdio" title="Servidor local (npx ou uvx) num container isolado">Túnel (stdio)</button>' : ''}</div></div>
     <div id="cc-url-box"><input id="cc-url" class="mt" placeholder="https://example.com/mcp">
       <label class="mt">Transporte<select id="cc-tr"><option value="auto">Automático (Streamable HTTP; se não houver, SSE legado)</option><option value="http">Streamable HTTP</option><option value="sse">SSE (legado)</option></select></label></div>
-    <div id="cc-stdio-box" class="mute small mt" hidden>Servidores locais (comando + argumentos, como npx ou uvx) vão rodar em um container isolado por servidor, sem acesso à máquina da central e com saída de rede controlada. Chega na próxima etapa.</div>
+    <div id="cc-stdio-box" hidden>
+      <div class="mute small mt">O servidor roda num container isolado só dele: sem acesso à máquina da central, disco só de leitura, sem privilégios, e a internet só pelo proxy da central (o registro do pacote e os domínios que você liberar). Versão fixa é obrigatória.</div>
+      <div class="grid g2 mt"><label>Executor<select id="cs-runner"><option value="npx">npx (Node)</option><option value="uvx">uvx (Python)</option></select></label>
+        <label>Pacote com versão<input id="cs-pkg" placeholder="@modelcontextprotocol/server-filesystem@2025.8.21" data-noi18n></label></div>
+      <label class="mt" id="cs-entry-l" hidden>Comando do pacote (uvx, opcional)<input id="cs-entry" placeholder="o nome do pacote" data-noi18n></label>
+      <label class="mt">Argumentos (um por linha)<textarea id="cs-args" rows="3" placeholder="/tmp" data-noi18n></textarea></label>
+      <div class="mt"><b class="small">Variáveis de ambiente</b><div id="cs-env"></div><button class="ghost small mt" id="cs-eadd">${icon('plus')} <span>Adicionar variável</span></button></div>
+      <label class="mt">Domínios que o servidor pode acessar (um por linha; o registro do pacote já entra)<textarea id="cs-egress" rows="2" placeholder="api.example.com" data-noi18n></textarea></label></div>
     <label class="mt">Autenticação<select id="cc-auth"><option value="none">Nenhuma</option><option value="bearer">API key / Bearer token</option><option value="headers">Headers personalizados</option><option value="oauth">OAuth</option></select></label>
     <div id="cc-auth-box"></div>
     <details class="mt"><summary class="small">Avançado</summary>
@@ -141,10 +148,20 @@ async function connectorCustomPage() {
   </div>`;
   const box = $('#cc-form');
   wireRisk(box);
+  let mode = 'url';
   box.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
     box.querySelectorAll('.seg button').forEach(o => o.classList.toggle('on', o === b));
-    $('#cc-url-box').hidden = b.dataset.c !== 'url'; $('#cc-stdio-box').hidden = b.dataset.c === 'url';
+    mode = b.dataset.c;
+    $('#cc-url-box').hidden = mode !== 'url'; $('#cc-stdio-box').hidden = mode === 'url';
+    $('#cc-auth').closest('label').hidden = mode !== 'url'; $('#cc-auth-box').hidden = mode !== 'url';
   });
+  const envRow = (n = '', v = '', s = false) => $('#cs-env').insertAdjacentHTML('beforeend', `<div class="grid g3 mt cs-e"><input class="cs-en" placeholder="NOME" value="${esc(n)}" data-noi18n>
+    <input class="cs-ev" type="password" placeholder="Valor" value="${esc(v)}"><label class="row small"><input type="checkbox" class="cs-es" style="width:auto" ${s ? 'checked' : ''}> <span>é segredo (vai para o cofre)</span></label></div>`);
+  $('#cs-eadd').onclick = e => { e.preventDefault(); envRow('', '', true); };
+  $('#cs-runner').onchange = () => { const py = $('#cs-runner').value === 'uvx'; $('#cs-entry-l').hidden = !py; $('#cs-pkg').placeholder = py ? 'mcp-server-fetch==2025.4.7' : '@modelcontextprotocol/server-filesystem@2025.8.21'; };
+  const stdioCfg = () => ({ runner: $('#cs-runner').value, package: $('#cs-pkg').value.trim(), entry: $('#cs-entry').value.trim(),
+    args: $('#cs-args').value.split('\n').map(s => s.trim()).filter(Boolean), egress: $('#cs-egress').value.split('\n').map(s => s.trim()).filter(Boolean),
+    env: [...box.querySelectorAll('.cs-e')].map(r => ({ name: r.querySelector('.cs-en').value.trim(), value: r.querySelector('.cs-ev').value, secret: r.querySelector('.cs-es').checked })).filter(x => x.name) });
   $('#cc-icon').onchange = e => {
     const f = e.target.files[0]; if (!f) return;
     if (f.size > 65536) { toast('Ícone: até 64 KB', true); return; }
@@ -165,10 +182,11 @@ async function connectorCustomPage() {
     }
   };
   $('#cc-auth').onchange = authBox; authBox();
-  const cfg = () => ({ url: $('#cc-url').value.trim(), transport: $('#cc-tr').value, auth: $('#cc-auth').value,
+  const cfg = () => mode === 'stdio' ? { url: '', stdio: stdioCfg(), timeout_s: Number($('#cc-timeout').value || 60) } : ({ url: $('#cc-url').value.trim(), transport: $('#cc-tr').value, auth: $('#cc-auth').value,
     token: ($('#cc-token') || {}).value || '', timeout_s: Number($('#cc-timeout').value || 60),
     headers: [...box.querySelectorAll('.cc-h')].map(r => ({ name: r.querySelector('.cc-hn').value.trim(), value: r.querySelector('.cc-hv').value, secret: r.querySelector('.cc-hs').checked })).filter(h => h.name) });
   $('#cc-test').onclick = e => act(e.target, async () => {
+    if (mode === 'stdio') $('#cc-result').innerHTML = `<div class="card mt mute small">${esc(window.t('Subindo um container de teste e instalando o pacote (pode levar até 2 minutos)…'))}</div>`;
     tested = await api('/connectors/test', { method: 'POST', body: cfg() });
     renderTest(tested);
   });
@@ -176,7 +194,7 @@ async function connectorCustomPage() {
     const res = $('#cc-result');
     if (!r.ok) { res.innerHTML = `<div class="card mt"><span class="pill ${r.status === 'auth' ? 'warn' : 'bad'}">${r.status === 'auth' ? 'precisa de autenticação' : 'falhou'}</span> <span data-noi18n>${esc(r.error)}</span></div>`; return; }
     if (r.oauth) { res.innerHTML = `<div class="card mt"><span class="pill ok">OAuth encontrado</span><dl class="kv mt"><dt>Servidor de autorização</dt><dd data-noi18n>${esc(r.oauth.issuer || '—')}</dd><dt>Escopos</dt><dd data-noi18n>${esc(r.oauth.scope || '—')}</dd><dt>Registro dinâmico</dt><dd>${r.oauth.registration ? 'sim' : 'não'}</dd></dl></div>`; return; }
-    res.innerHTML = `<div class="card mt"><div class="row between"><div><span class="pill ok">conectou</span> <span class="mute small" data-noi18n>${esc(r.server.name)} ${esc(r.server.version || '')} · MCP ${esc(r.protocol_version)} · ${r.transport === 'sse' ? 'SSE legado' : 'Streamable HTTP'}</span></div></div>
+    res.innerHTML = `<div class="card mt"><div class="row between"><div><span class="pill ok">conectou</span> <span class="mute small" data-noi18n>${esc(r.server.name)} ${esc(r.server.version || '')} · MCP ${esc(r.protocol_version)} · ${r.transport === 'sse' ? 'SSE legado' : r.transport === 'stdio' ? 'stdio (container isolado)' : 'Streamable HTTP'}</span></div></div>
       <div class="mt">${Object.entries(r.capabilities).filter(([, v]) => v).map(([k]) => `<span class="chip">${esc(k)}</span>`).join(' ')}
         <span class="mute small"> · ${r.tools.length} <span>ferramentas</span> · ${r.resources} resources · ${r.prompts} prompts</span></div>
       ${r.tools.length ? `<div class="mt small"><b>Ferramentas liberadas para os agentes</b> <span class="mute">(as desmarcadas ficam desligadas)</span></div>
@@ -185,7 +203,8 @@ async function connectorCustomPage() {
   };
   $('#cx-go').onclick = e => act(e.target, async () => {
     const c = cfg();
-    if (!$('#cc-url-box').hidden && !c.url) throw new Error('Informe a URL do servidor');
+    if (mode === 'url' && !c.url) throw new Error('Informe a URL do servidor');
+    if (mode === 'stdio') toast(window.t('Instalando o pacote no container do conector (pode levar até 2 minutos)…'));
     const tools = $('#cc-result').querySelector('.cc-tools') ? [...$('#cc-result').querySelectorAll('.cc-t input:checked')].map(i => i.value) : undefined;
     const r = await api('/connectors', { method: 'POST', body: { ...c, name: $('#cc-name').value.trim(), description: $('#cc-desc').value.trim(),
       icon_data: iconData, accept_risk: true, ...(tools ? { tools } : {}), ...scopeBody() } });
@@ -205,8 +224,10 @@ async function connectorImportPage() {
     const r = await api('/connectors/import/preview', { method: 'POST', body: { text: $('#ci-text').value } });
     const out = $('#ci-out');
     out.innerHTML = `<table class="mt"><tr><th></th><th>Nome</th><th>Endereço</th><th>Headers</th></tr>${r.servers.map((s, i) => `<tr class="${s.importable ? '' : 'mute'}">
-        <td><input type="checkbox" class="ci-pick" data-i="${i}" ${s.importable ? 'checked' : 'disabled'} style="width:auto"></td><td data-noi18n>${esc(s.name)}</td>
-        <td>${s.importable ? `<code class="inline" data-noi18n>${esc(s.url)}</code>` : `<span data-noi18n>${esc(s.command || '')}</span><div class="small"><span>${esc(s.why)}</span></div>`}</td>
+        <td><input type="checkbox" class="ci-pick" data-i="${i}" ${s.importable ? 'checked' : s.fixable ? '' : 'disabled'} style="width:auto"></td><td data-noi18n>${esc(s.name)}</td>
+        <td>${s.url ? `<code class="inline" data-noi18n>${esc(s.url)}</code>` : `<span data-noi18n>${esc(s.command || '')}</span>`}
+          ${s.stdio ? `<div class="small mt"><span>pacote</span> <input class="ci-pkg" data-i="${i}" value="${esc(s.stdio.package || '')}" style="width:auto;min-width:260px" data-noi18n></div>` : ''}
+          ${s.why ? `<div class="small mute ci-why" data-i="${i}" data-noi18n>${esc(s.why)}</div>` : ''}</td>
         <td>${(s.headers || []).map(h => `<span class="chip">${esc(h.name)}${h.secret ? ` · <span>cofre</span>` : ''}</span>`).join(' ')}</td></tr>`).join('')}</table>
       ${riskBox()}<button id="cx-go" class="mt" disabled>Importar selecionados</button>`;
     wireRisk(out);
@@ -214,7 +235,10 @@ async function connectorImportPage() {
       const picks = [...out.querySelectorAll('.ci-pick:checked')].map(c => r.servers[Number(c.dataset.i)]);
       const done = [];
       for (const s of picks) {
-        const c = await api('/connectors', { method: 'POST', body: { name: s.name, url: s.url, transport: s.transport, auth: s.auth, headers: s.headers, accept_risk: true, scope: 'org' } });
+        const pkg = out.querySelector(`.ci-pkg[data-i="${r.servers.indexOf(s)}"]`);
+        const c = await api('/connectors', { method: 'POST', body: s.stdio
+          ? { name: s.name, stdio: { ...s.stdio, package: pkg ? pkg.value.trim() : s.stdio.package }, accept_risk: true, scope: 'org' }
+          : { name: s.name, url: s.url, transport: s.transport, auth: s.auth, headers: s.headers, accept_risk: true, scope: 'org' } });
         done.push(`${c.name}: ${c.status === 'ok' ? 'ok' : c.status_detail || c.status}`);
       }
       toast(`${done.length} importado(s). ${done.join('; ')}`);
@@ -238,7 +262,12 @@ async function connectorDetail(name) {
   ${c.status_detail ? `<div class="card warn-card mt" data-noi18n>${esc(c.status_detail)}</div>` : ''}
   ${c.description ? `<div class="sub mt" data-noi18n>${esc(c.description)}</div>` : ''}
   <div class="grid g2 mt"><div class="card"><h2>Conexão</h2><dl class="kv">
-      <dt>Endereço</dt><dd>${copyable(c.url)}</dd><dt>Transporte</dt><dd>${c.transport === 'sse' ? 'SSE (legado)' : 'Streamable HTTP'}</dd>
+      ${c.stdio ? `<dt>Servidor local</dt><dd><code class="inline" data-noi18n>${esc(c.stdio.runner)} ${esc(c.stdio.package)}${c.stdio.entry && c.stdio.runner === 'uvx' ? ' ' + esc(c.stdio.entry) : ''}</code>
+          ${(c.stdio.args || []).map(a => `<code class="inline" data-noi18n>${esc(a)}</code>`).join(' ')}<div class="small mute">container isolado · disco só de leitura · sem privilégios</div></dd>
+        <dt>Variáveis</dt><dd>${(c.stdio.env || []).map(e => `<div class="small"><code class="inline" data-noi18n>${esc(e.name)}</code> <span class="mute" data-noi18n>${esc(e.value)}</span></div>`).join('') || '<span class="mute">nenhuma</span>'}</dd>
+        <dt>Internet</dt><dd class="small">${[...(c.stdio.registry || []), ...(c.stdio.egress || [])].map(h => `<code class="inline" data-noi18n>${esc(h)}</code>`).join(' ')}
+          ${c.server_info && c.server_info.egress_denied ? `<div class="bad-text"><span>recusado:</span> <span data-noi18n>${esc(c.server_info.egress_denied.host)}</span> (${c.server_info.egress_denied.count}×)</div>` : ''}</dd>`
+        : `<dt>Endereço</dt><dd>${copyable(c.url)}</dd><dt>Transporte</dt><dd>${c.transport === 'sse' ? 'SSE (legado)' : 'Streamable HTTP'}</dd>`}
       <dt>Autenticação</dt><dd>${esc({ none: 'nenhuma', bearer: 'Bearer token', headers: 'headers personalizados', oauth: 'OAuth' }[c.auth] || c.auth)}
         ${c.headers.map(h => `<div class="small"><code class="inline" data-noi18n>${esc(h.name)}</code> ${h.secret ? `<span class="mute" data-noi18n>${esc(h.value)}</span>` : '<span class="mute">····</span>'}</div>`).join('')}</dd>
       <dt>Quem pode usar</dt><dd>${esc({ org: 'toda a empresa', team: 'um time', personal: 'só quem criou (agentes pessoais)' }[c.scope])}</dd>

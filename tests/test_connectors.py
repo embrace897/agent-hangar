@@ -191,7 +191,8 @@ def test_import_mcpservers_json():
     assert out["remote-docs"]["importable"] and out["remote-docs"]["auth"] == "headers"
     assert [h["secret"] for h in out["remote-docs"]["headers"]] == [True, False]
     assert out["old"]["transport"] == "sse"
-    assert out["files"]["importable"] is False and "fase B" in out["files"]["why"] and out["files"]["env"] == ["TOKEN"]
+    assert out["files"]["importable"] is False and "versão fixa" in out["files"]["why"]  # npx sem versão: precisa fixar
+    assert [e["name"] for e in out["files"]["env"]] == ["TOKEN"] and out["files"]["env"][0]["secret"]
     with pytest.raises(cn.PlatformError):
         cn.import_preview("{nada")
 

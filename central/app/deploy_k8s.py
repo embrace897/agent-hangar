@@ -371,7 +371,7 @@ def plugin_url(name: str, port: int, path: str) -> str:
 
 
 def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: float, command: list[str] | None = None,
-               labels: dict | None = None, port: int = 8000):
+               labels: dict | None = None, port: int = 8000, tmp: str = "size=64m"):
     """Rótulo hangar.dev/role=plugin: a NetworkPolicy do chart só deixa a central chegar nele e corta a saída para as
     redes privadas (banco, agentes, memória)."""
     core, apps, _ = apis()
@@ -386,7 +386,7 @@ def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: f
                                     "envFrom": [{"secretRef": {"name": name}}],
                                     "resources": _resources(mem_limit, cpus), "securityContext": SECURITY,
                                     "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}]}],
-                    "volumes": [{"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}}]}}
+                    "volumes": [{"name": "tmp", "emptyDir": {"sizeLimit": _tmp_size(tmp)}}]}}
     dep = {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": name, "labels": lbls},
            "spec": {"replicas": 1, "strategy": {"type": "Recreate"}, "selector": {"matchLabels": {f"{LBL}/name": name}},
                     "template": pod}}
@@ -403,6 +403,13 @@ def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: f
     except Exception as e:
         if getattr(e, "status", None) != 409:
             raise
+
+
+def _tmp_size(tmp: str) -> str:
+    """"size=1g,exec" (opção do Docker) -> "1Gi" (emptyDir em disco: pacotes do npx/uvx não cabem na memória)."""
+    import re
+    m = re.search(r"size=(\d+)([kmg])", tmp or "", re.I)
+    return f"{m.group(1)}{ {'k': 'Ki', 'm': 'Mi', 'g': 'Gi'}[m.group(2).lower()]}" if m else "64Mi"
 
 
 def plugin_state(name: str) -> str:

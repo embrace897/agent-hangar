@@ -20,9 +20,13 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import hmac
 import json
 import logging
+import os
 import re
+import secrets
+import time
 import urllib.parse
 
 import httpx
@@ -209,6 +213,8 @@ def resolve_headers(db: Session, m_or_cfg, team_id: int | None = None) -> dict:
     if get("auth") == "oauth":
         _, tok = remote_mcp.token(db, get("name"))
         out["Authorization"] = f"Bearer {tok}"
+    if get("stdio"):  # servidor local: só a central fala com o container dele
+        out["X-Runner-Token"] = runner_token(get("name"))
     return out
 
 
@@ -411,9 +417,175 @@ def headers_for(auth: str, token: str = "", headers: list[dict] | None = None) -
     return headers or []
 
 
+# ------------------------------------------------------------------ servidores locais (stdio) em container isolado
+RUNNERS = ("npx", "uvx")
+PKG_NPM = re.compile(r"^(@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*@\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+PKG_PY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9,_-]+\])?==\d+(?:\.\d+)*(?:[A-Za-z0-9.+-]*)$")
+HOST = re.compile(r"^(\*\.)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(:\d{1,5})?$")
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,79}$")
+REGISTRY_HOSTS = {"npx": ["registry.npmjs.org"], "uvx": ["pypi.org", "files.pythonhosted.org"]}
+SECRET_ENV = re.compile(r"token|key|secret|password|passwd|credential|auth", re.I)
+
+
+def stdio_spec(raw: dict) -> dict:
+    """Valida o servidor local. Versão fixa é obrigatória (o pacote não muda sem você saber); sem shell: o comando
+    é uma lista, e os argumentos vão como estão."""
+    raw = raw or {}
+    runner = raw.get("runner") or ""
+    if runner not in RUNNERS:
+        raise PlatformError("servidor local: escolha npx (Node) ou uvx (Python)")
+    pkg = (raw.get("package") or "").strip()
+    if runner == "npx" and not PKG_NPM.match(pkg):
+        raise PlatformError("pacote npm com versão fixa: nome@1.2.3 (ex.: @modelcontextprotocol/server-filesystem@2025.8.21)")
+    if runner == "uvx":
+        pkg = re.sub(r"^([A-Za-z0-9._\[\],-]+)@(\d)", r"\1==\2", pkg)  # aceita nome@1.2.3 também
+        if not PKG_PY.match(pkg):
+            raise PlatformError("pacote Python com versão fixa: nome==1.2.3 (ex.: mcp-server-fetch==2025.4.7)")
+    entry = (raw.get("entry") or "").strip() or (re.split(r"[\[=@]", pkg)[0] if runner == "uvx" else "")
+    if entry and not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", entry):
+        raise PlatformError("comando do pacote inválido")
+    args = [str(a) for a in (raw.get("args") or []) if str(a).strip() != ""]
+    if len(args) > 40 or any(len(a) > 400 or "\n" in a for a in args):
+        raise PlatformError("argumentos: até 40, uma linha cada")
+    env = []
+    for e in raw.get("env") or []:
+        n = (e.get("name") or "").strip()
+        if not n:
+            continue
+        if not ENV_NAME.match(n) or n.upper() in ("PATH", "HOME", "RUNNER_TOKEN", "MCP_COMMAND", "MCP_SERVER_ENV") \
+                or n.upper().endswith("_PROXY"):
+            raise PlatformError(f"variável de ambiente inválida ou reservada: {n}")
+        env.append({"name": n, "value": str(e.get("value") or ""), "secret": bool(e.get("secret"))})
+    egress = sorted({h.strip().lower() for h in raw.get("egress") or [] if h and h.strip()})
+    bad = [h for h in egress if not HOST.match(h)]
+    if bad or len(egress) > 30:
+        raise PlatformError(f"domínios liberados inválidos: {', '.join(bad[:5]) or 'até 30'}")
+    return {"runner": runner, "package": pkg, "entry": entry, "args": args, "env": env, "egress": egress}
+
+
+def stdio_command(spec: dict) -> list[str]:
+    if spec["runner"] == "npx":
+        return ["npx", "-y", spec["package"], *spec["args"]]
+    return ["uvx", "--from", spec["package"], spec["entry"], *spec["args"]]
+
+
+def runner_name(name: str) -> str:
+    return f"mcp-stdio-{name}"[:63]
+
+
+def runner_token(name: str) -> str:
+    return hmac.new(config.INTERNAL_SECRET.encode(), f"stdio-runner:{name}".encode(), hashlib.sha256).hexdigest()[:40]
+
+
+def runner_url(name: str, path: str = "/mcp") -> str:
+    from .. import deploy
+    return deploy.plugin_url(runner_name(name), 8000, path)
+
+
+def egress_patterns(connector_id: int) -> list[str] | None:
+    """O proxy de saída pergunta: o registro do pacote e os domínios que o admin liberou (None = conector removido)."""
+    from ..db import SessionLocal
+    with SessionLocal() as db:
+        m = db.get(McpServer, connector_id)
+        if m is None or not m.stdio:
+            return None
+        return REGISTRY_HOSTS.get(m.stdio.get("runner"), []) + list(m.stdio.get("egress") or [])
+
+
+def note_denied(connector_id: int, target: str, why: str):
+    from ..db import SessionLocal
+    with SessionLocal() as db:
+        m = db.get(McpServer, connector_id)
+        if m is None:
+            return
+        info = dict(m.server_info or {})
+        info["egress_denied"] = {"host": target, "why": why, "at": iso(now()), "count": int((info.get("egress_denied") or {}).get("count", 0)) + 1}
+        m.server_info = info
+        db.commit()
+
+
+def _store_env(db: Session, acc: Access, name: str, env: list[dict], team_id: int | None) -> list[dict]:
+    """Variáveis marcadas como segredo vão para o cofre; no conector fica só secret://nome."""
+    hdrs = _store_secrets(db, acc, f"{name}-env", [{"name": e["name"].replace("_", "-"), "value": e["value"],
+                                                    "secret": e["secret"]} for e in env], team_id)
+    return [{"name": e["name"], "value": h["value"]} for e, h in zip(env, hdrs, strict=True)]
+
+
+def _env_values(db: Session, env: list[dict], team_id: int | None, who: str) -> dict:
+    from . import secrets_vault
+    out = {}
+    for e in env:
+        v = e.get("value") or ""
+        out[e["name"]] = secrets_vault.resolve(v, team_id, who, db) if v.startswith(secrets_vault.PREFIX) else v
+    return out
+
+
+def _start(name: str, spec: dict, env: dict, egress_key: str):
+    from .. import deploy, egress
+    environment = {"MCP_COMMAND": json.dumps(stdio_command(spec)), "MCP_SERVER_ENV": json.dumps(env),
+                   "RUNNER_TOKEN": runner_token(name), **egress.env(egress_key)}
+    deploy.run_plugin(runner_name(name), config.MCP_STDIO_IMAGE, environment, config.MCP_STDIO_MEM, config.MCP_STDIO_CPUS,
+                      labels={"central.connector": name}, tmp=config.MCP_STDIO_TMP)
+
+
+def HEALTH_GET(url: str):  # noqa: N802  (os testes trocam)
+    return httpx.get(url, timeout=5)
+
+
+def wait_runner(name: str, timeout: float = 150) -> tuple[bool, str]:
+    """Espera o container instalar o pacote e o servidor responder (npx/uvx baixam na primeira vez)."""
+    end, last = time.monotonic() + timeout, "subindo o container"
+    while time.monotonic() < end:
+        try:
+            r = HEALTH_GET(runner_url(name, "/health"))
+            j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.status_code == 200 and j.get("ok"):
+                return True, ""
+            if j.get("error"):
+                return False, f"o servidor não subiu: {j['error']}"
+            last = "instalando o pacote"
+        except (httpx.HTTPError, ValueError):
+            pass
+        time.sleep(3)
+    return False, f"o servidor não respondeu em {int(timeout)} s ({last})"
+
+
+def ensure_runner(db: Session, m: McpServer) -> tuple[bool, str]:
+    """O container do conector está de pé? Se não estiver, sobe (com as variáveis do cofre) e espera."""
+    from .. import deploy
+    if deploy.plugin_state(runner_name(m.name)) != "running":
+        _start(m.name, m.stdio, _env_values(db, m.stdio.get("env") or [], m.team_id, f"conector {m.name}"), f"c{m.id}")
+    return wait_runner(m.name)
+
+
+def test_stdio(db: Session, acc: Access, body: dict) -> dict:
+    """Testa um servidor local num container temporário (some no fim). Leva o tempo de instalar o pacote."""
+    from .. import deploy, shared
+    if not acc.p.is_admin:
+        raise Forbidden("servidores locais (stdio) executam código: só admins cadastram")
+    spec = stdio_spec(body.get("stdio"))
+    tag = secrets.token_hex(3)
+    name, key = f"test-{tag}", f"t{tag}"
+    shared.put(f"egress-test:{key}", {"patterns": REGISTRY_HOSTS[spec["runner"]] + spec["egress"]}, 900)
+    env = {e["name"]: e["value"] for e in spec["env"]}
+    try:
+        _start(name, spec, env, key)
+        ok, why = wait_runner(name, float(body.get("timeout_s") or 150))
+        if not ok:
+            return {"ok": False, "status": "error", "error": why, "transport": "stdio"}
+        res = probe(runner_url(name), "http", {"X-Runner-Token": runner_token(name)}, 60)
+        return {**res, "transport": "stdio"}
+    finally:
+        with contextlib.suppress(Exception):
+            deploy.stop_plugin(runner_name(name))
+        shared.pop(f"egress-test:{key}")
+
+
 def test_config(db: Session, acc: Access, body: dict) -> dict:
     """Testar conexão antes de salvar (nada é gravado; segredos digitados não vão para o cofre ainda)."""
     from . import secrets_vault
+    if body.get("stdio"):
+        return test_stdio(db, acc, body)
     url = (body.get("url") or "").strip()
     if not re.match(r"^https?://", url):
         raise PlatformError("a URL do servidor MCP deve ser http(s)")
@@ -450,11 +622,14 @@ def create(db: Session, acc: Access, body: dict) -> dict:
         raise PlatformError("nome: 2 a 61 caracteres (letras minúsculas, números, ponto, _ ou -)")
     if not body.get("accept_risk"):
         raise PlatformError("confirme que entende os riscos de um servidor MCP personalizado")
-    url = (body.get("url") or "").strip()
+    spec = stdio_spec(body["stdio"]) if body.get("stdio") else None
+    if spec is not None and not acc.p.is_admin:
+        raise Forbidden("servidores locais (stdio) executam código: só admins cadastram")
+    url = runner_url(name) if spec else (body.get("url") or "").strip()
     if not re.match(r"^https?://", url):
         raise PlatformError("a URL do servidor MCP deve ser http(s)")
-    auth = body.get("auth") or "none"
-    transport = body.get("transport") or "auto"
+    auth = "none" if spec else (body.get("auth") or "none")
+    transport = "http" if spec else (body.get("transport") or "auto")
     if auth not in AUTHS or transport not in TRANSPORTS:
         raise PlatformError("autenticação ou transporte inválido")
     scope = body.get("scope") or "org"
@@ -467,8 +642,11 @@ def create(db: Session, acc: Access, body: dict) -> dict:
     if existing is not None and existing.source in ("manual", "docker"):
         raise PlatformError(f"já existe um MCP '{name}' no catálogo")
     _can_manage(acc, existing, team_id, personal)
-    headers = _store_secrets(db, acc, name, headers_for(auth, body.get("token") or "", body.get("headers")), team_id)
+    headers = [] if spec else _store_secrets(db, acc, name, headers_for(auth, body.get("token") or "", body.get("headers")), team_id)
+    if spec:
+        spec["env"] = _store_env(db, acc, name, spec["env"], team_id)
     m = existing or McpServer(name=name)
+    m.stdio = spec
     m.description = (body.get("description") or "")[:1000]
     m.source = body.get("source") if body.get("source") in ("custom", "curated", "remote") else "custom"
     m.upstream_url, m.url, m.auth, m.headers = url, proxy_url(name), auth, headers
@@ -480,9 +658,13 @@ def create(db: Session, acc: Access, body: dict) -> dict:
         m.icon = save_custom_icon(db, m.org_id or current_org(), name, body["icon_data"])
     elif body.get("icon"):
         m.icon = body["icon"] if icon_source(body["icon"]) else ""
-    else:
+    elif spec is None:
         host = urllib.parse.urlparse(url).hostname or ""
         m.icon = m.icon or (f"domain:{'.'.join(host.split('.')[-2:])}" if "." in host else "")
+    elif spec["runner"] == "npx":
+        m.icon = m.icon or "domain:npmjs.com"
+    else:
+        m.icon = m.icon or "domain:pypi.org"
     m.transport = transport if transport != "auto" else "http"
     db.add(m)
     db.commit()
@@ -493,14 +675,19 @@ def create(db: Session, acc: Access, body: dict) -> dict:
         db.commit()
         audit(db, acc.p.name, "connector.create", name, f"{url} · oauth")
         return {**connector_dict(db, m, acc), "authorize_url": r["authorize_url"], "oauth_cookie": r["cookie"]}
-    res = probe(url, transport, resolve_headers(db, m), float(m.timeout_s))
+    if spec:  # sobe o container (instala o pacote) antes de falar com o servidor
+        ok, why = ensure_runner(db, m)
+        res = probe(url, "http", resolve_headers(db, m), float(m.timeout_s)) if ok else {"ok": False, "status": "error", "error": why}
+    else:
+        res = probe(url, transport, resolve_headers(db, m), float(m.timeout_s))
     m.checked_at = now()
     if res["ok"]:
         m.transport = res["transport"]
         approve = set(body["tools"]) if isinstance(body.get("tools"), list) else None
         m.tools = snapshot(res["tools"], approve)
-        m.server_info = {k: res.get(k) for k in ("protocol_version", "server", "capabilities", "resources",
-                                                 "resource_templates", "prompts")}
+        m.server_info = {**{k: v for k, v in (m.server_info or {}).items() if k == "egress_denied"},  # o histórico do proxy fica
+                         **{k: res.get(k) for k in ("protocol_version", "server", "capabilities", "resources",
+                                                    "resource_templates", "prompts")}}
         m.status, m.status_detail = "ok", ""
         for t in res["tools"]:  # dica do próprio servidor (readOnlyHint) vira a classificação inicial
             if t.get("read_only"):
@@ -510,7 +697,11 @@ def create(db: Session, acc: Access, body: dict) -> dict:
     else:
         m.status, m.status_detail = res["status"], res["error"]
     db.commit()
-    audit(db, acc.p.name, "connector.create", name, f"{url} · {m.transport} · {auth} · {m.status}")
+    if spec:
+        m.transport = "http"
+        db.commit()
+    audit(db, acc.p.name, "connector.create", name, (f"stdio {spec['runner']} {spec['package']}" if spec else f"{url} · {m.transport} · {auth}")
+          + f" · {m.status}")
     return connector_dict(db, m, acc)
 
 
@@ -534,6 +725,10 @@ def remove(db: Session, acc: Access, name: str):
     if m.auth == "oauth":
         with contextlib.suppress(Exception):
             remote_mcp.remove(db, acc, name)
+    if m.stdio:
+        from .. import deploy
+        with contextlib.suppress(Exception):
+            deploy.stop_plugin(runner_name(name))
     db.delete(m)
     db.commit()
     audit(db, acc.p.name, "connector.remove", name)
@@ -541,6 +736,15 @@ def remove(db: Session, acc: Access, name: str):
 
 # ------------------------------------------------------------------ status (de tempos em tempos)
 def check(db: Session, m: McpServer, first: bool = False) -> dict:
+    if m.stdio:  # servidor local: o container precisa estar de pé (sobe de novo se caiu)
+        try:
+            ok, why = ensure_runner(db, m)
+        except Exception as e:  # noqa: BLE001 — imagem ausente, Docker fora do ar…
+            ok, why = False, f"não consegui subir o container: {str(e)[:200]}"
+        if not ok:
+            m.status, m.status_detail, m.checked_at = "error", why, now()
+            db.commit()
+            return {"ok": False, "status": "error", "error": why}
     try:
         headers = resolve_headers(db, m)
     except PlatformError as e:
@@ -551,8 +755,9 @@ def check(db: Session, m: McpServer, first: bool = False) -> dict:
     m.checked_at = now()
     if res["ok"]:
         m.status, m.status_detail = "ok", ""
-        m.server_info = {k: res.get(k) for k in ("protocol_version", "server", "capabilities", "resources",
-                                                 "resource_templates", "prompts")}
+        m.server_info = {**{k: v for k, v in (m.server_info or {}).items() if k == "egress_denied"},  # o histórico do proxy fica
+                         **{k: res.get(k) for k in ("protocol_version", "server", "capabilities", "resources",
+                                                    "resource_templates", "prompts")}}
         if first and not m.tools:
             m.tools = snapshot(res["tools"])
         else:
@@ -613,7 +818,12 @@ def connector_dict(db: Session, m: McpServer, acc: Access | None = None) -> dict
                       for t in (m.tools or [])],
             "scope": "personal" if m.owner_user_id else "team" if m.team_id else "org", "team_id": m.team_id,
             "used_by": users, "created_by": m.created_by, "bridged": bool(m.upstream_url),
-            "can_manage": acc is not None and _manages(acc, m)}
+            "can_manage": acc is not None and _manages(acc, m),
+            "stdio": ({**{k: v for k, v in m.stdio.items() if k != "env"},
+                       "env": [{"name": e["name"], "secret": str(e.get("value", "")).startswith("secret://"),
+                                "value": e["value"] if str(e.get("value", "")).startswith("secret://") else ("····" if e.get("value") else "")}
+                               for e in m.stdio.get("env") or []],
+                       "registry": REGISTRY_HOSTS.get(m.stdio.get("runner"), [])} if m.stdio else None)}
 
 
 def _manages(acc: Access, m: McpServer) -> bool:
@@ -664,6 +874,35 @@ def catalog(db: Session, acc: Access) -> dict:
 SECRET_HEADER = re.compile(r"authorization|token|key|secret|password|cookie", re.I)
 
 
+def _import_stdio(name: str, v: dict) -> dict:
+    """npx/uvx viram um servidor local; outros comandos (node, python, docker, binários) não entram."""
+    cmd = os.path.basename(str(v.get("command") or "")).lower().removesuffix(".cmd").removesuffix(".exe")
+    args = [str(a) for a in v.get("args") or []]
+    env = [{"name": k, "value": str(val), "secret": bool(SECRET_ENV.search(k))} for k, val in (v.get("env") or {}).items()]
+    base = {"name": name, "command": " ".join([str(v.get("command")), *args])[:300], "env": env}
+    if cmd not in RUNNERS:
+        return {**base, "importable": False, "why": f"só npx e uvx rodam como servidor local ('{cmd}' não)"}
+    rest = list(args)
+    if cmd == "npx":
+        while rest and rest[0].startswith("-"):
+            rest.pop(0)
+        pkg, entry = (rest.pop(0) if rest else ""), ""
+    else:
+        if rest[:1] == ["--from"] and len(rest) >= 3:
+            pkg, entry, rest = rest[1], rest[2], rest[3:]
+        else:
+            while rest and rest[0].startswith("-"):
+                rest.pop(0)
+            pkg = rest.pop(0) if rest else ""
+            entry = ""
+    raw = {"runner": cmd, "package": pkg, "entry": entry, "args": rest, "env": env}
+    try:
+        spec = stdio_spec(raw)
+        return {**base, "stdio": {**spec, "env": env}, "importable": True}
+    except PlatformError as e:
+        return {**base, "stdio": raw, "importable": False, "why": str(e), "fixable": bool(pkg)}
+
+
 def import_preview(text: str) -> list[dict]:
     """Lê o JSON no formato mcpServers e diz o que dá para importar agora (remotos) e o que é local (stdio, fase B)."""
     try:
@@ -684,9 +923,7 @@ def import_preview(text: str) -> list[dict]:
                         "transport": "sse" if t == "sse" or url.rstrip("/").endswith("/sse") else "auto",
                         "auth": "headers" if hdrs else "none", "headers": hdrs, "importable": True})
         elif v.get("command"):
-            out.append({"name": name, "command": " ".join([v["command"], *map(str, v.get("args") or [])])[:300],
-                        "env": sorted((v.get("env") or {}).keys()), "importable": False,
-                        "why": "servidor local (stdio): roda em container isolado na fase B"})
+            out.append(_import_stdio(re.sub(r"[^a-z0-9._-]", "-", name.lower())[:60], v))
         else:
             out.append({"name": name, "importable": False, "why": "sem url nem command"})
     return out

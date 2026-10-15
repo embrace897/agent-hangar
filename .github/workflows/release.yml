@@ -30,6 +30,7 @@ jobs:
           - {name: mcp-memory, context: mcp-servers/memory, file: mcp-servers/memory/Dockerfile, target: ""}
           - {name: mcp-browser, context: mcp-servers/browser, file: mcp-servers/browser/Dockerfile, target: ""}
           - {name: desktop, context: mcp-servers/desktop, file: mcp-servers/desktop/Dockerfile, target: ""}
+          - {name: mcp-stdio-runner, context: mcp-servers/stdio-runner, file: mcp-servers/stdio-runner/Dockerfile, target: ""}
         arch:
           - {platform: linux/amd64, runner: ubuntu-latest, tag: amd64}
           - {platform: linux/arm64, runner: ubuntu-24.04-arm, tag: arm64}
@@ -85,7 +86,7 @@ jobs:
       fail-fast: false
       matrix:
         name: [central, agent-runtime, harness-base, harness-claude-code, harness-codex, harness-deepseek-harness,
-               harness-hermes, mcp-data-studio, mcp-memory, mcp-browser, desktop]
+               harness-hermes, mcp-data-studio, mcp-memory, mcp-browser, desktop, mcp-stdio-runner]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
