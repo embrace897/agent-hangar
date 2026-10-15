@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-10-15
+
 ### Added
 - **Local MCP servers (stdio) as connectors** (*Adicionar personalizado → Túnel (stdio)*, admins only):
   - `npx` or `uvx` packages with a pinned version, arguments without a shell, environment variables (secrets in the vault) and allowed domains.
