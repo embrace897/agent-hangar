@@ -45,7 +45,7 @@ def job_dict(j: Job) -> dict:
 
 
 def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, actor="admin",
-               channel="api") -> Job:
+               channel="api", exec_override: dict | None = None) -> Job:
     """Valida, grava como `queued` e devolve na hora. A execução roda num worker."""
     if not task or not task.strip():
         raise PlatformError("task vazia")
@@ -57,8 +57,10 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
     system_prompt = "\n\n".join(x for x in (spec.get("instructions", ""), skills_txt) if x)
     mcp_servers = {m["name"]: {"type": "http", "url": m["url"]} for m in spec.get("mcps", [])}
     from . import execution  # o entrypoint traduz em flags do CLI (--effort, model_reasoning_effort, --reasoning…)
-    exec_opts = {} if hconf["mock"] else execution.harness_options(execution.resolve(
-        db, spec, hconf["harness_id"], hconf["connection"], hconf["model"], a.name, a.objective))
+    prof = None if hconf["mock"] else execution.resolve(
+        db, spec, hconf["harness_id"], hconf["connection"], hconf["model"], a.name, a.objective)
+    # exec_override: comparação de perfis (outro nível de esforço só neste job)
+    exec_opts = exec_override if exec_override is not None else (execution.harness_options(prof) if prof else {})
 
     job = Job(agent_id=a.id, version=a.current_version, env=env, harness_id=hconf["harness_id"],
               connection=hconf["connection"], task=task, status="queued", token=secrets.token_hex(24),
@@ -78,7 +80,10 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
         "JOB_TOKEN": job.token,
     }
     _callback[job.id], _done[job.id] = threading.Event(), threading.Event()
-    _meta[job.id] = {"prices": hconf["prices"], "channel": channel}
+    _meta[job.id] = {"prices": hconf["prices"], "channel": channel,
+                     "tags": {"version": a.current_version, "model": hconf["model"],
+                              "effort": (exec_override or {}).get("level", "") if exec_override is not None
+                              else ((prof or {}).get("effort_level") or "")}}
     audit(db, actor, "job.submit", slug, f"#{job.id} v{a.current_version} {task[:120]}")
     _pool.submit(_execute, job.id, image, environment, timeout_s, actor)
     return job
@@ -134,7 +139,8 @@ def _finish(db: Session, job: Job, t0: float, actor: str):
     if job.container_name:
         deploy.remove_job_container(job.container_name)
     record_usage(db, job.agent_id, job.env, meta.get("channel", "api"), "harness-job", job.duration_ms,
-                 job.status == "passed", tokens_in=job.tokens_in, tokens_out=job.tokens_out, cost=job.cost_usd)
+                 job.status == "passed", tokens_in=job.tokens_in, tokens_out=job.tokens_out, cost=job.cost_usd,
+                 tags=meta.get("tags") or {"version": job.version})
     audit(db, actor, "job.finish", str(job.agent_id), f"#{job.id} [{job.status}] {job.duration_ms}ms")
     observability.record_job(job.status)
     ev = _done.pop(job.id, None)
@@ -189,9 +195,9 @@ def wait_job(job_id: int, timeout_s: float) -> Job:
 
 
 def run_harness_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, actor="admin",
-                    channel="api") -> Job:
+                    channel="api", exec_override: dict | None = None) -> Job:
     """Versão síncrona (MCP, testes, gateway): submete e espera terminar."""
-    job = submit_job(db, slug, task, env, timeout_s, actor, channel)
+    job = submit_job(db, slug, task, env, timeout_s, actor, channel, exec_override)
     limit = min(max(int(timeout_s or config.JOB_TIMEOUT_S), 10), config.JOB_MAX_TIMEOUT_S) + 30
     return wait_job(job.id, limit)
 

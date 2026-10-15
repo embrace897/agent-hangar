@@ -204,3 +204,50 @@ def describe(db: Session, agent: Agent, spec: dict, env: str) -> dict:
     return {"env": env, "spec": spec.get("execution") or {}, "profile": prof,
             "levels": ["auto", *LEVELS], "level_labels": LEVEL_LABEL,
             "sends": runtime_options(prof) if target == "runtime" else harness_options(prof)}
+
+
+_TAGS: dict[tuple, tuple[float, dict]] = {}
+TAGS_TTL_S = 300
+
+
+def profile_for_version(db: Session, agent: Agent, version: int | None, env: str) -> dict:
+    """O perfil resolvido de uma versão do agente num ambiente (a medição agrupa por modelo e esforço)."""
+    from .common import spec_of
+    spec = spec_of(agent, version)
+    h = spec.get("harness") or {}
+    blk = h if h.get("id") else (spec.get("llm") or {})
+    o = blk.get(env) if isinstance(blk.get(env), dict) else {}
+    target = (o.get("id") or h["id"]) if h.get("id") else "runtime"
+    conn, model = o.get("connection") or blk.get("connection") or "", o.get("model") or blk.get("model") or ""
+    return resolve(db, spec, target, conn, model, agent.name, agent.objective)
+
+
+def usage_tags(db: Session, agent_id: int, env: str) -> dict:
+    """{version, model, effort} do agente que está no ar neste ambiente, para marcar cada chamada. Cache curto: é
+    chamado a cada chamada ao agente. Nunca derruba o registro de uso."""
+    import time
+
+    from sqlalchemy import select as _select
+
+    from ..models import Deployment
+    from ..tenancy import current_org
+    try:
+        version = db.scalar(_select(Deployment.version).where(
+            Deployment.agent_id == agent_id, Deployment.env == env, Deployment.status == "running")
+            .order_by(Deployment.id.desc()).limit(1))
+        a = db.get(Agent, agent_id)
+        if a is None:
+            return {}
+        version = version or a.current_version
+        key = (current_org(), agent_id, env, version)
+        hit = _TAGS.get(key)
+        if hit and time.time() - hit[0] < TAGS_TTL_S:
+            return hit[1]
+        p = profile_for_version(db, a, version, env)
+        tags = {"version": version, "model": p.get("model") or "", "effort": p.get("effort_level") or ""}
+        if len(_TAGS) > 5000:
+            _TAGS.clear()
+        _TAGS[key] = (time.time(), tags)
+        return tags
+    except Exception:  # noqa: BLE001 — marcar o perfil é extra; o uso sempre é gravado
+        return {}

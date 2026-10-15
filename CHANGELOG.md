@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
   - **Harnesses:** each one gets the profile in its CLI's flags. Claude Code gets `--effort`, `--max-turns`, its output limit and prompt cache; Codex gets `model_reasoning_effort`; Hermes gets `--reasoning`.
   - **Warnings:** what does not take effect shows as a warning, for example effort on a model without a reasoning mode or a model without tool calling.
 - `harness.model`: a harness agent can pick a model from its connection's list (before, always the connection's default).
+- **Profile measurement and suggestions** (*Medição do perfil* on the agent page, `GET /api/agents/{slug}/execution/tuning`, MCP `get_execution_tuning` and `compare_execution_profiles`):
+  - Every call records the agent version, model and effort that served it. Real usage is grouped by model and effort: calls, share without errors, median time, cost per call and test cases.
+  - *Comparar perfis* runs the test cases in stage with the current effort and its neighbors, measuring cases passed, cost and time of each. Chat agents get the other level only on that request, through a header only the central signs. Harness agents get one job per case and level.
+  - **The suggestion:** raise the effort when a higher level passes much more; otherwise lower it when a lower level passes the same for at least 15% less cost or time. It shows on the agent page, in the admins' inbox and over MCP. Nothing changes by itself: applying it creates a new version that goes through the tests.
 
 ## [0.35.0] — 2026-10-15
 

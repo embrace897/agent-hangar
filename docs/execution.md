@@ -61,6 +61,38 @@ The profile lists what does not take effect, so nobody assumes it does:
   does);
 - an output limit or max rounds that the harness ignores.
 
+## Measurement and suggestions
+
+Is the effort worth what it costs? Every call records the agent version, the model and the effort level that served
+it. Two sources of measurement come from that.
+
+**Real usage.** The last 30 days are grouped by model and effort. For each group the measurement shows:
+
+- calls, and the share without errors;
+- median time and cost per call;
+- the test cases of the versions that used that profile.
+
+Different efforts of the same model are compared when each has at least 20 calls.
+
+**Profile comparison.** *Comparar perfis* runs the agent's test cases in stage with the current level and its
+neighbors (one below and one above):
+
+- each level is measured on cases passed, average cost and average time;
+- levels that send the same value to the model count once (on OpenRouter, minimal and low are the same);
+- up to 10 cases per level are run (cases with `workspace` are left out), and the comparison costs model calls;
+- chat agents get the other level only on that request, through a header that only the central can sign;
+- harness agents get one job per case and level.
+
+**The suggestion:**
+
+1. **Raise the effort** when a higher level passes at least 10 points more (or, in real usage, errs much less while
+   the current one errs on more than 10% of calls).
+2. Otherwise, **lower the effort** when a lower level passes the same and costs or takes at least 15% less.
+
+A comparison counts only for the agent's current version and model. Otherwise the suggestion comes from real usage.
+The suggestion shows on the agent page (*Medição do perfil*), in the admins' inbox and over MCP. Nothing changes by
+itself: applying it creates a new version, which goes through the tests before production.
+
 ## Where to see and change it
 
 - **Agent page → Execução:** the profile in production or stage, what is sent and through which parameter, where
@@ -68,4 +100,5 @@ The profile lists what does not take effect, so nobody assumes it does:
   version, which goes through the tests before production.
 - **API:** `GET /api/agents/{slug}/execution?env=prod`; change it with `PATCH /api/agents/{slug}`
   `{"execution": {...}}` (`null` in a field goes back to automatic).
-- **MCP:** `get_execution_profile` and `design_agent(execution={...})`.
+- **MCP:** `get_execution_profile` and `design_agent(execution={...})`; measurement with `get_execution_tuning`, comparison with `compare_execution_profiles`.
+- **Measurement API:** `GET /api/agents/{slug}/execution/tuning`, `POST /api/agents/{slug}/execution/trials` (`{levels?}`), `GET /api/agents/{slug}/execution/trials/{id}`.

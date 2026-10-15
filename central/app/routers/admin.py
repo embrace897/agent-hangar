@@ -243,6 +243,34 @@ def agent_execution(slug: str, request: Request, env: str = "prod", db=Depends(d
     return guard(lambda: svc.execution.describe(db, a, svc.spec_of(a), "stage" if env == "stage" else "prod"))
 
 
+class TrialBody(BaseModel):
+    levels: list[str] | None = None
+
+
+@router.get("/agents/{slug}/execution/tuning")
+def agent_execution_tuning(slug: str, request: Request, db=Depends(db_dep)):
+    """Medição por perfil (modelo e esforço: acerto, custo, tempo), a última comparação de perfis e a sugestão."""
+    a = _agent(request, db, slug, "view_spec")
+    return guard(lambda: svc.execution_tuning.suggest(db, a))
+
+
+@router.post("/agents/{slug}/execution/trials")
+def agent_execution_trial(slug: str, request: Request, body: TrialBody | None = None, db=Depends(db_dep)):
+    """Compara níveis de esforço rodando os casos de teste em stage (em segundo plano). Custa chamadas ao modelo."""
+    _agent(request, db, slug, "edit")
+    return guard(lambda: svc.execution_tuning.trial_dict(
+        svc.execution_tuning.start_trial(db, slug, actor(request), body.levels if body else None)))
+
+
+@router.get("/agents/{slug}/execution/trials/{trial_id}")
+def agent_execution_trial_get(slug: str, trial_id: int, request: Request, db=Depends(db_dep)):
+    a = _agent(request, db, slug, "view_spec")
+    t = svc.execution_tuning.get_trial(db, a, trial_id)
+    if t is None:
+        raise HTTPException(404, "comparação não encontrada")
+    return svc.execution_tuning.trial_dict(t)
+
+
 @router.get("/agents/{slug}/guide")
 def agent_guide(slug: str, request: Request, db=Depends(db_dep)):
     """Fluxo, ficha e texto do guia (o que é, o que faz, como usar) — para quem vê o agente, inclusive no catálogo."""

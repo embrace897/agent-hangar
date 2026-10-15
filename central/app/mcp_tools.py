@@ -345,6 +345,28 @@ async def get_execution_profile(ctx: Context, slug: str, env: str = "prod") -> d
 
 
 @mcp.tool()
+async def get_execution_tuning(ctx: Context, slug: str) -> dict:
+    """O esforço do agente vale o que custa? A medição por perfil (modelo e esforço: chamadas, % sem erro, tempo,
+    custo por chamada, casos de teste aprovados), a última comparação de perfis e a sugestão (baixar o esforço quando
+    acerta o mesmo e custa ou demora bem menos; subir quando acerta bem mais). Aplique com o patch da sugestão em
+    design_agent e rode ship_agent; nada muda sozinho."""
+    def go(db, acc):
+        return svc.execution_tuning.suggest(db, _agent(db, acc, slug, "view_spec"))
+    return await _run(ctx, go)
+
+
+@mcp.tool()
+async def compare_execution_profiles(ctx: Context, slug: str, levels: list[str] | None = None) -> dict:
+    """Roda os casos de teste do agente em stage com o nível de esforço atual e os vizinhos (ou `levels`: minimal,
+    low, medium, high, max), medindo acerto, custo e tempo de cada um. Roda em segundo plano e custa chamadas ao
+    modelo (níveis × casos, até 10 casos); acompanhe com get_execution_tuning."""
+    def go(db, acc):
+        _agent(db, acc, slug, "edit")
+        return svc.execution_tuning.trial_dict(svc.execution_tuning.start_trial(db, slug, acc.p.name, levels))
+    return await _run(ctx, go)
+
+
+@mcp.tool()
 async def suggest_agent_models(ctx: Context, slug: str) -> dict:
     """Para um agente (ou um multiagente: o orquestrador e cada especialista): o papel deduzido, o modelo atual, a nota
     dele e a sugestão quando há um modelo ao menos 10 pontos melhor para o papel. Nada muda sozinho: aplique a

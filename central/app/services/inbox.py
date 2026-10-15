@@ -125,6 +125,14 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
             add(f"model_suggestion:{x['agent']}:{s['model']}", "model_suggestion",
                 f"{x['name']}: {s['model']} é melhor para {x['role_label']} que {x['current']['model']}",
                 x.get("at"), f"#/agents/{x['agent']}", agent=x["agent"], model=s["model"], connection=s["connection"])
+    if acc.p.is_admin:  # o esforço do agente não compensa (medição ou comparação de perfis); nada muda sozinho
+        from .execution_tuning import LABEL
+        from .execution_tuning import cached_suggestions as exec_suggestions
+        for x in exec_suggestions(db):
+            s = x["suggestion"]
+            add(f"execution_suggestion:{x['agent']}:{s['effort']}", "execution_suggestion",
+                f"{x['name']}: esforço {LABEL.get(s['effort'], s['effort'])} em vez de {LABEL.get(s['from'], s['from'] or 'automático')} — {s['reason']}",
+                x.get("at"), f"#/agents/{x['agent']}", agent=x["agent"], effort=s["effort"])
     rows = list(out.values())
     counts = {"all": sum(not r["archived"] for r in rows), "unread": sum(r["unread"] and not r["archived"] for r in rows),
               "decisions": sum(r["kind"] == "decision" and not r["archived"] for r in rows),

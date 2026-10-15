@@ -231,7 +231,7 @@ def for_agent(db: Session, agent: Agent, role: str = "", env: str = "prod", ctx:
     spec = spec_of(agent)
     if spec.get("harness"):
         return {"agent": agent.slug, "supported": False,
-                "why": "agente com harness usa o modelo padrão da conexão do harness; troque a conexão para mudar o modelo"}
+                "why": "a recomendação por papel é para agentes de chat; num agente com harness, escolha o modelo em harness.model"}
     role = role or infer_role(spec, agent.name, agent.objective or "")
     caps = infer_caps(spec, agent.name, agent.objective or "")
     conns = {c.name: c for c in db.scalars(select(LlmConnection))}

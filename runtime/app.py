@@ -11,6 +11,7 @@ import ast
 import asyncio
 import contextvars
 import hashlib
+import hmac
 import json
 import mimetypes
 import operator
@@ -53,6 +54,21 @@ EXEC = SPEC.get("execution_resolved") or {}
 PARALLEL_TOOLS = EXEC.get("parallel_tools", True) is not False
 PROMPT_CACHE = bool(EXEC.get("cache"))
 _OPTIONAL_OFF = False  # o provedor recusou um parâmetro opcional: deste ponto em diante, só o essencial
+# Comparação de perfis (central → stage): outro perfil só nesta requisição. Só vale com o token de ambiente deste
+# container, que só a central conhece; um cliente que mande o header não muda nada.
+EXEC_OVERRIDE: contextvars.ContextVar = contextvars.ContextVar("exec_override", default=None)
+
+
+def _exec_override(req) -> dict | None:
+    raw, tok = req.headers.get("x-hangar-exec", ""), req.headers.get("x-hangar-internal", "")
+    mine = os.environ.get("INTERNAL_ENV_TOKEN", "")
+    if not raw or not tok or not mine or not hmac.compare_digest(tok, mine):
+        return None
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) else None
 TOOL_OUTPUT_LIMIT = 16000
 # Sessão (conversa) do request atual: vem do cliente (X-Session-Id / X-Conversation-Id, p.ex. o id da conversa no
 # LibreChat) e é repassada aos MCPs, que a usam para separar workspaces, arquivos e estado por conversa.
@@ -684,14 +700,19 @@ def _restore_hidden(messages: list[dict]) -> list[dict]:
 def _with_options(payload: dict, extra: dict | None = None) -> dict:
     """O payload com os parâmetros do perfil de execução. Cache do prompt: o prompt de sistema (o mesmo em toda
     chamada) vira um bloco marcado com cache_control, que o LiteLLM e a OpenRouter repassam aos modelos Claude."""
-    if _OPTIONAL_OFF:
+    ex = EXEC_OVERRIDE.get()
+    if _OPTIONAL_OFF and ex is None:
         return payload
-    out = {**payload, **(EXEC.get("api") or {} if extra is None else extra)}
+    if ex is not None and extra is not None:
+        extra = ex.get("lite_api") or {}
+    out = {**payload, **((ex if ex is not None else EXEC).get("api") or {} if extra is None else extra)}
     msgs = out.get("messages") or []
-    if PROMPT_CACHE and msgs and msgs[0].get("role") == "system" and isinstance(msgs[0].get("content"), str):
+    cache = bool(ex.get("cache")) if ex is not None else PROMPT_CACHE
+    parallel = ex.get("parallel_tools", True) is not False if ex is not None else PARALLEL_TOOLS
+    if cache and msgs and msgs[0].get("role") == "system" and isinstance(msgs[0].get("content"), str):
         out["messages"] = [{"role": "system", "content": [{"type": "text", "text": msgs[0]["content"],
                                                            "cache_control": {"type": "ephemeral"}}]}] + msgs[1:]
-    if out.get("tools") and not PARALLEL_TOOLS:
+    if out.get("tools") and not parallel:
         out["parallel_tool_calls"] = False
     return out
 
@@ -705,7 +726,8 @@ async def _post_llm(c: httpx.AsyncClient, payload: dict, headers: dict, extra: d
     if r.status_code in (400, 422) and full != payload:
         print(f"[aviso] o provedor recusou um parâmetro do perfil de execução ({r.text[:200]}); "
               "seguindo sem esforço/limite/cache/paralelo", flush=True)
-        _OPTIONAL_OFF = True
+        if EXEC_OVERRIDE.get() is None:  # numa comparação de perfis, a recusa vale só para a requisição
+            _OPTIONAL_OFF = True
         r = await c.post(f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers)
     return r
 
@@ -880,7 +902,9 @@ async def _run_server_calls(calls: list, by_name: dict, trace: list, msgs: list,
     groups: dict[str, list] = {}
     for call in calls:
         groups.setdefault(_tool_group(call, by_name), []).append(call)
-    if not PARALLEL_TOOLS or EMPLOYEE or len(groups) < 2:
+    ex = EXEC_OVERRIDE.get()
+    parallel = ex.get("parallel_tools", True) is not False if ex is not None else PARALLEL_TOOLS
+    if not parallel or EMPLOYEE or len(groups) < 2:
         for call in calls:
             await _run_server_call(call, by_name, trace, msgs, rationale=rationale)
         return
@@ -1018,6 +1042,7 @@ async def chat_completions(req: Request):
         return JSONResponse({"error": {"message": "corpo inválido: envie JSON em UTF-8", "type": "invalid_request_error"}},
                             status_code=400)
     set_session(req, body)
+    EXEC_OVERRIDE.set(_exec_override(req))
     cid, created = f"chatcmpl-{uuid.uuid4().hex[:12]}", int(time.time())
     if body.get("stream"):
         def chunk(delta, finish=None, extra=None):

@@ -369,7 +369,9 @@ async function execCard(box, a, canEdit, env = 'prod') {
       <dt>Cache do prompt</dt><dd><label class="row small"><input type="checkbox" id="ex-cache" style="width:auto" ${s.prompt_cache === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>${esc(window.t(CACHE_MODE[p.prompt_cache] || p.prompt_cache || '—'))}</span></label></dd>
     </dl>
     ${p.warnings.length ? p.warnings.map(w => `<div class="small mt"><span class="pill warn">aviso</span> <span data-noi18n>${esc(w)}</span></div>`).join('') : ''}
-    ${canEdit ? `<div class="row mt"><button id="ex-save">Salvar execução</button><span class="mute small">vira uma versão nova, que passa pelos testes antes de produção</span></div>` : ''}</div>`;
+    ${canEdit ? `<div class="row mt"><button id="ex-save">Salvar execução</button><span class="mute small">vira uma versão nova, que passa pelos testes antes de produção</span></div>` : ''}</div>
+    <div id="ex-tune"></div>`;
+  tuneCard($('#ex-tune'), a, canEdit, r.level_labels);
   $('#ex-env').onchange = () => execCard(box, a, canEdit, $('#ex-env').value);
   if (!canEdit) return;
   $('#ex-save').onclick = e => act(e.target, async () => {
@@ -381,4 +383,46 @@ async function execCard(box, a, canEdit, env = 'prod') {
     await api('/agents/' + a.slug, { method: 'PATCH', body: { execution: empty ? null : ex } });
     route();
   }, 'Execução salva: nova versão criada (rode os testes para levar à produção)');
+}
+
+/* medição por perfil: o esforço vale o que custa? (uso real + comparação de perfis em stage) */
+let tunePoll = null;
+async function tuneCard(box, a, canEdit, labels) {
+  clearTimeout(tunePoll);
+  let r;
+  try { r = await api(`/agents/${a.slug}/execution/tuning`); } catch (e) { return; }
+  if (!box.isConnected) return;
+  const lvl = v => v ? (labels[v] ? window.t(labels[v], 'esforco') : v) : window.t('nenhum');
+  const pct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+  const usd = v => v == null ? '—' : `US$ ${Number(v).toFixed(5)}`;
+  const ms = v => v == null ? '—' : (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${v} ms`);
+  const sg = r.suggestion, t = r.trial;
+  const running = t && t.status === 'running';
+  const stats = (r.stats || []).map(x => `<tr ${x.model === r.model && x.effort === r.effort ? 'style="font-weight:600"' : ''}>
+      <td><code class="inline" data-noi18n>${esc(x.model)}</code></td><td data-noi18n>${esc(lvl(x.effort))}</td><td>${x.calls}</td><td>${pct(x.ok_rate)}</td>
+      <td>${ms(x.latency_ms_p50)}</td><td>${usd(x.cost_per_call)}</td><td>${x.test_cases ? `${pct(x.test_pass_rate)} <span class="mute">(${x.test_cases})</span>` : '—'}</td></tr>`).join('');
+  const trial = t ? `<div class="mt"><b class="small">Comparação de perfis</b> <span class="mute small">v${t.version} · <span data-noi18n>${esc(t.model)}</span> · ${when(t.created_at)}${t.cost_usd ? ` · US$ ${Number(t.cost_usd).toFixed(4)}` : ''}</span>
+      ${running ? ` <span class="pill info">rodando</span> <span class="mute small">${(t.results || []).length}/${(t.levels || []).length} <span>níveis</span></span>` : t.status === 'failed' ? ` <span class="pill bad">falhou</span> <span class="small" data-noi18n>${esc(t.error)}</span>` : ''}
+      ${r.trial_stale ? ' <span class="pill warn">de uma versão ou modelo anterior</span>' : ''}
+      ${(t.results || []).length ? `<div class="scroll"><table class="small mt"><tr><th>Esforço</th><th>Enviado</th><th>Acertos</th><th>Custo médio</th><th>Tempo médio</th></tr>
+        ${t.results.map(x => `<tr ${x.level === t.baseline ? 'style="font-weight:600"' : ''}><td data-noi18n>${esc(lvl(x.level))}${x.level === t.baseline ? ` <span class="mute">(${esc(window.t('atual'))})</span>` : ''}</td>
+          <td><code class="inline" data-noi18n>${esc(x.sent || '—')}</code></td><td>${x.passed}/${x.total}</td><td>${usd(x.avg_cost_usd)}</td><td>${ms(x.avg_latency_ms)}</td></tr>`).join('')}</table></div>` : ''}</div>` : '';
+  box.innerHTML = `<div class="card mt"><div class="row between" style="flex-wrap:wrap;gap:8px"><h2 style="margin:0">Medição do perfil</h2>
+      ${canEdit ? `<button class="ghost" id="tu-run" ${running ? 'disabled' : ''}>${icon('flask')} <span>Comparar perfis</span></button>` : ''}</div>
+    <div class="mute small">O esforço vale o que custa? Uso real dos últimos 30 dias por modelo e esforço, e a comparação dos casos de teste em stage com o nível atual e os vizinhos.</div>
+    ${sg ? `<div class="card mt" style="border-color:var(--accent)"><span class="pill ok">sugestão</span> <b data-noi18n>${esc(lvl(sg.effort))}</b> <span class="mute small">em vez de</span> <span data-noi18n>${esc(lvl(sg.from))}</span>
+        <div class="small mt" data-noi18n>${esc(sg.reason)}</div>
+        ${canEdit ? `<button class="mt" id="tu-apply">Usar esforço <span data-noi18n>${esc(lvl(sg.effort))}</span></button> <span class="mute small">vira uma versão nova, que passa pelos testes antes de produção</span>` : ''}</div>` : ''}
+    ${stats ? `<div class="scroll"><table class="small mt"><tr><th>Modelo</th><th>Esforço</th><th>Chamadas</th><th>Sem erro</th><th>Tempo (mediana)</th><th>Custo por chamada</th><th>Casos de teste</th></tr>${stats}</table></div>`
+      : '<div class="mute small mt">Ainda não há uso medido por perfil.</div>'}
+    ${trial}</div>`;
+  if (canEdit) {
+    const run = $('#tu-run');
+    if (run) run.onclick = e => confirm(window.t('Roda os casos de teste em stage com o esforço atual e os vizinhos (até 10 casos por nível). Custa chamadas ao modelo. Continuar?'))
+      && act(e.target, async () => { await api(`/agents/${a.slug}/execution/trials`, { method: 'POST', body: {} }); tuneCard(box, a, canEdit, labels); }, 'Comparação iniciada');
+    const ap = $('#tu-apply');
+    if (ap) ap.onclick = e => act(e.target, () => api('/agents/' + a.slug, { method: 'PATCH', body: sg.patch }).then(route),
+      'Esforço trocado: nova versão criada (rode os testes para levar à produção)');
+  }
+  if (running) tunePoll = setTimeout(() => tuneCard(box, a, canEdit, labels), 4000);
 }

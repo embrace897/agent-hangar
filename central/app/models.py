@@ -109,7 +109,31 @@ class UsageEvent(OrgScoped, Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # quem consumiu (chave/sessão de usuário)
+    # o perfil que atendeu a chamada (services/execution.py): a medição compara custo, tempo e acerto por perfil
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str] = mapped_column(String(200), default="")
+    effort: Mapped[str] = mapped_column(String(12), default="")  # nível de esforço enviado ("" = nenhum)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class ExecutionTrial(OrgScoped, Base):
+    """Comparação de perfis de execução: os casos de teste do agente rodados em stage com níveis de esforço
+    diferentes, medindo acerto, custo e tempo de cada um. A sugestão de perfil sai daqui (nada muda sozinho)."""
+    __tablename__ = "execution_trials"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    model: Mapped[str] = mapped_column(String(200), default="")
+    baseline: Mapped[str] = mapped_column(String(12), default="")  # o nível que o agente usa hoje
+    levels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    results: Mapped[list | None] = mapped_column(JSON, nullable=True)  # por nível: casos, acerto, custo, tempo
+    status: Mapped[str] = mapped_column(String(12), default="running")  # running | done | failed
+    summary: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_by: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AuditLog(OrgScoped, Base):

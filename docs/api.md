@@ -277,6 +277,9 @@ Agents reach the memory at `/internal/memory/mcp` with their internal token and 
 | PATCH | `/api/catalog/llm/{name}/models/{model_id}` | `{kind}` fixes the type, `{set_price, price_in_per_mtok, price_out_per_mtok}` the price (refreshes keep it), `{default: true}` makes it the connection's default. Admin |
 | GET | `/api/catalog/models/recommend?role=&caps=&connection=&limit=` | Best models for a role (`planner`, `coder`, `analyst`, `writer`, `support`, `extractor`, `classifier`, `general`): score, confidence, reasons, real performance here. `caps`: `tools,vision` |
 | GET | `/api/agents/{slug}/execution?env=prod` | Execution profile: what the spec asks (`execution`), what is actually sent to the provider or the harness CLI (`sends`), where the effort came from, and warnings |
+| GET | `/api/agents/{slug}/execution/tuning` | Measurement by profile (model and effort: calls, share without errors, time, cost, test cases), the latest profile comparison and the suggestion |
+| POST | `/api/agents/{slug}/execution/trials` | `{levels?}`: compare effort levels on the test cases in stage, in the background (costs model calls) |
+| GET | `/api/agents/{slug}/execution/trials/{id}` | One profile comparison, with partial results while it runs |
 | GET | `/api/agents/{slug}/model-recommendation?role=` | The agent's role, current model and suggestion (a multi-agent returns the orchestrator and each specialist). Nothing is changed |
 | GET · PUT | `/api/catalog/model-profiles/settings` | How profiles are researched: `connection`, `model`, `auto` (`off`/`used`/`all`), `monthly_budget_usd`, `per_run`, `max_age_days`, `web` (`brave`/`tavily`/`searxng`), `search_key` and `aa_key` as `secret://name`, `search_url`. PUT is admin |
 | POST | `/api/catalog/model-profiles/refresh` | Fill profiles from the free sources now. Admin |
@@ -317,7 +320,7 @@ The client acts with the key owner's roles. The tools are:
 - **Guidance:** `platform_guide`, `get_spec_schema`, `whoami`.
 - **Access:** `request_agent_access`, `list_approvals`, `decide_approval`.
 - **Schedules:** `schedule_agent`, `list_schedules`, `update_schedule`, `delete_schedule`, `run_schedule_now`, `schedule_runs`.
-- **Catalog:** `list_catalog`, `list_llm_models`, `get_model_profile`, `check_model_needs`, `recommend_models`, `suggest_agent_models`, `get_execution_profile`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
+- **Catalog:** `list_catalog`, `list_llm_models`, `get_model_profile`, `check_model_needs`, `recommend_models`, `suggest_agent_models`, `get_execution_profile`, `get_execution_tuning`, `compare_execution_profiles`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
 - **Templates:** `list_templates`, `apply_template`.
 - **Build:** `register_agent`, `design_agent` (merge patch plus `remove`), `rollback_agent`, `build_multi_agent`.
 - **Inspect:** `list_agents`, `get_agent`, `get_agent_spec` (spec, plus which version runs in prod and in stage).
