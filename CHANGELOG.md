@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-10-14
+
 ### Added
 - **Skills tab in the style of Claude's Skills:**
   - List with search, *Todas*/*Minhas* and sort.
