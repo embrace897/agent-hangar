@@ -18,6 +18,18 @@ The CLI runs in an empty git workspace (`/workspace`). The container then posts 
 | `hermes` | Hermes Agent @ `8c9fe9640` | `openai` | ✓ (`hermes mcp add`) | tokens + cost (`--usage-file`) |
 | `deepseek-harness` | `@deepseek-ai/dsh@0.1.5-rc.3` | `deepseek` | ✗ | — |
 
+Each job also gets `LLM_EXEC_JSON`, the agent's [execution profile](execution.md) already in the harness's own
+vocabulary. The entrypoint turns it into the CLI's flags:
+
+| id | Reasoning effort | Output limit | Max rounds | Prompt cache |
+|---|---|---|---|---|
+| `claude-code` | `--effort` (low · medium · high · max) | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `--max-turns` | on; `DISABLE_PROMPT_CACHING=1` when off |
+| `codex` | `model_reasoning_effort` (low · medium · high) | — | — | the provider's |
+| `hermes` | `--reasoning` (minimal … max) | — | — | the provider's |
+| `deepseek-harness` | — | — | — | the provider's |
+
+`harness.model` picks a model from the connection's list (empty = the connection's default).
+
 Notes:
 
 - **Codex** ignores `OPENAI_BASE_URL` for the built-in provider. The entrypoint therefore defines a custom

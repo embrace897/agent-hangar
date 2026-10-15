@@ -56,6 +56,9 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
     skills_txt = "\n\n".join(f"## {s['name']}\n{s['content']}" for s in spec.get("skills_resolved", []))
     system_prompt = "\n\n".join(x for x in (spec.get("instructions", ""), skills_txt) if x)
     mcp_servers = {m["name"]: {"type": "http", "url": m["url"]} for m in spec.get("mcps", [])}
+    from . import execution  # o entrypoint traduz em flags do CLI (--effort, model_reasoning_effort, --reasoning…)
+    exec_opts = {} if hconf["mock"] else execution.harness_options(execution.resolve(
+        db, spec, hconf["harness_id"], hconf["connection"], hconf["model"], a.name, a.objective))
 
     job = Job(agent_id=a.id, version=a.current_version, env=env, harness_id=hconf["harness_id"],
               connection=hconf["connection"], task=task, status="queued", token=secrets.token_hex(24),
@@ -70,6 +73,7 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
         "TASK": task, "SYSTEM_PROMPT": system_prompt, "MCP_CONFIG_JSON": json.dumps(mcp_servers),
         # nomes genéricos; o entrypoint mapeia para a env var de cada harness (ANTHROPIC_API_KEY, …)
         "LLM_BASE_URL": hconf["base_url"], "LLM_API_KEY": hconf["api_key"], "LLM_MODEL": hconf["model"],
+        "LLM_EXEC_JSON": json.dumps(exec_opts),
         "JOB_CALLBACK_URL": f"{config.INTERNAL_BASE_URL}/internal/jobs/{job.id}/callback",
         "JOB_TOKEN": job.token,
     }

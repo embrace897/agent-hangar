@@ -16,7 +16,14 @@ llm:                      # chat agents only (mutually exclusive with harness.co
 harness:                  # harness agents only
   id: claude-code         # claude-code | codex | hermes | deepseek-harness
   connection: anthropic   # protocol must match the harness; empty = mock
+  model: ""               # empty = the connection's default model
   stage: {connection: ...}
+execution:                # optional; absent = automatic (see execution.md)
+  effort: auto            # auto | minimal | low | medium | high | max (reasoning effort)
+  max_output_tokens: 8000 # output limit (256–128000); absent = the provider's default
+  parallel_tools: true    # chat: tools from different servers and sub-agents run at the same time
+  prompt_cache: true      # false: no prompt caching
+  max_turns: 40           # harness: the CLI's maximum rounds (claude-code)
 judge:                    # connection used by `judge` test cases (defaults to llm.connection)
   connection: my-litellm
   model: ""

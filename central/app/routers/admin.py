@@ -235,6 +235,14 @@ def agent_model_recommendation(slug: str, request: Request, role: str = "", db=D
     return guard(lambda: svc.model_selection.for_team(db, a) if not role else [svc.model_selection.for_agent(db, a, role)])
 
 
+@router.get("/agents/{slug}/execution")
+def agent_execution(slug: str, request: Request, env: str = "prod", db=Depends(db_dep)):
+    """Perfil de execução: esforço de raciocínio, limite de saída, ferramentas em paralelo, cache e rodadas — o que a
+    spec pede, o que vai de fato para o modelo ou o harness, e os avisos."""
+    a = _agent(request, db, slug, "view_spec")
+    return guard(lambda: svc.execution.describe(db, a, svc.spec_of(a), "stage" if env == "stage" else "prod"))
+
+
 @router.get("/agents/{slug}/guide")
 def agent_guide(slug: str, request: Request, db=Depends(db_dep)):
     """Fluxo, ficha e texto do guia (o que é, o que faz, como usar) — para quem vê o agente, inclusive no catálogo."""

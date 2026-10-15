@@ -47,6 +47,12 @@ PRICES = LLM.get("prices") or [None, None]  # US$ por 1M tokens (entrada, saída
 MAX_STEPS = int(LLM.get("max_steps") or 6)
 VISION = LLM.get("vision", True)  # False: imagens não vão ao LLM (só ao workspace, para OCR/análise por tool)
 LLM_TIMEOUT_S = 300
+# Perfil de execução resolvido pela central (services/execution.py): parâmetros extras da API (esforço de raciocínio,
+# limite de saída), ferramentas em paralelo e cache do prompt — já na língua do provedor da conexão.
+EXEC = SPEC.get("execution_resolved") or {}
+PARALLEL_TOOLS = EXEC.get("parallel_tools", True) is not False
+PROMPT_CACHE = bool(EXEC.get("cache"))
+_OPTIONAL_OFF = False  # o provedor recusou um parâmetro opcional: deste ponto em diante, só o essencial
 TOOL_OUTPUT_LIMIT = 16000
 # Sessão (conversa) do request atual: vem do cliente (X-Session-Id / X-Conversation-Id, p.ex. o id da conversa no
 # LibreChat) e é repassada aos MCPs, que a usam para separar workspaces, arquivos e estado por conversa.
@@ -675,6 +681,35 @@ def _restore_hidden(messages: list[dict]) -> list[dict]:
     return out
 
 
+def _with_options(payload: dict, extra: dict | None = None) -> dict:
+    """O payload com os parâmetros do perfil de execução. Cache do prompt: o prompt de sistema (o mesmo em toda
+    chamada) vira um bloco marcado com cache_control, que o LiteLLM e a OpenRouter repassam aos modelos Claude."""
+    if _OPTIONAL_OFF:
+        return payload
+    out = {**payload, **(EXEC.get("api") or {} if extra is None else extra)}
+    msgs = out.get("messages") or []
+    if PROMPT_CACHE and msgs and msgs[0].get("role") == "system" and isinstance(msgs[0].get("content"), str):
+        out["messages"] = [{"role": "system", "content": [{"type": "text", "text": msgs[0]["content"],
+                                                           "cache_control": {"type": "ephemeral"}}]}] + msgs[1:]
+    if out.get("tools") and not PARALLEL_TOOLS:
+        out["parallel_tool_calls"] = False
+    return out
+
+
+async def _post_llm(c: httpx.AsyncClient, payload: dict, headers: dict, extra: dict | None = None) -> httpx.Response:
+    """POST em /chat/completions com o perfil de execução. Se o provedor recusar (400/422) uma chamada que levava
+    parâmetros opcionais, repete só com o essencial e desliga os opcionais neste container (avisa no log)."""
+    global _OPTIONAL_OFF
+    full = _with_options(payload, extra)
+    r = await c.post(f"{LLM_BASE_URL}/chat/completions", json=full, headers=headers)
+    if r.status_code in (400, 422) and full != payload:
+        print(f"[aviso] o provedor recusou um parâmetro do perfil de execução ({r.text[:200]}); "
+              "seguindo sem esforço/limite/cache/paralelo", flush=True)
+        _OPTIONAL_OFF = True
+        r = await c.post(f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers)
+    return r
+
+
 async def _lite(messages: list[dict]) -> tuple[str, dict, list]:
     """Uma chamada curta, sem tools e sem o prompt do agente — para títulos de conversa e tarefas triviais do
     cliente (o LibreChat manda os títulos por um endpoint com X-Hangar-Mode: lite)."""
@@ -694,7 +729,7 @@ async def _lite(messages: list[dict]) -> tuple[str, dict, list]:
         if limit:
             payload["max_tokens"] = limit
         async with httpx.AsyncClient(timeout=90) as c:
-            r = await c.post(f"{LLM_BASE_URL}/chat/completions", headers=headers, json=payload)
+            r = await _post_llm(c, payload, headers, EXEC.get("lite_api") or {})
         if r.status_code >= 400:
             raise RuntimeError(f"LLM {r.status_code}: {r.text[:300]}")
         data = r.json()
@@ -772,7 +807,7 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
             if tool_choice is not None and ctools:
                 payload["tool_choice"] = tool_choice
         async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
-            r = await c.post(f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers)
+            r = await _post_llm(c, payload, headers)
         if r.status_code >= 400:
             raise RuntimeError(f"LLM {r.status_code}: {r.text[:300]}")
         data = r.json()
@@ -802,8 +837,7 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
             trace.append({"client_tool_calls": [c["function"]["name"] for c in mine]})
             return ("" if calls else msg.get("content") or ""), usage, trace, mine
         msgs.append(msg)
-        for call in calls:
-            await _run_server_call(call, by_name, trace, msgs, rationale=msg.get("content") or "")
+        await _run_server_calls(calls, by_name, trace, msgs, rationale=msg.get("content") or "")
         if step_images and VISION:
             parts = [{"type": "text", "text": f"Imagens devolvidas pelas ferramentas nesta etapa ({len(step_images)}), "
                                               "para você conferir visualmente:"}]
@@ -818,14 +852,51 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
     msgs.append({"role": "user", "content": "Limite de passos atingido. Responda agora com o que já foi obtido, "
                                             "incluindo links de arquivos gerados, e diga o que ficou pendente."})
     async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
-        r = await c.post(f"{LLM_BASE_URL}/chat/completions", headers=headers,
-                         json={"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)})
+        r = await _post_llm(c, {"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}, headers)
     if r.status_code >= 400:
         return "Limite de passos de ferramentas atingido.", usage, trace, []
     data = r.json()
     for k in usage:
         usage[k] += (data.get("usage") or {}).get(k, 0)
     return data["choices"][0]["message"].get("content") or "", usage, trace, []
+
+
+def _tool_group(call: dict, by_name: dict) -> str:
+    """Chamadas do mesmo grupo rodam em ordem (um navegador, um servidor MCP, as ferramentas da plataforma); grupos
+    diferentes rodam juntos. Cada sub-agente é um grupo: delegar a vários especialistas acontece em paralelo."""
+    tool = by_name.get(call["function"]["name"])
+    ref = (tool.ref if tool is not None else "") or call["function"]["name"]
+    kind, _, rest = ref.partition(":")
+    if kind in ("mcp", "http"):
+        return f"{kind}:{rest.split(':')[0]}"
+    if kind in ("agent", "builtin"):
+        return ref
+    return kind  # hangar:*, platform:*: em ordem
+
+
+async def _run_server_calls(calls: list, by_name: dict, trace: list, msgs: list, rationale: str = ""):
+    """As chamadas de ferramenta de uma rodada. Com o perfil em paralelo (padrão) e fora do modo Digital employee (a
+    alçada decide uma a uma), grupos diferentes rodam ao mesmo tempo; mensagens e trace saem na ordem do modelo."""
+    groups: dict[str, list] = {}
+    for call in calls:
+        groups.setdefault(_tool_group(call, by_name), []).append(call)
+    if not PARALLEL_TOOLS or EMPLOYEE or len(groups) < 2:
+        for call in calls:
+            await _run_server_call(call, by_name, trace, msgs, rationale=rationale)
+        return
+    done: dict[str, tuple[list, list]] = {}
+
+    async def run_group(group: list):
+        for call in group:
+            m_out, t_out = [], []
+            await _run_server_call(call, by_name, t_out, m_out, rationale=rationale)
+            done[call["id"]] = (m_out, t_out)
+
+    await asyncio.gather(*(run_group(g) for g in groups.values()))
+    for call in calls:
+        m_out, t_out = done.get(call["id"], ([], []))
+        msgs.extend(m_out)
+        trace.extend(t_out)
 
 
 async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, rationale: str = ""):

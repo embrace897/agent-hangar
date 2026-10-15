@@ -153,6 +153,9 @@ def deploy_env(db: Session, slug: str, env: str, actor="admin", _stack=()) -> De
     llm_conf = resolve_llm(db, spec, env)
     spec["llm"]["model"] = llm_conf["model"]  # modelo efetivo, para o runtime e para exibição
     spec["llm"]["prices"] = list(llm_conf["prices"])
+    from . import execution  # esforço, limite de saída, ferramentas em paralelo e cache, na língua do provedor
+    spec["execution_resolved"] = execution.runtime_options(
+        execution.resolve(db, spec, "runtime", llm_conf["connection"], llm_conf["model"], a.name, a.objective))
     for d in a.deployments:
         if d.env == env and d.status == "running":
             d.status, d.stopped_at = "replaced", now()

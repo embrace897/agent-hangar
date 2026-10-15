@@ -550,7 +550,7 @@ def _effective(spec: dict, env: str) -> list[tuple[str, str]]:
         o = b.get(env) if isinstance(b.get(env), dict) else {}
         c = o.get("connection") or b.get("connection")
         if c:
-            out.append((c, (o.get("model") or b.get("model") or "") if key != "harness" else ""))
+            out.append((c, o.get("model") or b.get("model") or ""))
     return out
 
 

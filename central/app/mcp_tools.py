@@ -333,6 +333,18 @@ async def recommend_models(ctx: Context, role: str = "general", caps: list[str] 
 
 
 @mcp.tool()
+async def get_execution_profile(ctx: Context, slug: str, env: str = "prod") -> dict:
+    """Como o agente usa o modelo em cada chamada: esforço de raciocínio (automático pelo papel ou definido), limite de
+    saída, ferramentas em paralelo, cache do prompt e rodadas do harness — o que a spec pede, o que vai de fato ao
+    provedor ou ao CLI do harness (sends) e os avisos (ex.: modelo sem modo de raciocínio ou sem ferramentas). Para
+    mudar, design_agent(execution={...}); null num campo volta ao automático."""
+    def go(db, acc):
+        a = _agent(db, acc, slug, "view_spec")
+        return svc.execution.describe(db, a, svc.spec_of(a), "stage" if env == "stage" else "prod")
+    return await _run(ctx, go)
+
+
+@mcp.tool()
 async def suggest_agent_models(ctx: Context, slug: str) -> dict:
     """Para um agente (ou um multiagente: o orquestrador e cada especialista): o papel deduzido, o modelo atual, a nota
     dele e a sugestão quando há um modelo ao menos 10 pontos melhor para o papel. Nada muda sozinho: aplique a
@@ -415,15 +427,19 @@ async def design_agent(ctx: Context, slug: str, instructions: str | None = None,
                        skills: list | None = None, mcps: list | None = None, tools: list | None = None,
                        sub_agents: list | None = None, tests: list | None = None, channels: list | None = None,
                        llm: dict | None = None, harness: dict | None = None, judge: dict | None = None,
-                       memory: dict | None = None, remove: list[str] | None = None, guide: str | None = None) -> dict:
+                       memory: dict | None = None, remove: list[str] | None = None, guide: str | None = None,
+                       execution: dict | None = None) -> dict:
     """Atualiza a spec do agente (gera nova versão se mudar). JSON Merge Patch: passe só o que quer mudar;
     dentro de llm/harness/judge, um valor null apaga o campo. `remove` apaga campos inteiros (ex.:
     remove=["harness"] para voltar a ser agente de chat, ou remove=["llm"] antes de virar harness).
-    guide: Markdown do guia do agente para quem vai usar (O que é, O que faz, O que não faz, Como usar com 2 a 4 pedidos de exemplo, Limites). É gravado para a versão criada por esta chamada (o mesmo que set_agent_guide)."""
+    guide: Markdown do guia do agente para quem vai usar (O que é, O que faz, O que não faz, Como usar com 2 a 4 pedidos de exemplo, Limites). É gravado para a versão criada por esta chamada (o mesmo que set_agent_guide).
+    execution: perfil de execução {effort: auto|minimal|low|medium|high|max, max_output_tokens, parallel_tools,
+    prompt_cache, max_turns (harness)}. Em geral deixe ausente (automático pelo papel); confira com
+    get_execution_profile."""
     patch = {k: v for k, v in (("instructions", instructions), ("skills", skills), ("mcps", mcps),
                                ("tools", tools), ("sub_agents", sub_agents), ("tests", tests),
                                ("channels", channels), ("llm", llm), ("harness", harness), ("judge", judge),
-                               ("memory", memory))
+                               ("memory", memory), ("execution", execution))
              if v is not None}
     if model is not None:
         patch["llm"] = {**(patch.get("llm") or {}), "model": model or None}

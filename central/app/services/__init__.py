@@ -29,6 +29,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       employee_teamwork,
                       employee_work,
                       employees,
+                      execution,
                       extraction,
                       goals,
                       governance,

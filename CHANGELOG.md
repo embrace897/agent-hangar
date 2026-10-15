@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Execution profile** for every agent (`execution` in the spec, *Execução* card on the agent page, `GET /api/agents/{slug}/execution`, MCP `get_execution_profile`). See [docs/execution.md](docs/execution.md).
+  - **Reasoning effort:** automatic by the agent's role (planner and coder high, triage minimal). It only goes to models that have a reasoning mode, according to the provider's list.
+  - **Other settings:** output limit, parallel tools, prompt cache and the harness's maximum rounds.
+  - **Chat agents:** the runtime sends each setting in the provider's own format: `reasoning.effort` on OpenRouter, `reasoning_effort` on OpenAI, LiteLLM and others, `max_completion_tokens` on OpenAI. Claude models behind LiteLLM or OpenRouter get `cache_control` on the system prompt. If the provider refuses an option, the runtime repeats the call without it.
+  - **Parallel tools:** tool calls of different MCP servers and sub-agents in the same round run at the same time; the same server's stay in order.
+  - **Harnesses:** each one gets the profile in its CLI's flags. Claude Code gets `--effort`, `--max-turns`, its output limit and prompt cache; Codex gets `model_reasoning_effort`; Hermes gets `--reasoning`.
+  - **Warnings:** what does not take effect shows as a warning, for example effort on a model without a reasoning mode or a model without tool calling.
+- `harness.model`: a harness agent can pick a model from its connection's list (before, always the connection's default).
+
 ## [0.35.0] — 2026-10-15
 
 ### Added

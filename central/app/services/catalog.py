@@ -256,9 +256,10 @@ def resolve_harness(db: Session, spec: dict, env: str) -> dict:
     if conn.protocol != wanted:
         raise PlatformError(f"Conexão '{conn_name}' é protocol='{conn.protocol}'; o harness '{harness_id}' "
                             f"precisa de uma conexão protocol='{wanted}'.")
+    model = override.get("model") or h.get("model") or conn.model_name
     return {"harness_id": harness_id, "connection": conn.name, "base_url": conn.base_url,
-            "api_key": crypto.decrypt(conn.api_key), "model": conn.model_name, "mock": False,
-            "prices": llm_models.prices_for(db, conn, conn.model_name)}
+            "api_key": crypto.decrypt(conn.api_key), "model": model, "mock": False,
+            "prices": llm_models.prices_for(db, conn, model)}
 
 
 def cost_usd(tokens_in: int, tokens_out: int, prices: tuple) -> float:

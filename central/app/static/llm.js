@@ -342,3 +342,43 @@ async function modelRecCard(box, a, canEdit, role = '') {
     && act(e.target, () => api('/agents/' + a.slug, { method: 'PATCH', body: { llm: { connection: b.dataset.c, model: b.dataset.m } } }).then(route),
       'Modelo trocado: nova versão criada (rode os testes para levar à produção)'));
 }
+
+/* página do agente: o perfil de execução — o que a spec pede e o que vai de fato ao modelo ou ao harness */
+const CACHE_MODE = { explicit: 'marcado no prompt (Claude via gateway)', auto: 'automático no provedor', provider: 'o provedor decide', off: 'desligado' };
+async function execCard(box, a, canEdit, env = 'prod') {
+  let r;
+  try { r = await api(`/agents/${a.slug}/execution?env=${env}`); } catch (e) { return; }
+  const p = r.profile, s = r.spec || {}, harness = p.target !== 'runtime';
+  const lvl = v => r.level_labels[v] ? window.t(r.level_labels[v], 'esforco') : v;
+  const sent = p.effort ? `<span class="pill ok" data-noi18n>${esc(p.effort)}</span> <span class="mute small">via <code class="inline" data-noi18n>${esc(p.effort_param)}</code></span>`
+    : '<span class="pill">não enviado</span>';
+  const opts = r.levels.map(v => `<option value="${v}" ${(s.effort || 'auto') === v ? 'selected' : ''}>${v === 'auto' ? esc(window.t('automático (pelo papel)')) : esc(lvl(v))}</option>`).join('');
+  box.innerHTML = `<div class="card mt"><div class="row between" style="flex-wrap:wrap;gap:8px"><h2 style="margin:0">Execução</h2>
+      <span class="row small"><span class="mute">como o modelo trabalha em cada chamada ·</span>
+        <select id="ex-env" style="width:auto;min-height:30px;padding:3px 8px"><option value="prod" ${env === 'prod' ? 'selected' : ''}>produção</option><option value="stage" ${env === 'stage' ? 'selected' : ''}>stage</option></select></span></div>
+    <div class="mute small mt">${harness ? `<span>Harness</span> <span class="chip" data-noi18n>${esc(p.target)}</span>` : '<span>Agente de chat</span>'}
+      ${p.model ? `· <code class="inline" data-noi18n>${esc(p.model)}</code> <span>(${esc(p.connection)})</span>` : '· <span>sem conexão (modo mock)</span>'}
+      ${(p.caps || []).map(c => `<span class="chip">${esc(CAP_LABEL[c] || c)}</span>`).join(' ')}</div>
+    <dl class="kv mt">
+      <dt>Esforço de raciocínio</dt><dd>${canEdit ? `<select id="ex-effort" style="width:auto" data-noi18n>${opts}</select> ` : ''}${sent}
+        <div class="small mute">${esc(p.effort_source)}${p.effort_level && p.effort_level !== p.effort ? ` · <span>pedido</span>: ${esc(lvl(p.effort_level))}` : ''}</div></dd>
+      <dt>Limite de saída</dt><dd>${canEdit ? `<input id="ex-out" type="number" min="256" max="128000" step="256" value="${s.max_output_tokens || ''}" placeholder="padrão do provedor" style="width:180px"> ` : (s.max_output_tokens || '<span class="mute">padrão do provedor</span>')}
+        ${p.output_param ? `<span class="mute small">via <code class="inline" data-noi18n>${esc(p.output_param)}</code></span>` : ''}</dd>
+      ${harness ? `<dt>Rodadas máximas</dt><dd>${canEdit ? `<input id="ex-turns" type="number" min="1" max="500" value="${s.max_turns || ''}" placeholder="padrão do harness" style="width:180px">` : (s.max_turns || '<span class="mute">padrão do harness</span>')}</dd>`
+        : `<dt>Ferramentas em paralelo</dt><dd><label class="row small"><input type="checkbox" id="ex-par" style="width:auto" ${s.parallel_tools === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>servidores diferentes e sub-agentes rodam ao mesmo tempo (as do mesmo servidor seguem em ordem)</span></label></dd>`}
+      <dt>Cache do prompt</dt><dd><label class="row small"><input type="checkbox" id="ex-cache" style="width:auto" ${s.prompt_cache === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>${esc(window.t(CACHE_MODE[p.prompt_cache] || p.prompt_cache || '—'))}</span></label></dd>
+    </dl>
+    ${p.warnings.length ? p.warnings.map(w => `<div class="small mt"><span class="pill warn">aviso</span> <span data-noi18n>${esc(w)}</span></div>`).join('') : ''}
+    ${canEdit ? `<div class="row mt"><button id="ex-save">Salvar execução</button><span class="mute small">vira uma versão nova, que passa pelos testes antes de produção</span></div>` : ''}</div>`;
+  $('#ex-env').onchange = () => execCard(box, a, canEdit, $('#ex-env').value);
+  if (!canEdit) return;
+  $('#ex-save').onclick = e => act(e.target, async () => {
+    const num = id => { const x = $(id); return x && x.value ? Number(x.value) : null; };
+    const ex = { effort: $('#ex-effort').value === 'auto' ? null : $('#ex-effort').value, max_output_tokens: num('#ex-out'),
+      parallel_tools: $('#ex-par') && !$('#ex-par').checked ? false : null, prompt_cache: $('#ex-cache').checked ? null : false,
+      max_turns: num('#ex-turns') };
+    const empty = Object.values(ex).every(v => v === null);
+    await api('/agents/' + a.slug, { method: 'PATCH', body: { execution: empty ? null : ex } });
+    route();
+  }, 'Execução salva: nova versão criada (rode os testes para levar à produção)');
+}

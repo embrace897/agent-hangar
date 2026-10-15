@@ -45,13 +45,27 @@ class LlmSpec(_Strict):
 class HarnessEnvOverride(_Strict):
     id: HarnessId | None = None
     connection: str | None = None
+    model: str | None = None
 
 
 class HarnessSpec(_Strict):
     id: HarnessId
     connection: str = ""
+    model: str = Field(default="", description="modelo da conexão (vazio = o padrão da conexão)")
     stage: HarnessEnvOverride | None = None
     prod: HarnessEnvOverride | None = None
+
+
+class ExecutionSpec(_Strict):
+    """Como o modelo trabalha em cada chamada. Ausente = automático: o esforço vem do papel do agente e só vai ao
+    modelo que tem modo de raciocínio. A central traduz para o runtime de chat e para cada harness."""
+    effort: Literal["auto", "minimal", "low", "medium", "high", "max"] | None = Field(
+        default=None, description="esforço de raciocínio (auto = pelo papel: planejador e código alto, triagem mínimo)")
+    max_output_tokens: int | None = Field(default=None, ge=256, le=128_000, description="limite de tokens de saída")
+    parallel_tools: bool | None = Field(
+        default=None, description="false: uma ferramenta por vez (padrão: as de servidores diferentes rodam juntas)")
+    prompt_cache: bool | None = Field(default=None, description="false: não usa cache do prompt (padrão: usa)")
+    max_turns: int | None = Field(default=None, ge=1, le=500, description="harness: rodadas máximas do CLI")
 
 
 class JudgeSpec(_Strict):
@@ -131,6 +145,7 @@ class TestCase(_Strict):
 class AgentSpec(_Strict):
     llm: LlmSpec = Field(default_factory=LlmSpec)
     harness: HarnessSpec | None = None
+    execution: ExecutionSpec | None = None
     judge: JudgeSpec | None = None
     instructions: str = ""
     skills: list[str | InlineSkill] = Field(default_factory=list)

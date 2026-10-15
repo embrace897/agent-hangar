@@ -433,6 +433,7 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 | [Member workspace](docs/workspace.md) | The member's portal: personal agents, visual org chart, connect my AI, sign-ins and activation codes, installable app with notifications |
 | [Memory](docs/memory.md) · [MCP catalog](docs/mcp-catalog.md) · [Remote MCPs + Activepieces](docs/remote-mcp.md) | What agents can know and use |
 | [Harnesses](docs/harnesses.md) | Claude Code, Codex, Hermes and DeepSeek Harness as agents |
+| [Execution profile](docs/execution.md) | Reasoning effort, output limit, parallel tools and prompt cache, per provider and harness |
 | [Reuse before you build](docs/composer.md) | New agents from existing ones: plan, pieces, skills, read-only rules |
 | [Agent guide](docs/guide.md) | The Guide tab: flow from the spec, fact sheet, the users' guide and its drafts |
 | [Plugins](docs/plugins.md) | Connect any system with a declarative manifest: tools, team credential, action types for the authority, review and install per team |

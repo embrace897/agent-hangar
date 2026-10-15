@@ -22,6 +22,9 @@ const JOB_TOKEN = env.JOB_TOKEN || '';
 const LLM_BASE_URL = env.LLM_BASE_URL || '';
 const LLM_API_KEY = env.LLM_API_KEY || '';
 const LLM_MODEL = env.LLM_MODEL || '';
+// Perfil de execução resolvido pela central (services/execution.py), já no vocabulário deste harness:
+// {effort, max_output_tokens, max_turns, prompt_cache}. Só vem o que o harness e o modelo aceitam.
+const EXEC = (() => { try { return JSON.parse(env.LLM_EXEC_JSON || '{}') || {}; } catch { return {}; } })();
 // Sem chave associada -> a central já sabe que é mock (resolve_harness marca mock=True), mas o
 // entrypoint decide sozinho pela ausência de LLM_API_KEY, sem precisar de uma env var extra pra isso.
 const HARNESS_ID = LLM_API_KEY ? REAL_HARNESS_ID : 'mock';
@@ -83,8 +86,12 @@ function runClaudeCode() {
   if (SYSTEM_PROMPT) args.push('--append-system-prompt', SYSTEM_PROMPT);
   if (LLM_MODEL) args.push('--model', LLM_MODEL);
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+  if (EXEC.effort) args.push('--effort', EXEC.effort);
+  if (EXEC.max_turns) args.push('--max-turns', String(EXEC.max_turns));
   const childEnv = { ...env, ANTHROPIC_API_KEY: LLM_API_KEY };
   if (LLM_BASE_URL) childEnv.ANTHROPIC_BASE_URL = LLM_BASE_URL;
+  if (EXEC.max_output_tokens) childEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(EXEC.max_output_tokens);
+  if (EXEC.prompt_cache === false) childEnv.DISABLE_PROMPT_CACHING = '1';
   let stdout = '', stderr = '', failed = false;
   try {
     stdout = run('claude', args, { env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -123,6 +130,7 @@ function runCodex() {
     '-c', 'model_providers.central.env_key="OPENAI_API_KEY"',
     '-c', 'model_provider="central"'];
   if (LLM_MODEL) args.push('--model', LLM_MODEL);
+  if (EXEC.effort) args.push('-c', `model_reasoning_effort="${EXEC.effort}"`);
   const childEnv = { ...env, OPENAI_API_KEY: LLM_API_KEY };
   let stdout = '', stderr = '', failed = false;
   try {
@@ -168,6 +176,7 @@ function runHermes() {
   const usageFile = '/tmp/hermes-usage.json';
   const args = ['-z', fullPrompt, '--provider', 'openai-api', '--usage-file', usageFile];
   if (LLM_MODEL) args.push('-m', LLM_MODEL);
+  if (EXEC.effort) args.push('--reasoning', EXEC.effort);
   const childEnv = { ...env, OPENAI_API_KEY: LLM_API_KEY };
   if (LLM_BASE_URL) childEnv.OPENAI_BASE_URL = LLM_BASE_URL;
   let stdout = '', stderr = '', failed = false;

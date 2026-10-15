@@ -238,7 +238,6 @@ async function newAgentPage() {
     refreshBtn();
   });
   $('#na-conn').onchange = () => modelOptions($('#na-model'), $('#na-conn').value);
-  $('#na-kind').addEventListener('change', () => { $('#na-model-l').hidden = $('#na-kind').value !== 'chat'; });
   $('#na-go').onclick = e => act(e.target, async () => {
     const body = { name: $('#na-name').value.trim(), objective: $('#na-obj').value.trim(), final_output: $('#na-out').value.trim(), owner: $('#na-owner').value.trim(), team: $('#na-team').value, visibility: $('#na-vis').value || null };
     if (!body.name || !body.objective || !body.final_output) throw new Error('Nome, objetivo e saída final são obrigatórios');
@@ -256,7 +255,7 @@ async function newAgentPage() {
     const a = await api('/agents', { method: 'POST', body });
     const kind = $('#na-kind').value, conn = $('#na-conn').value, model = $('#na-model').value;
     const patch = { instructions: $('#na-ins').value };
-    if (kind === 'chat') { if (conn) patch.llm = { connection: conn, ...(model ? { model } : {}) }; } else patch.harness = { id: kind, ...(conn ? { connection: conn } : {}) };
+    if (kind === 'chat') { if (conn) patch.llm = { connection: conn, ...(model ? { model } : {}) }; } else patch.harness = { id: kind, ...(conn ? { connection: conn, ...(model ? { model } : {}) } : {}) };
     await api('/agents/' + a.slug, { method: 'PATCH', body: patch });
     if ($('#na-ship').checked) shipResult(await api(`/agents/${a.slug}/ship`, { method: 'POST' }));
     location.hash = '#/agents/' + a.slug;
@@ -382,6 +381,7 @@ function overview(t, a) {
       <dt>Tipo</dt><dd><span class="pill info">agente com harness</span></dd>
       <dt>Harness</dt><dd><span class="chip">${esc(s.harness.id)}</span></dd>
       <dt>Conexão LLM</dt><dd>${s.harness.connection ? `<span class="chip">${esc(s.harness.connection)}</span>` : '<span class="mute">nenhuma (modo mock)</span>'}</dd>
+      ${s.harness.connection ? `<dt>Modelo</dt><dd>${esc(s.harness.model) || '<span class="mute">padrão da conexão</span>'}</dd>` : ''}
       ${s.harness.stage ? `<dt>Override stage</dt><dd><code class="inline">${esc(JSON.stringify(s.harness.stage))}</code></dd>` : ''}
       ${s.harness.prod ? `<dt>Override prod</dt><dd><code class="inline">${esc(JSON.stringify(s.harness.prod))}</code></dd>` : ''}
       <dt>Skills</dt><dd>${list(s.skills, x => x.name || x)}</dd><dt>MCPs</dt><dd>${list(s.mcps, x => x.name || x)}</dd>
@@ -406,8 +406,9 @@ function overview(t, a) {
     <div class="card"><h2>Endpoints (produção)</h2><div class="mute small">Header <code>Authorization: Bearer &lt;chave invoke&gt;</code> (gere em <a href="#/keys">Chaves de API</a>); opcional <code>X-Channel: slack</code> para métricas por canal.
       ${a.harness ? ' Agente com harness: cada chamada (OpenAI, A2A, ACP ou MCP) vira um job num container efêmero.' : ''}</div>
       ${Object.entries(a.endpoints).map(([k, v]) => `<h3>${k}</h3>${copyable(v)}`).join('')}
-      <h3>Stage</h3>${copyable(a.endpoints.openai.replace('/gw/', '/gw-stage/'))}</div></div><div id="model-rec"></div><div id="lineage"></div>`;
+      <h3>Stage</h3>${copyable(a.endpoints.openai.replace('/gw/', '/gw-stage/'))}</div></div><div id="model-rec"></div><div id="exec-prof"></div><div id="lineage"></div>`;
   if (!a.harness) modelRecCard($('#model-rec'), a, can(a, 'edit'));
+  execCard($('#exec-prof'), a, can(a, 'edit'));
   lineageCard(a.slug);
 }
 
