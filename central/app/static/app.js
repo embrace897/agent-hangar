@@ -903,7 +903,7 @@ async function route() {
     else if (r === 'files') await filesPage();
     else if (r === 'issues' && a === 'settings') { if (USER_MODE) { location.replace('#/issues'); return; } await issueSettingsPage(); }
     else if (r === 'issues' && a) await issueDetail(decodeURIComponent(a));
-    else if (r === 'issues') await issuesPage(false);
+    else if (r === 'issues') { if (USER_MODE) { location.replace('#/my-issues'); return; } await issuesPage(false); }  // no app, só as minhas
     else if (r === 'my-issues') await issuesPage(true);
     else if (r === 'org') await orgVisualPage();
     else if (r === 'mine') await myAgentsPage();

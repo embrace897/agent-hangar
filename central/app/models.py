@@ -1804,6 +1804,9 @@ class Issue(OrgScoped, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # nunca é apagada: o membro tira da lista dele depois de concluir; a visão da empresa (admin) continua vendo
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[str] = mapped_column(String(254), default="")
 
 
 class IssueRelation(OrgScoped, Base):

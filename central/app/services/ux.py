@@ -47,7 +47,7 @@ def onboarding(db, acc: Access, portal: bool = False) -> dict:
         steps = [
             ("connect", "Conectar a sua IA (Claude, ChatGPT, Codex…)", _n(db, ApiKey, ApiKey.user_id == uid,
                                                                           ApiKey.revoked_at.is_(None)) > 0, "#/connect-ai"),
-            ("issue", "Criar a primeira issue", _n(db, Issue, Issue.creator_user_id == uid) > 0, "#/issues"),
+            ("issue", "Criar a primeira issue", _n(db, Issue, Issue.creator_user_id == uid) > 0, "#/my-issues"),
             ("decisions", "Escolher onde recebe as decisões", bool(u and (u.notify or {}).get("channel")), "#/decisions"),
         ]
         if policy(db)["personal_agents"]["enabled"]:

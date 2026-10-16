@@ -6,6 +6,11 @@ const PRIO = { urgent: ['Urgente', 4], high: ['Alta', 3], medium: ['Média', 2],
 const ISS_VIEWS = { board: 'Quadro', list: 'Lista', table: 'Tabela', swim: 'Raias', timeline: 'Cronograma' };
 const ISS_LANES = { assignee: 'Responsável', priority: 'Prioridade', project: 'Projeto' };
 const ISS = { settings: null, people: {}, poll: null, drag: null, busy: false };
+// No console (/ui) o quadro é a visão da empresa: todas as issues, só leitura, inclusive as que os membros tiraram da
+// lista. No portal (/app) cada pessoa vê e trabalha só nas issues dela.
+const ISS_ORG = () => !USER_MODE;
+const issApi = path => api(path + (ISS_ORG() ? (path.includes('?') ? '&' : '?') + 'view=org' : ''));
+const issRemoved = i => i.removed_at ? `<span class="pill" title="${esc(window.t('Tirada da lista por') + ' ' + (i.removed_by || ''))}">${esc(window.t('removida pelo membro'))}</span>` : '';
 const issLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { /* ok */ } return null; };
 
 async function issSettings(force) { if (!ISS.settings || force) ISS.settings = await api('/issues/settings'); return ISS.settings; }
@@ -49,7 +54,7 @@ function issCard(i) {
     ${i.snippet ? `<div class="iss-snip" data-noi18n>${esc(i.snippet)}</div>` : ''}
     <div class="iss-meta">${issAvatar(i.assignee)}${prioChip(i.priority)}${issLabels(i.labels)}${issDue(i)}
       ${i.sub.total ? `<span class="iss-sub" title="${esc(window.t('Sub-issues'))}">${i.sub.done}/${i.sub.total}</span>` : ''}
-      ${i.comments ? `<span class="iss-cm" title="${esc(window.t('Comentários'))}">${icon('chat')}${i.comments}</span>` : ''}${issRun(i.run)}</div></div>`;
+      ${i.comments ? `<span class="iss-cm" title="${esc(window.t('Comentários'))}">${icon('chat')}${i.comments}</span>` : ''}${issRun(i.run)}${issRemoved(i)}</div></div>`;
 }
 
 /* ---------- a página do quadro ---------- */
@@ -68,13 +73,12 @@ function issGo(base, f) {
 async function issuesPage(mine = false) {
   const base = mine ? '#/my-issues' : '#/issues';
   const f = issQuery();
-  if (mine) f.assignee = 'me';
-  const [st, list, projects] = await Promise.all([issSettings(true), api('/issues?' + new URLSearchParams(
+  const [st, list, projects] = await Promise.all([issSettings(true), issApi('/issues?' + new URLSearchParams(
     Object.fromEntries(['team', 'project', 'assignee', 'priority', 'label', 'q'].filter(k => f[k]).map(k => [k, f[k]])))),
     api('/projects').catch(() => [])]);
   const people = await issPeople(f.team);
   const nFilters = ['team', 'project', 'priority', 'label'].filter(k => f[k]).length + (!mine && f.assignee ? 1 : 0);
-  main.innerHTML = `<div class="iss-head"><div><h1>${mine ? 'Minhas issues' : 'Issues'}</h1></div>
+  main.innerHTML = `<div class="iss-head"><div><h1>${mine ? 'Minhas issues' : 'Issues'}</h1>${ISS_ORG() ? `<div class="mute small">${esc(window.t('Visão da empresa: as issues de todos os membros e dos agentes, só leitura. Nada é apagado daqui — quem tem a issue a tira da lista dele no app, depois de concluída.'))}</div>` : ''}</div>
     <div class="row iss-tools">
       <div class="seg">${Object.entries(ISS_VIEWS).map(([k, v]) => `<button class="ghost small ${f.view === k ? 'on' : ''}" data-view="${k}">${v}</button>`).join('')}</div>
       <details class="iss-pop"><summary class="ghost small btnlike">${icon('target')}<span>Filtro</span>${nFilters ? ` <b>${nFilters}</b>` : ''}</summary><div class="card iss-pop-body">
@@ -89,7 +93,7 @@ async function issuesPage(mine = false) {
       <input id="iss-q" type="search" placeholder="Buscar… ( / )" value="${esc(f.q)}" style="width:180px">
       <span class="mute small"><b>${list.length}</b> <span>issues</span></span>
       ${!USER_MODE && ME.is_admin ? `<a href="#/issues/settings" class="ghost small btnlike" title="${esc(window.t('Configurar o quadro'))}">${icon('userCog')}</a>` : ''}
-      <button id="iss-new">${icon('plus')}<span>Nova issue</span></button></div></div>
+      ${ISS_ORG() ? '' : `<button id="iss-new">${icon('plus')}<span>Nova issue</span></button>`}</div></div>
   <div id="iss-body"></div>`;
   const draw = rows => { $('#iss-body').innerHTML = issRender(f, rows, st); issBind(f, rows, base); };
   draw(list);
@@ -100,7 +104,7 @@ async function issuesPage(mine = false) {
   $('#if-clear').onclick = () => issGo(base, { view: f.view, lane: f.lane });
   const lane = $('#if-lane'); if (lane) lane.onchange = () => { issLS('iss_lane', lane.value); issGo(base, { ...f, lane: lane.value }); };
   let tq; $('#iss-q').oninput = e => { clearTimeout(tq); tq = setTimeout(() => issGo(base, { ...f, q: e.target.value.trim() }), 400); };
-  $('#iss-new').onclick = () => issNew({ team: f.team, project: f.project, assignee: mine ? 'me' : '' });
+  const nw = $('#iss-new'); if (nw) nw.onclick = () => issNew({ team: f.team, project: f.project, assignee: mine ? 'me' : '' });
   // tempo real: a cada 8 s, enquanto ninguém arrasta nem escreve
   clearInterval(ISS.poll);
   const here = location.hash;
@@ -108,7 +112,7 @@ async function issuesPage(mine = false) {
     if (location.hash !== here) { clearInterval(ISS.poll); return; }
     if (document.hidden || ISS.drag || ISS.busy || $('.modal-bg') || document.activeElement.matches('input,textarea,select')) return;
     try {
-      const fresh = await api('/issues?' + new URLSearchParams(Object.fromEntries(['team', 'project', 'assignee', 'priority', 'label', 'q'].filter(k => f[k]).map(k => [k, f[k]]))));
+      const fresh = await issApi('/issues?' + new URLSearchParams(Object.fromEntries(['team', 'project', 'assignee', 'priority', 'label', 'q'].filter(k => f[k]).map(k => [k, f[k]]))));
       draw(fresh);
     } catch (e) { /* a próxima tenta de novo */ }
   }, 8000);
@@ -124,7 +128,7 @@ function issRender(f, rows, st) {
   const byPos = (a, b) => (a.position - b.position) || (b.number - a.number);
   if (f.view === 'list') {
     return cols.map(s => { const r = rows.filter(i => i.status === s.key).sort(byPos); return r.length ? `<div class="card iss-group"><div class="row">${issPill(s.key)}<span class="mute small">${r.length}</span></div>
-      <table class="iss-rows">${r.map(i => `<tr><td class="iss-key" data-noi18n>${esc(i.key)}</td><td>${prioIcon(i.priority)}</td><td><a href="#/issues/${esc(i.key)}" data-noi18n>${esc(i.title)}</a> ${issLabels(i.labels)} ${issRun(i.run)}</td>
+      <table class="iss-rows">${r.map(i => `<tr><td class="iss-key" data-noi18n>${esc(i.key)}</td><td>${prioIcon(i.priority)}</td><td><a href="#/issues/${esc(i.key)}" data-noi18n>${esc(i.title)}</a> ${issLabels(i.labels)} ${issRun(i.run)} ${issRemoved(i)}</td>
         <td>${issDue(i)}</td><td>${issAvatar(i.assignee)}</td><td class="mute small">${when(i.updated_at)}</td></tr>`).join('')}</table></div>` : ''; }).join('') || issEmpty();
   }
   if (f.view === 'table') {
@@ -134,7 +138,7 @@ function issRender(f, rows, st) {
       updated_at: (a, b) => (b.updated_at || '').localeCompare(a.updated_at || '') }[sortKey] || (() => 0);
     const th = (k, l) => `<th class="sortable ${sortKey === k ? 'on' : ''}" data-sort="${k}">${l}</th>`;
     return rows.length ? `<div class="card scroll"><table class="iss-table"><tr>${th('number', 'Chave')}<th>Título</th>${th('status', 'Status')}${th('priority', 'Prioridade')}<th>Responsável</th><th>Etiquetas</th><th>Projeto</th>${th('due_date', 'Prazo')}${th('updated_at', 'Atualizada')}</tr>
-      ${[...rows].sort(cmp).map(i => `<tr><td class="iss-key" data-noi18n>${esc(i.key)}</td><td><a href="#/issues/${esc(i.key)}" data-noi18n>${esc(i.title)}</a> ${issRun(i.run)}</td><td>${issPill(i.status)}</td><td>${prioChip(i.priority)}</td>
+      ${[...rows].sort(cmp).map(i => `<tr><td class="iss-key" data-noi18n>${esc(i.key)}</td><td><a href="#/issues/${esc(i.key)}" data-noi18n>${esc(i.title)}</a> ${issRun(i.run)} ${issRemoved(i)}</td><td>${issPill(i.status)}</td><td>${prioChip(i.priority)}</td>
         <td>${i.assignee ? `${issAvatar(i.assignee)} <span class="small" data-noi18n>${esc(i.assignee.name)}</span>` : '<span class="mute">—</span>'}</td><td>${issLabels(i.labels)}</td>
         <td class="small" data-noi18n>${esc(i.project ? i.project.name : '')}</td><td>${issDue(i)}</td><td class="mute small">${when(i.updated_at)}</td></tr>`).join('')}</table></div>` : issEmpty();
   }
@@ -151,11 +155,12 @@ function issRender(f, rows, st) {
       <div class="iss-board compact iss-lane-cols">${cols.map(s => `<div class="iss-col-h">${issPill(s.key)}</div>`).join('')}</div></div>`;
   }
   return `<div class="iss-board">${cols.map(s => { const r = rows.filter(i => i.status === s.key).sort(byPos); return `<section class="iss-col" style="--c:${esc(s.color)}">
-    <div class="iss-col-h">${issPill(s.key)}<span class="mute small">${r.length}</span><button class="ghost small iss-col-add" data-status="${esc(s.key)}" title="${esc(window.t('Nova issue neste status'))}">+</button></div>
+    <div class="iss-col-h">${issPill(s.key)}<span class="mute small">${r.length}</span>${ISS_ORG() ? '' : `<button class="ghost small iss-col-add" data-status="${esc(s.key)}" title="${esc(window.t('Nova issue neste status'))}">+</button>`}</div>
     <div class="iss-col-body" data-status="${esc(s.key)}">${r.map(issCard).join('')}</div></section>`; }).join('')}</div>`;
 }
 
-const issEmpty = () => `<div class="card empty"><div class="mute">Nenhuma issue aqui. Crie a primeira com <b>Nova issue</b> (ou a tecla <kbd>C</kbd>) — atribua a um Digital employee e ele começa a trabalhar.</div></div>`;
+const issEmpty = () => ISS_ORG() ? '<div class="card empty"><div class="mute">Nenhuma issue na empresa com estes filtros.</div></div>'
+  : `<div class="card empty"><div class="mute">Nenhuma issue aqui. Crie a primeira com <b>Nova issue</b> (ou a tecla <kbd>C</kbd>) — atribua a um Digital employee e ele começa a trabalhar.</div></div>`;
 
 function issTimeline(rows) {
   const dated = rows.filter(i => i.start_date || i.due_date);
@@ -320,15 +325,17 @@ const ISS_ACT = {
 const issActor = a => a.startsWith('employee:') ? `${icon('bot')}<b data-noi18n>${esc(a.slice(9))}</b>` : `<b data-noi18n>${esc(a)}</b>`;
 
 async function issueDetail(key) {
-  const [st, d] = await Promise.all([issSettings(), api(`/issues/${encodeURIComponent(key)}`)]);
+  const [st, d] = await Promise.all([issSettings(), issApi(`/issues/${encodeURIComponent(key)}`)]);
   const [people, projects] = await Promise.all([issPeople(d.team ? d.team.slug : ''), api('/projects').catch(() => [])]);
   ISS.cur = d;
-  const ed = d.can_edit;
+  const ed = d.can_edit, cmt = d.can_comment;
+  const home = USER_MODE ? ['#/my-issues', 'Minhas issues'] : ['#/issues', 'Issues'];
   const opt = (v, cur, l) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${l}</option>`;
   const assigneeRef = d.assignee ? d.assignee.ref : '';
-  main.innerHTML = `<div class="iss-crumb small"><a href="#/issues">Issues</a> ›${d.parent ? ` <a href="#/issues/${esc(d.parent.key)}" data-noi18n>${esc(d.parent.key)}</a> ›` : ''} <span data-noi18n>${esc(d.key)}</span></div>
+  main.innerHTML = `<div class="iss-crumb small"><a href="${home[0]}">${esc(window.t(home[1]))}</a> ›${d.parent ? ` <a href="#/issues/${esc(d.parent.key)}" data-noi18n>${esc(d.parent.key)}</a> ›` : ''} <span data-noi18n>${esc(d.key)}</span></div>
   <div class="iss-page">
     <div class="iss-main">
+      ${d.removed_at ? `<div class="card warn-card small"><span>Tirada da lista por</span> <b data-noi18n>${esc(d.removed_by)}</b> ${when(d.removed_at)} — <span>a visão da empresa mantém a issue, o histórico e as rodadas.</span></div>` : ''}
       <input id="id-title" class="iss-big iss-title-in" value="${esc(d.title)}" ${ed ? '' : 'readonly'} data-noi18n>
       <div class="card iss-desc"><div class="row between"><span class="mute small">Descrição</span>${ed ? '<button class="ghost small" id="id-desc-edit">Editar</button>' : ''}</div>
         <div id="id-desc" class="md">${d.description ? issMd(d.description) : '<span class="mute">Sem descrição.</span>'}</div></div>
@@ -339,7 +346,7 @@ async function issueDetail(key) {
         <div id="id-sub-form" hidden class="row mt"><input id="id-sub-title" placeholder="Título da sub-issue" style="flex:1"><input id="id-sub-stage" type="number" min="1" placeholder="etapa" style="width:80px">
           <select id="id-sub-assignee" style="width:auto"><option value="">${window.t('Sem responsável')}</option>${issAssigneeOptions(people, '')}</select><button id="id-sub-go">Criar</button></div></div>
       <div class="card mt"><h2>Atividade</h2><div id="id-tl"></div>
-        ${ed ? `<div class="iss-composer mt"><textarea id="id-cm" rows="3" placeholder="Comente… @ menciona uma pessoa ou um Digital employee (ele começa a trabalhar no pedido)"></textarea>
+        ${cmt ? `<div class="iss-composer mt"><textarea id="id-cm" rows="3" placeholder="Comente… @ menciona uma pessoa ou um Digital employee (ele começa a trabalhar no pedido)"></textarea>
           <div class="row between"><span class="mute small">Markdown · Ctrl+Enter envia</span><button id="id-cm-go">Comentar</button></div></div>` : ''}</div>
     </div>
     <aside class="iss-side card">
@@ -366,12 +373,14 @@ async function issueDetail(key) {
           <input id="ip-rel-key" placeholder="${esc(st.prefix)}-12" style="width:90px"><button class="ghost small" id="ip-rel-go">+</button></div>` : ''}</div>
       <div class="iss-side-sec"><div class="mute small">Rodadas dos Digital employees</div>
         ${d.runs.map(r => `<div class="small"><a href="#/tasks/${r.task_id}">#${r.task_id}</a> <span data-noi18n>${esc(r.employee_name)}</span> ${pill(r.status)} <span class="mute">${usd(r.cost_usd)}</span></div>`).join('') || '<div class="mute small">—</div>'}</div>
-      <div class="iss-side-sec"><button class="ghost small" id="ip-sub">${d.subscribed ? 'Cancelar inscrição' : 'Inscrever-se'}</button>
+      <div class="iss-side-sec">${ISS_ORG() ? '' : `<button class="ghost small" id="ip-sub">${d.subscribed ? 'Cancelar inscrição' : 'Inscrever-se'}</button>`}
         <div class="mute small">${d.subscribers.length} <span>inscrito(s): veem a atividade na caixa de entrada.</span></div></div>
       <div class="mute small"><span>Criada</span> ${when(d.created_at)}${d.creator ? ` <span>por</span> <span data-noi18n>${esc(d.creator.replace(/^employee:/, ''))}</span>` : ''}</div>
-      ${d.can_delete ? '<button class="ghost danger small" id="ip-del">Apagar issue</button>' : ''}
+      ${d.can_delete && ['done', 'closed'].includes(d.category) ? '<button class="ghost danger small" id="ip-del">Tirar da minha lista</button>'
+        : d.can_delete ? `<div class="mute small">${esc(window.t('Concluída ou cancelada, a issue pode sair da sua lista (a empresa continua com o histórico).'))}</div>` : ''}
     </aside></div>`;
   issTimelineRender(d);
+  if (cmt && !ed) bindComposer(d, people);
   if (!ed) return;
   const save = async (changes, msg) => {
     try { ISS.busy = true; const r = await api(`/issues/${encodeURIComponent(d.key)}`, { method: 'PATCH', body: changes }); if (r.run_started) toast(window.t('O Digital employee começou a trabalhar')); else if (msg) toast(window.t(msg)); }
@@ -419,28 +428,35 @@ async function issueDetail(key) {
   $('#ip-rel-go').onclick = ev => act(ev.target, () => api(`/issues/${encodeURIComponent(d.key)}/relations`, { method: 'POST', body: { kind: $('#ip-rel-kind').value, other: $('#ip-rel-key').value.trim() } }).then(route), 'Relação criada');
   $('#ip-sub').onclick = ev => act(ev.target, () => api(`/issues/${encodeURIComponent(d.key)}/subscription`, { method: 'POST', body: { subscribed: !d.subscribed } }).then(route));
   const del = $('#ip-del');
-  if (del) del.onclick = ev => confirm(window.t('Apagar a issue de vez? Comentários e histórico vão junto e as rodadas em andamento são canceladas. Para guardar o histórico, mude o status para Cancelada.')) &&
-    act(ev.target, () => api(`/issues/${encodeURIComponent(d.key)}`, { method: 'DELETE' }).then(() => { location.hash = '#/issues'; }), 'Issue apagada');
+  if (del) del.onclick = ev => confirm(window.t('Tirar a issue (e as sub-issues) da sua lista? A empresa continua com ela, o histórico e as rodadas.')) &&
+    act(ev.target, () => api(`/issues/${encodeURIComponent(d.key)}`, { method: 'DELETE' }).then(() => { location.hash = '#/my-issues'; }), 'Issue tirada da sua lista');
   $('#id-sub-add').onclick = () => { $('#id-sub-form').hidden = false; $('#id-sub-title').focus(); };
   $('#id-sub-go').onclick = ev => act(ev.target, async () => {
     const r = await api('/issues', { method: 'POST', body: { title: $('#id-sub-title').value.trim(), parent: d.key, stage: Number($('#id-sub-stage').value) || null,
       assignee: $('#id-sub-assignee').value, team: d.team ? d.team.slug : '', project: d.project ? d.project.slug : '', status: $('#id-sub-assignee').value ? 'todo' : 'backlog' } });
     route(); return r;
   }, 'Sub-issue criada');
-  const cm = $('#id-cm');
-  issMentions(cm, people);
-  const send = ev => { if (!cm.value.trim()) return; act($('#id-cm-go'), () => api(`/issues/${encodeURIComponent(d.key)}/comments`, { method: 'POST', body: { body: cm.value } })
-    .then(r => { cm.value = ''; if (r.runs_started && r.runs_started.length) toast(window.t('Digital employee acionado') + ': ' + r.runs_started.join(', ')); route(); })); };
-  $('#id-cm-go').onclick = send;
-  cm.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+  const cm = bindComposer(d, people);
   // tempo real: a conversa e as rodadas atualizam enquanto ninguém escreve
   clearInterval(ISS.poll);
   const here = location.hash;
   ISS.poll = setInterval(async () => {
     if (location.hash !== here) { clearInterval(ISS.poll); return; }
     if (document.hidden || ISS.busy || $('.modal-bg') || document.activeElement.matches('input,textarea,select') || (cm && cm.value.trim()) || $('#id-desc-in')) return;
-    try { const fresh = await api(`/issues/${encodeURIComponent(d.key)}`); if (fresh.updated_at !== d.updated_at || JSON.stringify(fresh.run) !== JSON.stringify(d.run)) route(); } catch (e) { /* ok */ }
+    try { const fresh = await issApi(`/issues/${encodeURIComponent(d.key)}`); if (fresh.updated_at !== d.updated_at || JSON.stringify(fresh.run) !== JSON.stringify(d.run)) route(); } catch (e) { /* ok */ }
   }, 6000);
+}
+
+/* o campo de comentário: quem tem a issue e quem foi mencionado nela */
+function bindComposer(d, people) {
+  const cm = $('#id-cm');
+  if (!cm) return null;
+  issMentions(cm, people);
+  const send = () => { if (!cm.value.trim()) return; act($('#id-cm-go'), () => api(`/issues/${encodeURIComponent(d.key)}/comments`, { method: 'POST', body: { body: cm.value } })
+    .then(r => { cm.value = ''; if (r.runs_started && r.runs_started.length) toast(window.t('Digital employee acionado') + ': ' + r.runs_started.join(', ')); route(); })); };
+  $('#id-cm-go').onclick = send;
+  cm.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+  return cm;
 }
 
 function issTimelineRender(d) {
@@ -453,9 +469,9 @@ function issTimelineRender(d) {
       ${c.task_id ? `<a class="small" href="#/tasks/${c.task_id}">${window.t('rodada')} #${c.task_id}</a>` : ''}
       ${!reply && c.resolved ? `<span class="pill ok">${window.t('resolvida')}</span>` : ''}</div>
     <div class="md iss-c-b">${c.deleted ? `<span class="mute">${window.t('Comentário apagado.')}</span>` : issMd(c.body)}</div>
-    ${c.deleted ? '' : `<div class="iss-c-a">${Object.entries(c.reactions).map(([e, n]) => `<button class="ghost small iss-react ${c.my_reactions.includes(e) ? 'on' : ''}" data-e="${e}">${e} ${n}</button>`).join('')}
-      ${d.can_edit ? `<details class="iss-react-pick"><summary class="ghost small btnlike">☺</summary><span>${['👍', '❤️', '🎉', '👀', '🚀', '😕'].map(e => `<button class="ghost small iss-react" data-e="${e}">${e}</button>`).join('')}</span></details>` : ''}
-      ${!reply && d.can_edit ? `<button class="ghost small iss-reply">${window.t('Responder')}</button><button class="ghost small iss-resolve">${window.t(c.resolved ? 'Reabrir' : 'Resolver')}</button>` : ''}
+    ${c.deleted ? '' : `<div class="iss-c-a">${Object.entries(c.reactions).map(([e, n]) => `<button class="ghost small iss-react ${c.my_reactions.includes(e) ? 'on' : ''}" data-e="${e}" ${d.can_comment ? '' : 'disabled'}>${e} ${n}</button>`).join('')}
+      ${d.can_comment ? `<details class="iss-react-pick"><summary class="ghost small btnlike">☺</summary><span>${['👍', '❤️', '🎉', '👀', '🚀', '😕'].map(e => `<button class="ghost small iss-react" data-e="${e}">${e}</button>`).join('')}</span></details>` : ''}
+      ${!reply && d.can_comment ? `<button class="ghost small iss-reply">${window.t('Responder')}</button><button class="ghost small iss-resolve">${window.t(c.resolved ? 'Reabrir' : 'Resolver')}</button>` : ''}
       ${c.can_edit ? `<button class="ghost small iss-edit">${window.t('Editar')}</button>` : ''}${c.can_delete ? `<button class="ghost small iss-delc">${window.t('Apagar')}</button>` : ''}</div>`}
     ${reply ? '' : (replies[c.id] || []).map(r => comment(r, true)).join('')}</div>`;
   $('#id-tl').innerHTML = items.filter(x => !(x.type === 'comment' && x.parent_id)).map(x => x.type === 'comment' ? comment(x, false)
@@ -549,6 +565,6 @@ document.addEventListener('keydown', e => {
   if (!ME || e.ctrlKey || e.metaKey || e.altKey || document.activeElement.matches('input,textarea,select,[contenteditable]') || $('.modal-bg')) return;
   const r = location.hash.split('?')[0];
   if (!/^#\/(issues|my-issues)/.test(r)) return;
-  if (e.key === 'c' || e.key === 'C') { e.preventDefault(); issNew({}); }
+  if ((e.key === 'c' || e.key === 'C') && !ISS_ORG()) { e.preventDefault(); issNew({}); }
   else if (e.key === '/' && $('#iss-q')) { e.preventDefault(); $('#iss-q').focus(); }
 });

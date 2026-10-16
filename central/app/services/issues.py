@@ -12,7 +12,10 @@
   comentário e a issue vai para revisão; se falhar, volta para "a fazer" com o erro.
 - Sub-issues em etapas: quando todas as da etapa mais antiga terminam, a issue mãe é avisada (e, se for de um Digital
   employee, ele acorda para decidir a próxima etapa).
-- Quem vê: o time da issue (e admin/auditor); sem time, a empresa toda. Apagar: mantenedor, admin ou quem criou.
+- Quem vê: uma pessoa vê só as issues dela — que criou, que são dela ou dos Digital employees dela (e as sub-issues
+  dessas), ou em que está inscrita. Admin e auditor têm a visão da empresa (`view=org`): todas as issues, só leitura.
+- Issue nunca é apagada: concluída ou cancelada, o membro tira da lista dele (removed_at); a visão da empresa
+  continua vendo, com a marca de removida.
 - Inscritos recebem a atividade dos outros na caixa de entrada; comentar ou ser mencionado inscreve.
 """
 import re
@@ -27,7 +30,6 @@ from ..models import (
     Agent,
     Employee,
     EmployeeTask,
-    HumanRequest,
     Issue,
     IssueActivity,
     IssueComment,
@@ -43,7 +45,7 @@ from ..models import (
     now,
 )
 from . import employee_tasks as tasksmod
-from .access import RANK, Access, Forbidden, find_team, principal_for
+from .access import Access, Forbidden, find_team, principal_for
 from .common import PlatformError, audit, iso
 
 BUILTIN = [("backlog", "Backlog", "unstarted", "#8793A1"), ("todo", "A fazer", "unstarted", "#6B7785"),
@@ -193,28 +195,88 @@ def settings(db: Session, acc: Access) -> dict:
 
 
 # ------------------------------------------------------------------ acesso
+def org_view(acc: Access) -> bool:
+    """A visão da empresa (o quadro do console): admin e auditor veem todas as issues, só leitura."""
+    return getattr(acc, "issue_view", "") == "org" and (acc.p.is_admin or acc.p.is_auditor)
+
+
+def _person(acc: Access) -> bool:
+    return bool(acc.p.is_user and acc.p.user_id)
+
+
+def _mine(acc: Access) -> tuple[set[int], set[int]]:
+    """(as issues de uma pessoa, as que ela vê). Dela: que criou, que estão com ela ou com um Digital employee dela
+    (dono ou gestor) — e as sub-issues dessas (o trabalho que os agentes dividiram). Vê também as em que está
+    inscrita (foi mencionada, comentou): pode ler e comentar, não mudar. Calculado uma vez por requisição."""
+    hit = getattr(acc, "_issues_mine", None)
+    if hit is not None:
+        return hit
+    db, uid = acc.db, acc.p.user_id
+    emps = set(db.scalars(select(Employee.id).where(or_(Employee.owner_user_id == uid, Employee.manager_user_id == uid))))
+    subs = set(db.scalars(select(IssueSubscription.issue_id).where(IssueSubscription.user_id == uid)))
+    rows = db.execute(select(Issue.id, Issue.parent_id, Issue.creator_user_id, Issue.assignee_user_id,
+                             Issue.creator_employee_id, Issue.assignee_employee_id)).all()
+    kids: dict[int, list[int]] = {}
+    owned = set()
+    for iid, parent, cu, au, ce, ae in rows:
+        if parent:
+            kids.setdefault(parent, []).append(iid)
+        if uid in (cu, au) or ce in emps or ae in emps:
+            owned.add(iid)
+    stack = list(owned)
+    while stack:
+        for k in kids.get(stack.pop(), []):
+            if k not in owned:
+                owned.add(k)
+                stack.append(k)
+    acc._issues_mine = (owned, owned | subs)
+    return acc._issues_mine
+
+
+def mine_ids(acc: Access) -> set[int]:
+    return _mine(acc)[1]
+
+
+def forget_mine(acc: Access):
+    """Depois de criar uma issue: a próxima consulta recalcula as issues da pessoa."""
+    if hasattr(acc, "_issues_mine"):
+        del acc._issues_mine
+
+
 def can_view(acc: Access, i: Issue) -> bool:
-    if acc.p.is_admin or acc.p.is_auditor or i.team_id is None:
+    if org_view(acc):
         return True
-    uid = acc.p.user_id
-    return bool(acc.team_role(i.team_id)) or (uid is not None and uid in (i.creator_user_id, i.assignee_user_id))
+    if i.removed_at is not None:
+        return False
+    if _person(acc):
+        return i.id in mine_ids(acc)
+    if acc.p.is_admin or acc.p.is_auditor or i.team_id is None:  # agentes e o sistema: pelo time da issue
+        return True
+    return bool(acc.team_role(i.team_id))
 
 
 def can_edit(acc: Access, i: Issue) -> bool:
+    if org_view(acc) or i.removed_at is not None:  # a visão da empresa é só leitura
+        return False
+    if _person(acc):
+        return i.id in _mine(acc)[0]
     if acc.p.is_admin:
         return True
     if not acc.p.user_id:
         return False
-    if i.team_id is None:
-        return True
-    return bool(acc.team_role(i.team_id)) or acc.p.user_id in (i.creator_user_id, i.assignee_user_id)
+    return i.team_id is None or bool(acc.team_role(i.team_id))
+
+
+def can_comment(acc: Access, i: Issue) -> bool:
+    """Comentar e responder: quem vê a issue (inclusive quem foi mencionado), fora da visão da empresa."""
+    if org_view(acc) or i.removed_at is not None:
+        return False
+    return can_view(acc, i) if _person(acc) else can_edit(acc, i)
 
 
 def can_delete(acc: Access, i: Issue) -> bool:
-    if acc.p.is_admin or (acc.p.user_id and acc.p.user_id == i.creator_user_id):
-        return True
-    role = acc.team_role(i.team_id) if i.team_id else None
-    return bool(role) and RANK[role] >= RANK["maintainer"]
+    """Tirar da lista (nunca apagar): quem tem a issue, depois de concluída ou cancelada."""
+    return can_edit(acc, i)
 
 
 def find_issue(db: Session, acc: Access, ref, write: bool = False) -> Issue:
@@ -321,7 +383,8 @@ def issue_dicts(db: Session, acc: Access, rows: list[Issue], detail: bool = Fals
              "run": _run_state(runs.get(i.id, [])), "comments": comments.get(i.id, 0),
              "created_at": iso(tasksmod._aware(i.created_at)), "updated_at": iso(tasksmod._aware(i.updated_at)),
              "completed_at": iso(tasksmod._aware(i.completed_at)) if i.completed_at else None,
-             "can_edit": can_edit(acc, i)}
+             "removed_at": iso(tasksmod._aware(i.removed_at)) if i.removed_at else None, "removed_by": i.removed_by or "",
+             "can_edit": can_edit(acc, i), "can_comment": can_comment(acc, i)}
         if detail:
             d.update(description=i.description, can_delete=can_delete(acc, i), subscribed=bool(acc.p.user_id and db.scalar(
                 select(IssueSubscription.id).where(IssueSubscription.issue_id == i.id, IssueSubscription.user_id == acc.p.user_id))),
@@ -566,6 +629,8 @@ def create(db: Session, acc: Access | None, title: str, description: str = "", t
     run = None
     if eid and start and status != "backlog":
         run = start_run(db, acc, i, by_employee=by_employee)
+    if acc is not None:
+        forget_mine(acc)  # a issue nova já é de quem criou
     return {**issue_dicts(db, acc or _system_acc(db), [i])[0], "run_started": bool(run)}
 
 
@@ -693,27 +758,28 @@ def update(db: Session, acc: Access | None, ref, changes: dict, start: bool | No
 
 
 def delete(db: Session, acc: Access, ref) -> dict:
+    """Tira a issue (e as sub-issues) da lista de quem a tem. Nunca apaga: a visão da empresa continua vendo, com o
+    histórico, os comentários e as rodadas. Só depois de concluída ou cancelada, com as sub-issues também terminadas."""
     i = find_issue(db, acc, ref)
     if not can_delete(acc, i):
-        raise Forbidden("apagam a issue: quem criou, um mantenedor do time ou o admin (para manter o histórico, cancele)")
+        raise Forbidden("só quem tem a issue a tira da lista (a visão da empresa é só leitura)")
+    cats = {s["key"]: s["category"] for s in statuses(db, include_archived=True)}
+    family, stack = [i], [i.id]
+    while stack:
+        for c in db.scalars(select(Issue).where(Issue.parent_id == stack.pop(), Issue.removed_at.is_(None))):
+            family.append(c)
+            stack.append(c.id)
+    open_ = [key_of(db, x) for x in family if cats.get(x.status) not in ("done", "closed")]
+    if open_:
+        raise PlatformError(f"conclua ou cancele antes de tirar da lista: {', '.join(open_[:10])} ainda em aberto")
     k = key_of(db, i)
-    for t in db.scalars(select(EmployeeTask).where(EmployeeTask.issue_id == i.id)):
-        if t.status not in tasksmod.TERMINAL:
-            t.status, t.finished_at, t.error = "cancelled", now(), f"issue {k} apagada por {acc.p.name}"
-            for r in db.scalars(select(HumanRequest).where(HumanRequest.task_id == t.id, HumanRequest.status == "open")):
-                r.status, r.decided_at, r.decided_by = "cancelled", now(), acc.p.name
-        t.issue_id = None
-    for model in (IssueComment, IssueActivity, IssueSubscription):
-        for x in db.scalars(select(model).where(model.issue_id == i.id)):
-            db.delete(x)
-    for r in db.scalars(select(IssueRelation).where(or_(IssueRelation.issue_id == i.id, IssueRelation.other_id == i.id))):
-        db.delete(r)
-    for c in db.scalars(select(Issue).where(Issue.parent_id == i.id)):
-        c.parent_id = None
-    db.delete(i)
+    who = (acc.p.name or "")[:254]
+    for x in family:
+        x.removed_at, x.removed_by = now(), who
+        activity(db, x, acc.p.name, acc.p.user_id, "removed", {})
     db.commit()
-    audit(db, acc.p.name, "issue.delete", k, "")
-    return {"ok": True, "key": k}
+    audit(db, acc.p.name, "issue.remove", k, f"tirada da lista ({len(family)} issue(s)); a visão da empresa mantém")
+    return {"ok": True, "key": k, "removed": [key_of(db, x) for x in family]}
 
 
 def relate(db: Session, acc: Access, ref, kind: str, other: str) -> dict:
@@ -762,8 +828,8 @@ def comment_dict(db: Session, c: IssueComment, acc: Access, people: dict, emps: 
             "my_reactions": [k for k, v in (c.reactions or {}).items() if acc.p.user_id in v],
             "resolved": bool(c.resolved_at), "resolved_by": c.resolved_by, "edited": bool(c.edited_at),
             "task_id": c.task_id, "created_at": iso(tasksmod._aware(c.created_at)),
-            "can_edit": not c.deleted and not c.author_employee_id and (mine or acc.p.is_admin),
-            "can_delete": not c.deleted and (mine or acc.p.is_admin)}
+            "can_edit": not c.deleted and not c.author_employee_id and (mine or acc.p.is_admin) and not org_view(acc),
+            "can_delete": not c.deleted and (mine or acc.p.is_admin) and not org_view(acc)}
 
 
 def timeline(db: Session, acc: Access, i: Issue) -> list[dict]:
@@ -781,7 +847,7 @@ def add_comment(db: Session, acc: Access, ref, body: str, parent_id: int | None 
     i = find_issue(db, acc, ref)
     if not acc.p.user_id:
         raise PlatformError("comentários são de pessoas (entre com a sua conta)")
-    if not can_edit(acc, i):
+    if not can_comment(acc, i):
         raise Forbidden("sem permissão para comentar nesta issue")
     body = (body or "").strip()
     if not body:
@@ -883,7 +949,9 @@ def delete_comment(db: Session, acc: Access, ref, comment_id: int) -> dict:
 
 
 def resolve_comment(db: Session, acc: Access, ref, comment_id: int, resolved: bool = True) -> dict:
-    i = find_issue(db, acc, ref, write=True)
+    i = find_issue(db, acc, ref)
+    if not can_comment(acc, i):
+        raise Forbidden("sem permissão nesta issue")
     c = db.get(IssueComment, comment_id)
     if c is None or c.issue_id != i.id or c.parent_id:
         raise PlatformError("só a discussão (o primeiro comentário) é resolvida")
@@ -1078,7 +1146,7 @@ def inbox_items(db: Session, acc: Access) -> list[dict]:
     pfx = prefix(db)
     out = []
     since = now() - timedelta(days=60)
-    for i in db.scalars(select(Issue).where(Issue.id.in_(ids), Issue.updated_at >= since)):
+    for i in db.scalars(select(Issue).where(Issue.id.in_(ids), Issue.updated_at >= since, Issue.removed_at.is_(None))):
         last = db.scalar(select(IssueActivity).where(IssueActivity.issue_id == i.id, or_(
             IssueActivity.actor_user_id.is_(None), IssueActivity.actor_user_id != acc.p.user_id)).order_by(IssueActivity.id.desc()))
         if last is None:

@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `hangar doctor` no longer reports the `mcp-stdio-runner` image service as a stopped container: like the runtime and the harnesses, it only builds the image and exits (it failed the fresh install check since 0.35.0).
+
+### Changed
+- **Issues: each person sees only their own; the console is the company view, read-only.** See [docs/issues.md](docs/issues.md#who-sees-what).
+  - **In the app:** *Minhas issues* shows the person's issues, created by them or assigned to them, the ones with their Digital employees, and the sub-issues of those. Issues they were mentioned in can be read and commented on, but not changed. The general *Issues* button left the app menu.
+  - **In the console:** the board shows every issue from every member and agent, read-only. There is no creating, editing, moving, commenting or deleting there. Issues a member took off their list show as removed.
+  - **Issues are never deleted.** Once done or cancelled (with its sub-issues), whoever owns an issue takes it off their list (*Tirar da minha lista*). The company view keeps it, with its history and runs.
+
 ## [0.36.0] — 2026-10-15
 
 ### Added

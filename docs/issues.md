@@ -1,9 +1,24 @@
 # Issues (kanban board)
 
-The board for the company's work, for people and Digital employees together, in the portal (`/app` → **Issues**,
-**Minhas issues**) and in the console (`/ui` → **Issues**). It works like [Multica](https://github.com/multica-ai/multica)'s
+The board for the company's work, for people and Digital employees together, in the portal (`/app` → **Minhas
+issues**) and in the console (`/ui` → **Issues**). It works like [Multica](https://github.com/multica-ai/multica)'s
 board. The difference is governance: the work an agent does on an issue goes through the same authority, budget,
 shadow mode and audit as any task.
+
+## Who sees what
+
+- **In the app, each person sees only their own issues:**
+  - the ones they created or that are assigned to them;
+  - the ones with a Digital employee they own or manage;
+  - the sub-issues of those (the work their agents split);
+  - the ones they were mentioned in or subscribed to. These they can read and comment on, but not change.
+
+  A teammate's issue doesn't show, even in the same team.
+- **The console is the company view:** admins and auditors see every issue from every member and agent, read-only.
+  There is no creating, editing, moving, commenting or deleting there (`GET /api/issues?view=org`).
+- **Issues are never deleted.** Once an issue is done or cancelled, along with its sub-issues, whoever owns it can
+  take it off their list in the app (*Tirar da minha lista*). The company view keeps it, with its history, comments
+  and runs, marked as removed by the member.
 
 ## The issue
 
@@ -15,7 +30,7 @@ An issue is the persistent record of a piece of work. Its key looks like `HGR-12
 | Status | One of the board's columns; see below |
 | Priority | Urgent, high, medium, low or none |
 | Assignee | A person or a Digital employee |
-| Team | Who sees the issue: the team, plus admins and auditors. Without a team, the whole company sees it |
+| Team | The team the work belongs to (filters and projects); it does not widen who sees the issue in the app |
 | Project | It goes into the agent's context, along with the project's goals |
 | Labels | Colored labels, shared across the company |
 | Start, due date, estimate | For planning and the timeline; the due date also reaches the agent |
@@ -105,9 +120,9 @@ Issues also appear in the **inbox** (activity from others on issues you follow) 
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/issues` | Filters `team`, `project`, `assignee`, `status`, `priority`, `label`, `q`, `parent` |
+| GET | `/api/issues` | Filters `team`, `project`, `assignee`, `status`, `priority`, `label`, `q`, `parent`. A person gets their own issues; `view=org` (admins and auditors) is the company view, read-only, including removed issues |
 | POST | `/api/issues` | `{title, description, team, project, status, priority, assignee, labels, parent, stage, start_date, due_date, estimate, start}` |
-| GET / PATCH / DELETE | `/api/issues/{key}` | Read (marks it read in the inbox), change any field (`start: false` = don't start yet), delete |
+| GET / PATCH / DELETE | `/api/issues/{key}` | Read (marks it read in the inbox; `view=org` for the company view), change any field (`start: false` = don't start yet), take it off the owner's list (only when done or cancelled; never deleted) |
 | POST | `/api/issues/{key}/run` | Starts (or nudges) the assignee Digital employee's run |
 | POST | `/api/issues/{key}/comments` | `{body, parent_id}`; mentions `@[Name](employee:<slug>)` and `@[Name](user:<id>)` |
 | PATCH / DELETE | `/api/issues/{key}/comments/{id}` | Edit / delete |

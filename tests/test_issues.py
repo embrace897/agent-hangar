@@ -1,8 +1,8 @@
 # ruff: noqa: F811  (env, rt e as outras são fixtures importadas de test_employees)
-"""Issues (quadro kanban): criar, ver só o que é do time, atribuir a um Digital employee (a rodada com a governança
+"""Issues (quadro kanban): criar, cada pessoa vê só as issues dela (a visão da empresa é do admin, só leitura), atribuir a um Digital employee (a rodada com a governança
 de sempre), o resultado como comentário e a revisão, comentários com menções, conversa com a rodada em andamento,
 "não iniciar ainda", falha, ferramentas do agente (comentar, mudar status, dividir), sub-issues em etapas,
-etiquetas, relações, reações, inscrição na caixa de entrada, apagar e a rotina que abre issue."""
+etiquetas, relações, reações, inscrição na caixa de entrada, tirar da lista (nunca apagar) e a rotina que abre issue."""
 from app.db import SessionLocal
 from app.models import EmployeeRoutine, EmployeeTask, Issue, TaskMessage
 from app.services import employee_tasks as tasksmod
@@ -43,12 +43,16 @@ def test_board_settings_visibility_and_basic_fields(client, env):
                priority="high", labels=[lab["id"]], due_date="2030-01-31")
     assert i["status"] == "backlog" and i["priority"] == "high" and i["labels"][0]["name"] == "cliente"
     assert i["key"].split("-")[1].isdigit() and i["team"]["slug"] == env["team"]
-    # quem não é do time não vê nem mexe
-    assert client.get(f"/api/issues/{i['key']}", headers=env["h"]["out"]).status_code == 403
-    assert all(x["key"] != i["key"] for x in client.get("/api/issues", headers=env["h"]["out"]).json())
-    assert any(x["key"] == i["key"] for x in client.get("/api/issues", headers=env["h"]["req"]).json())
+    # cada pessoa vê só as issues dela: nem quem é de outro time nem um colega do mesmo time vê a issue de outro
+    for who in ("out", "req"):
+        assert client.get(f"/api/issues/{i['key']}", headers=env["h"][who]).status_code == 403
+        assert all(x["key"] != i["key"] for x in client.get("/api/issues", headers=env["h"][who]).json())
+    # a visão da empresa (console do admin): todas, só leitura; de quem não é admin, recusada
+    org = client.get("/api/issues", headers=ADMIN, params={"view": "org"}).json()
+    assert any(x["key"] == i["key"] and x["can_edit"] is False for x in org)
+    assert client.get("/api/issues", headers=env["h"]["req"], params={"view": "org"}).status_code == 403
     # mover de coluna (status), reordenar, filtrar
-    r = client.patch(f"/api/issues/{i['key']}", headers=env["h"]["req"], json={"status": "todo", "position": -5})
+    r = client.patch(f"/api/issues/{i['key']}", headers=own, json={"status": "todo", "position": -5})
     assert r.status_code == 200 and r.json()["status"] == "todo" and r.json()["position"] == -5
     assert [x["key"] for x in client.get("/api/issues", headers=own, params={"status": "todo", "label": str(lab["id"])}).json()] == [i["key"]]
     assert client.patch(f"/api/issues/{i['key']}", headers=own, json={"priority": "altissima"}).status_code == 400
@@ -139,7 +143,9 @@ def test_agent_tools_status_comment_and_sub_issues_with_stages(client, env, rt):
 def test_comments_threads_reactions_relations_inbox_and_delete(client, env):
     own, mgr, req = env["h"]["own"], env["h"]["mgr"], env["h"]["req"]
     a = _issue(client, own, title="A", team=env["team"])
-    b = _issue(client, req, title="B", team=env["team"])
+    b = _issue(client, own, title="B", team=env["team"])
+    other = _issue(client, req, title="de outra pessoa", team=env["team"])
+    assert client.post(f"/api/issues/{a['key']}/relations", headers=own, json={"kind": "related", "other": other["key"]}).status_code == 403
     assert client.post(f"/api/issues/{a['key']}/relations", headers=own, json={"kind": "blocked_by", "other": b["key"]}).status_code == 200
     rel = _get(client, own, a["key"])["relations"]
     assert rel[0]["kind"] == "blocked_by" and rel[0]["key"] == b["key"]
@@ -157,10 +163,26 @@ def test_comments_threads_reactions_relations_inbox_and_delete(client, env):
     assert client.delete(f"/api/issues/{a['key']}/comments/{c['id']}", headers=own).status_code == 200
     tl = [x for x in _get(client, own, a["key"])["timeline"] if x["type"] == "comment"]
     assert any(x["deleted"] for x in tl) and any(x["id"] == reply["id"] for x in tl)  # a discussão fica
-    # apagar: quem criou ou mantenedor; um developer que não criou, não
+    # a mencionada vê e comenta, mas não muda a issue de outra pessoa
+    assert client.patch(f"/api/issues/{a['key']}", headers=mgr, json={"priority": "low"}).status_code == 403
+    # tirar da lista (nunca apagar): só quem tem a issue, e só depois de concluída ou cancelada
     assert client.delete(f"/api/issues/{a['key']}", headers=req).status_code == 403
-    assert client.delete(f"/api/issues/{a['key']}", headers=mgr).status_code == 200
+    assert client.delete(f"/api/issues/{a['key']}", headers=mgr).status_code == 403
+    sub_ = _issue(client, own, title="parte", parent=a["key"])
+    client.patch(f"/api/issues/{a['key']}", headers=own, json={"status": "done"})
+    r = client.delete(f"/api/issues/{a['key']}", headers=own)
+    assert r.status_code == 400 and sub_["key"] in r.json()["detail"]  # a sub-issue ainda está aberta
+    client.patch(f"/api/issues/{sub_['key']}", headers=own, json={"status": "cancelled"})
+    r = client.delete(f"/api/issues/{a['key']}", headers=own)
+    assert r.status_code == 200 and set(r.json()["removed"]) == {a["key"], sub_["key"]}
     assert client.get(f"/api/issues/{a['key']}", headers=own).status_code == 403
+    assert all(x["key"] != a["key"] for x in client.get("/api/issues", headers=own).json())
+    assert not any(x["key"] == f"issue:{a['id']}" for x in client.get("/api/inbox", headers=mgr).json()["items"])
+    # a visão da empresa continua com ela, com o histórico e a marca de removida
+    d = client.get(f"/api/issues/{a['key']}", headers=ADMIN, params={"view": "org"}).json()
+    assert d["removed_at"] and d["removed_by"] and d["can_edit"] is False and d["can_delete"] is False
+    assert any(x["type"] == "comment" for x in d["timeline"]) and d["timeline"][-1]["kind"] == "removed"
+    assert all(not x["can_edit"] and not x["can_delete"] for x in d["timeline"] if x["type"] == "comment")
 
 
 def test_routine_opens_an_issue(client, env, rt):

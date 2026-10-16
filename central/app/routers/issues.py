@@ -48,8 +48,19 @@ class StatusBody(BaseModel):
 
 @router.get("/issues")
 def issues(request: Request, team: str = "", project: str = "", assignee: str = "", status: str = "", priority: str = "",
-           label: str = "", q: str = "", parent: str = "", db=Depends(db_dep)):
-    return guard(lambda: svc.issues.list_issues(db, acc(request, db), team, project, assignee, status, priority, label, q, parent))
+           label: str = "", q: str = "", parent: str = "", view: str = "", db=Depends(db_dep)):
+    """Uma pessoa vê as issues dela; view=org (admin/auditor) é a visão da empresa, só leitura, com as removidas."""
+    return guard(lambda: svc.issues.list_issues(db, _acc(request, db, view), team, project, assignee, status, priority,
+                                                label, q, parent))
+
+
+def _acc(request: Request, db, view: str = ""):
+    a = acc(request, db)
+    if view == "org":
+        if not (a.p.is_admin or a.p.is_auditor):
+            raise svc.access.Forbidden("a visão da empresa é de admins e auditores")
+        a.issue_view = "org"
+    return a
 
 
 @router.post("/issues")
@@ -93,9 +104,9 @@ def issue_label_delete(label_id: int, request: Request, db=Depends(db_dep)):
 
 
 @router.get("/issues/{ref}")
-def issue_get(ref: str, request: Request, db=Depends(db_dep)):
+def issue_get(ref: str, request: Request, view: str = "", db=Depends(db_dep)):
     def go():
-        a = acc(request, db)
+        a = _acc(request, db, view)
         out = svc.issues.get_issue(db, a, ref)
         if a.p.user_id:  # abrir a issue marca como lida na caixa de entrada
             svc.inbox.mark(db, a, [f"issue:{out['id']}"], read=True)
