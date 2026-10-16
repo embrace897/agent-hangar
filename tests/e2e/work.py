@@ -508,7 +508,9 @@ def phase_n(dev, mgr, team, slug):
     check("issues: o resultado vira comentário e a issue vai para revisão", done is not None and any(
         x["type"] == "comment" and x["author"]["kind"] == "employee" for x in done["timeline"]), done and done["status"])
     b = ok(dev.post("/api/issues", json={"title": f"Backlog {RUN}", "team": team}))
-    c = ok(mgr.post(f"/api/issues/{b['key']}/comments", json={"body": f"@[Agent](employee:{slug}) take a look"}))
+    # cada pessoa vê só as issues dela: a gestora não vê a issue sem responsável de outra pessoa
+    check("issues: a issue de outra pessoa não aparece", mgr.get(f"/api/issues/{b['key']}").status_code == 403)
+    c = ok(dev.post(f"/api/issues/{b['key']}/comments", json={"body": f"@[Agent](employee:{slug}) take a look"}))
     check("issues: @menção aciona o Digital employee sem trocar o responsável", c["runs_started"] == [slug]
           and ok(dev.get(f"/api/issues/{b['key']}"))["assignee"] is None, c)
     d = ok(mgr.patch(f"/api/issues/{i['key']}", json={"status": "done"}))
