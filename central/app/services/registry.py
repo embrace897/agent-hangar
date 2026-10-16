@@ -135,7 +135,9 @@ def delete_agent(db: Session, slug: str, actor="admin"):
         db.query(Schedule).filter(Schedule.id.in_(sids)).delete(synchronize_session=False)
     db.query(AccessRequest).filter(AccessRequest.agent_id == a.id).delete()
     db.query(PromotionRequest).filter(PromotionRequest.agent_id == a.id).delete()
-    from ..models import AgentGuide, AgentLineage  # ON DELETE CASCADE no Postgres; no SQLite, apagamos aqui
+    from ..models import AgentGuide, AgentLineage, ExecutionTrial
+    db.query(ExecutionTrial).filter(ExecutionTrial.agent_id == a.id).delete()  # sem CASCADE: barraria a exclusão
+    # AgentLineage e AgentGuide têm ON DELETE CASCADE no Postgres; no SQLite, apagamos aqui
     db.query(AgentLineage).filter(AgentLineage.agent_id == a.id).delete()
     db.query(AgentGuide).filter(AgentGuide.agent_id == a.id).delete()
     db.delete(a)

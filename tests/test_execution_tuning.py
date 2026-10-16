@@ -99,6 +99,9 @@ def test_trial_compares_neighbor_levels_and_suggests_the_cheaper_one(client, db,
     db.expire_all()
     r = tu.suggest(db, svc.get_agent(db, a.slug))
     assert r["trial_stale"] is True and r["suggestion"] is None and r["effort"] == "medium"
+    # excluir o agente leva as comparações junto (a chave estrangeira barrava a exclusão no Postgres)
+    assert client.delete(f"/api/agents/{a.slug}", headers=ADMIN).status_code == 200
+    assert db.query(ExecutionTrial).filter(ExecutionTrial.id == t.id).count() == 0
 
 
 def test_trial_suggests_more_effort_when_it_hits_more(db, uniq, fake_docker, monkeypatch):

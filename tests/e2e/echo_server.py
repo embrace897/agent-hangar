@@ -1,13 +1,23 @@
 """Sistema de mentira para os testes ponta a ponta: devolve em JSON o que recebeu (método, caminho, cabeçalhos, corpo);
 /status/<código> responde com aquele código; /portal é um "portal de banco" em HTML (login, saldo e pagamento) para o
-navegador governado. Só a biblioteca padrão."""
+navegador governado; /llm/v1 é um provedor de LLM compatível com a OpenAI (lista de modelos e chat que repete a
+última mensagem), que guarda o que recebeu em /llm/_state. Só a biblioteca padrão."""
 import html
 import json
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>"""
 JIRA = {"issues": {}, "comments": [], "transitions": [], "attachments": []}
+LLM = {"requests": []}
+LLM_MODELS = [
+    {"id": "e2e/thinker", "name": "E2E Thinker", "context_length": 128000, "supported_parameters": ["tools", "reasoning"],
+     "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+     "pricing": {"prompt": "0.000001", "completion": "0.000004"}},
+    {"id": "e2e/plain", "name": "E2E Plain", "context_length": 32000, "supported_parameters": ["tools"],
+     "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+     "pricing": {"prompt": "0.0000002", "completion": "0.0000008"}},
+]
 
 
 class Echo(BaseHTTPRequestHandler):
@@ -82,9 +92,32 @@ class Echo(BaseHTTPRequestHandler):
             return self._json([{"id": "1"}])
         return self._json({}, 404)
 
+    def _llm(self, body: str):
+        """Provedor de LLM de mentira, no formato da OpenRouter: a central lista os modelos (com recursos e preço) e o
+        agente conversa; a resposta repete a última mensagem do usuário. /llm/_state mostra os pedidos recebidos."""
+        path = self.path.split("?")[0][len("/llm"):]
+        if path == "/_reset":
+            LLM["requests"].clear()
+            return self._json({"ok": True})
+        if path == "/_state":
+            return self._json(LLM)
+        if path == "/v1/models":
+            return self._json({"data": LLM_MODELS})
+        if path == "/v1/chat/completions":
+            req = json.loads(body or "{}")
+            LLM["requests"].append({k: v for k, v in req.items() if k != "messages"} | {"n_messages": len(req.get("messages", []))})
+            last = next((m for m in reversed(req.get("messages", [])) if m.get("role") == "user"), {})
+            text = last.get("content") if isinstance(last.get("content"), str) else json.dumps(last.get("content"))
+            return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"),
+                               "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": f"eco: {text}"}}],
+                               "usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}})
+        return self._json({"error": "não existe"}, 404)
+
     def _reply(self):
         n = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(n).decode(errors="replace") if n else ""
+        if self.path.startswith("/llm/"):
+            return self._llm(body)
         if self.path.startswith("/portal") and self._portal(body):
             return
         if self.path.startswith("/jira/"):
@@ -104,4 +137,5 @@ class Echo(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("0.0.0.0", 8080), Echo).serve_forever()
+    from http.server import ThreadingHTTPServer
+    ThreadingHTTPServer(("0.0.0.0", 8080), Echo).serve_forever()

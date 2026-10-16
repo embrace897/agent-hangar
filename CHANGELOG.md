@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.37.1] — 2026-10-16
+
+### Fixed
+- Deleting an agent that had an execution-profile comparison (*Comparar níveis de esforço*) failed with a server error on Postgres: the comparisons now go with the agent.
+
+### Added
+- **End-to-end test of the newer features** (`tests/e2e/features.py`, in CI): company registration and the corporate e-mail rule, an LLM connection (OpenRouter format, against a fake model server), the execution profile (effort sent in the provider's dialect, tuning and a level comparison), a harness job, remote and local MCP connectors, and skills (upload, download and the secret check). The *Empresa* page joined the English-interface check.
+
 ## [0.37.0] — 2026-10-15
 
 ### Added

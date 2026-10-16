@@ -42,7 +42,7 @@ PAGES_UI = ["", "live", "announcements", "inbox", "projects", "goals", "budgets"
             "members/policy", "calculators/_nova", "work", "queues", "playbooks", "playbooks/_novo",
             "meetings", "message-templates", "knowledge", "procedures", "governance", "memos", "watchers",
             "learning", "value", "tickets", "learned", "agents/catalog", "agents/new", "employees", "manager",
-            "overview", "issues/settings", "plugins/new"]
+            "overview", "issues/settings", "plugins/new", "company"]
 
 LEFTOVERS_JS = """() => {
   const SKIP = 'script,style,code,pre,textarea,input,select,[data-noi18n],.msg,.run-out,.chat,.md';
