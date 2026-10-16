@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-10-15
+
 ### Added
 - **Company registration and corporate e-mail** (the admin's first access to the console, then *Configurações → Empresa*). See [docs/access.md](docs/access.md#company-registration-and-corporate-e-mail).
   - **What the admin registers:** the company's name and its e-mail domains (`@empresa.com.br`, one or more).
