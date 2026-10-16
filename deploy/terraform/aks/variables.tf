@@ -32,7 +32,7 @@ variable "admin_emails" {
 
 variable "hangar_version" {
   type    = string
-  default = "0.35.0"
+  default = "0.36.0"
 }
 
 variable "chart_repository" {

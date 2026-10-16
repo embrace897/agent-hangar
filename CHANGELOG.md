@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-10-15
+
 ### Added
 - **Execution profile** for every agent (`execution` in the spec, *Execução* card on the agent page, `GET /api/agents/{slug}/execution`, MCP `get_execution_profile`). See [docs/execution.md](docs/execution.md).
   - **Reasoning effort:** automatic by the agent's role (planner and coder high, triage minimal). It only goes to models that have a reasoning mode, according to the provider's list.
