@@ -7,6 +7,10 @@ podem criar sozinhos; cada membro vê e cuida dos próprios acessos e dos própr
   vê e encerra as dele; o admin vê e encerra as de qualquer membro.
 - **Código de ativação** (a "chave virtual"): entra uma vez, sem senha — o admin gera para um membro, ou o membro gera
   para abrir em outro navegador. Uso único, 24 horas, só o hash guardado.
+- **E-mail corporativo** (opcional, no cadastro da empresa): o dono informa os domínios da empresa (@empresa.com.br,
+  um ou mais) e pode exigir que todo membro tenha e-mail de um deles. Vale em todo caminho que cria ou muda uma conta:
+  cadastro e convite, primeiro login pelo SSO, SCIM e troca de e-mail. Quem já era membro fora dos domínios não sai
+  sozinho: o admin vê a lista e decide.
 - **Agentes pessoais**: de um membro só (o time não vê; admin e auditor veem), dentro das regras da empresa — alçada e
   piso, orçamento por pessoa, conexões de LLM liberadas. Viram do time quando quem mantém o time aprova.
 """
@@ -70,10 +74,109 @@ def set_policy(db, acc: Access, changes: dict) -> dict:
         elif k == "llm_connections":
             pa[k] = sorted({str(x).strip() for x in v or [] if str(x).strip()})
     o = db.get(Organization, tenancy.current_org())
-    o.access_policy = {"login": login, "personal_agents": pa}
+    o.access_policy = {**(o.access_policy or {}), "login": login, "personal_agents": pa}  # o resto (e-mail…) fica
     db.commit()
     audit(db, acc.p.name, "workspace.policy", o.slug or str(o.id), f"login={[m for m, on in login.items() if on]} personal={pa}")
     return policy(db)
+
+
+# ------------------------------------------------------------------ cadastro da empresa e e-mail corporativo
+# provedores de e-mail pessoal: não são domínio de empresa
+PUBLIC_DOMAINS = {"gmail.com", "googlemail.com", "outlook.com", "outlook.com.br", "hotmail.com", "hotmail.com.br",
+                  "live.com", "msn.com", "yahoo.com", "yahoo.com.br", "ymail.com", "icloud.com", "me.com", "mac.com",
+                  "aol.com", "proton.me", "protonmail.com", "pm.me", "gmx.com", "gmx.net", "mail.com", "zoho.com",
+                  "yandex.com", "yandex.ru", "uol.com.br", "bol.com.br", "terra.com.br", "ig.com.br", "globo.com",
+                  "r7.com", "qq.com", "163.com", "tutanota.com", "hey.com", "fastmail.com"}
+
+
+def email_rule(db, org_id: int | None = None) -> dict:
+    o = db.get(Organization, org_id or tenancy.current_org())
+    raw = ((o.access_policy if o else None) or {}).get("email_domains") or {}
+    doms = list((o.domains if o else None) or [])
+    return {"domains": doms, "enforce": bool(raw.get("enforce")) and bool(doms), "subdomains": bool(raw.get("subdomains"))}
+
+
+def email_allowed(rule: dict, email: str) -> bool:
+    if not rule["enforce"]:
+        return True
+    dom = (email or "").strip().lower().rsplit("@", 1)[-1]
+    return any(dom == d or (rule["subdomains"] and dom.endswith("." + d)) for d in rule["domains"])
+
+
+def check_email(db, email: str, org_id: int | None = None):
+    """Recusa um e-mail fora dos domínios da empresa, quando ela exige e-mail corporativo."""
+    rule = email_rule(db, org_id)
+    if not email_allowed(rule, email):
+        doms = ", ".join("@" + d for d in rule["domains"])
+        audit(db, "sistema", "workspace.email_refused", (email or "")[:200], f"fora de {doms}")
+        raise PlatformError(f"'{email}' não é um e-mail da empresa: só entram membros com e-mail {doms}"
+                            f"{' (ou subdomínios)' if rule['subdomains'] else ''}")
+
+
+def company(db, acc: Access) -> dict:
+    """O cadastro da empresa: nome, domínios, a regra de e-mail corporativo e quem está fora dela (para o admin)."""
+    if not (acc.p.is_admin or acc.p.is_auditor):
+        raise Forbidden("só o admin vê o cadastro da empresa")
+    o = db.get(Organization, tenancy.current_org())
+    rule = email_rule(db)
+    raw = o.access_policy or {}
+    out = {"name": o.name, "domains": rule["domains"], "enforce": rule["enforce"], "subdomains": rule["subdomains"],
+           "setup_done": bool(raw.get("setup_done_at")), "setup_done_at": raw.get("setup_done_at"),
+           "my_email": acc.p.name if acc.p.is_user else ""}
+    probe = {**rule, "enforce": bool(rule["domains"])}  # quem ficaria de fora com a regra ligada
+    out["outside"] = [{"id": u.id, "email": u.email, "name": u.name, "org_role": u.org_role, "active": u.active}
+                      for u in db.scalars(select(User).where(User.active.is_(True), User.org_id == tenancy.current_org())
+                                        .order_by(User.email))
+                      if not email_allowed(probe, u.email)] if rule["domains"] else []
+    return out
+
+
+def set_company(db, acc: Access, name: str | None = None, domains: list | None = None, enforce: bool | None = None,
+                subdomains: bool | None = None, skip: bool = False) -> dict:
+    """Primeiro acesso (ou Configurações → Empresa): o nome, os domínios e se só entram e-mails desses domínios."""
+    from . import orgs
+    if not acc.p.is_admin:
+        raise Forbidden("só o admin cadastra a empresa")
+    o = db.get(Organization, tenancy.current_org())
+    raw = dict(o.access_policy or {})
+    if not skip:
+        if name is not None:
+            if not name.strip():
+                raise PlatformError("a empresa precisa de um nome")
+            o.name = name.strip()[:200]
+        doms = list(o.domains or [])
+        if domains is not None:
+            doms = list(dict.fromkeys(orgs._domains(domains)))
+            public = [d for d in doms if d in PUBLIC_DOMAINS]
+            if public:
+                raise PlatformError(f"{', '.join(public)} é provedor de e-mail pessoal, não domínio de empresa")
+            taken = [d for x in db.scalars(tenancy.unscoped(select(Organization).where(Organization.id != o.id)))
+                     for d in (x.domains or []) if d in doms]
+            if taken:
+                raise PlatformError(f"domínio já é de outra empresa: {', '.join(taken)}")
+        rule = {**(raw.get("email_domains") or {})}
+        if enforce is not None:
+            rule["enforce"] = bool(enforce)
+        if subdomains is not None:
+            rule["subdomains"] = bool(subdomains)
+        if rule.get("enforce"):
+            if not doms:
+                raise PlatformError("informe ao menos um domínio para exigir e-mail corporativo")
+            me = acc.p.name if acc.p.is_user else ""
+            if me and not email_allowed({"domains": doms, "enforce": True, "subdomains": bool(rule.get("subdomains"))}, me):
+                raise PlatformError(f"o seu e-mail ({me}) não é de nenhum desses domínios: com a regra ligada, você "
+                                    "não conseguiria mais convidar a si mesmo nem trocar de conta. Inclua o seu domínio")
+        o.domains, raw["email_domains"] = doms, rule
+    raw.setdefault("setup_done_at", iso(now()))
+    o.access_policy = raw
+    db.commit()
+    from .. import auth
+    auth.clear_cache()
+    r = email_rule(db)
+    audit(db, acc.p.name, "workspace.company", o.slug or str(o.id),
+          "pulado no primeiro acesso" if skip else f"{o.name}; domínios {r['domains']}; e-mail corporativo "
+          f"{'exigido' if r['enforce'] else 'opcional'}{' (com subdomínios)' if r['subdomains'] else ''}")
+    return company(db, acc)
 
 
 def check_login(db, user: User, method: str):
@@ -233,6 +336,7 @@ def invite(db, acc: Access, email: str, name: str = "", team: str = "", role: st
         raise PlatformError("informe o e-mail da pessoa")
     if role not in ("consumer", "developer", "maintainer"):
         raise PlatformError("papel no time: consumer | developer | maintainer")
+    check_email(db, email)  # vale também para reenviar o convite de quem foi cadastrado antes da regra
     u = db.scalar(select(User).where(User.email == email, User.org_id == tenancy.current_org()))
     if u is not None and u.last_login_at is not None:
         raise PlatformError("essa pessoa já entrou na plataforma: ajuste times e papel na lista de membros")

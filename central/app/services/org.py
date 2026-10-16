@@ -43,7 +43,7 @@ def _month_start() -> datetime:
 def org_dict(db: Session) -> dict:
     o = db.get(Organization, current_org())
     return {"id": o.id, "name": o.name, "default_visibility": o.default_visibility, "timezone": o.timezone,
-            "code_policy": o.code_policy or "any"}
+            "code_policy": o.code_policy or "any", "setup_done": bool((o.access_policy or {}).get("setup_done_at"))}
 
 
 def update_org(db: Session, acc: Access, name: str | None, default_visibility: str | None,
@@ -214,6 +214,8 @@ def ensure_user(db: Session, email: str, name: str = "") -> User:
     if not u:
         if db.scalar(unscoped(select(User.id).where(User.email == email))):  # e-mail único na instalação
             raise PlatformError(f"'{email}' é uma pessoa de outra empresa")
+        from .workspace import check_email
+        check_email(db, email)  # a empresa pode exigir e-mail corporativo
         u = User(email=email, name=name or email.split("@")[0])
         db.add(u)
         db.commit()
@@ -335,6 +337,8 @@ def update_user(db: Session, acc: Access, user_id: int, org_role: str | None = N
         email = email.strip().lower()
         if "@" not in email or user_by_email(db, email):
             raise PlatformError("e-mail inválido ou já usado por outro usuário")
+        from .workspace import check_email
+        check_email(db, email)
         u.email = email
     if org_role is not None:
         if org_role not in ORG_ROLES:

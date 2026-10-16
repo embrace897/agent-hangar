@@ -12,7 +12,8 @@ from sqlalchemy import select
 from .. import config, sso
 from ..models import ScimGroup, User
 from ..services import org
-from ..services.common import audit, iso
+from ..services.common import PlatformError, audit, iso
+from ..services.workspace import check_email
 from .deps import actor, db_dep
 
 router = APIRouter(prefix="/scim/v2")
@@ -65,6 +66,15 @@ def _list(items: list, start: int, count: int) -> dict:
     page = items[start - 1:start - 1 + max(count, 0)]
     return {"schemas": [LIST_SCHEMA], "totalResults": len(items), "startIndex": start, "itemsPerPage": len(page),
             "Resources": page}
+
+
+def _corporate(db, email: str):
+    """None se o e-mail serve à empresa; senão a resposta SCIM de recusa (a empresa exige e-mail corporativo)."""
+    try:
+        check_email(db, email)
+    except PlatformError as e:
+        return _error(400, str(e), "invalidValue")
+    return None
 
 
 def _email_of(body: dict) -> str:
@@ -157,6 +167,8 @@ async def create_user(request: Request, db=Depends(db_dep)):
     if u and u.external_id:
         return _error(409, "usuário já existe", "uniqueness")
     if not u:
+        if (refused := _corporate(db, email)) is not None:
+            return refused
         u = User(email=email)
         db.add(u)
     u.name = _name_of(body) or u.name or email.split("@")[0]
@@ -179,6 +191,8 @@ async def replace_user(uid: int, request: Request, db=Depends(db_dep)):
     if email and email != u.email:
         if org.user_by_email(db, email):
             return _error(409, "e-mail já usado por outro usuário", "uniqueness")
+        if (refused := _corporate(db, email)) is not None:
+            return refused
         u.email = email
     u.name = _name_of(body) or u.name
     u.external_id = body.get("externalId") or u.external_id
@@ -208,6 +222,8 @@ async def patch_user(uid: int, request: Request, db=Depends(db_dep)):
                 if isinstance(v, str) and "@" in v and v.lower() != u.email:
                     if org.user_by_email(db, v):
                         return _error(409, "e-mail já usado por outro usuário", "uniqueness")
+                    if (refused := _corporate(db, v.lower())) is not None:
+                        return refused
                     u.email = v.lower()
             elif k in ("displayname", "name.formatted"):
                 u.name = v or u.name

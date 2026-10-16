@@ -881,6 +881,8 @@ async function route() {
   const [, r = '', a, b] = location.hash.split('?')[0].split('/');  // #/catalog?remote_ok=x -> catalog
   if (r === 'login' || !ME) return;
   if (r === 'hub') { hubGo(a); return; }  // item do menu: abre a última aba usada do assunto
+  // primeiro acesso do admin no console: o cadastro da empresa (domínios e e-mail corporativo) antes de tudo
+  if (!USER_MODE && ME.is_admin && ME.user && ME.org && ME.org.setup_done === false && r !== 'company') { location.replace('#/company/first'); return; }
   if (USER_MODE && (!PORTAL_ROUTES.includes(r) || (PORTAL_DETAIL_ONLY.includes(r) && !a))) { location.replace('#/'); return; }  // o portal mostra só o que é da pessoa
   const navKey = r === 'agents' && ['catalog', 'new'].includes(a) ? `agents/${a}` : r;
   const links = [...document.querySelectorAll('nav a')], key = links.some(x => x.dataset.r === navKey) ? navKey : r;
@@ -920,6 +922,7 @@ async function route() {
     else if (r === 'packages') await packagesPage();
     else if (r === 'secrets') await secretsPage();
     else if (r === 'orgs') await orgsPage();
+    else if (r === 'company') await companyPage(a === 'first');
     else if (r === 'live') await livePage();
     else if (r === 'extraction') await extractionPage();
     else if (r === 'calculators' && a) await calculatorPage(decodeURIComponent(a));
@@ -971,7 +974,7 @@ const EMP_NO_REFRESH = p => (p[1] === 'employees' && p[2] && !['tasks', 'decisio
 setInterval(() => {
   const parts = location.hash.split('/');
   if (!ME || document.hidden || ['keys', 'templates', 'catalog', 'providers', 'connect', 'teams', 'users', 'sso', 'login', 'oauth', 'vscode', 'decisions', 'plugins', 'live', 'announcements', 'orgs', 'extraction', 'calculators', 'playbooks', 'message-templates',
-    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets', 'connect-ai', 'access', 'members', 'org', 'issues', 'my-issues', 'connectors', 'skills'].includes(parts[1].split('?')[0])) return;
+    'meetings', 'queues', 'work', 'knowledge', 'procedures', 'governance', 'memos', 'watchers', 'learning', 'tickets', 'connect-ai', 'access', 'members', 'org', 'issues', 'my-issues', 'connectors', 'skills', 'company'].includes(parts[1].split('?')[0])) return;
   if (EMP_NO_REFRESH(parts)) return;
   if (NO_REFRESH.includes(parts[2]) || NO_REFRESH.includes(parts[3]) || document.activeElement.matches('input,textarea,select')) return;
   route();

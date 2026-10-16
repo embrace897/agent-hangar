@@ -455,6 +455,26 @@ def workspace_policy_set(body: PolicyBody, request: Request, db=Depends(db_dep))
     return guard(lambda: svc.workspace.set_policy(db, acc(request, db), body.model_dump(exclude_none=True)))
 
 
+class CompanyBody(BaseModel):
+    name: str | None = None
+    domains: list[str] | None = None  # @empresa.com.br, um ou mais
+    enforce: bool | None = None  # só entram membros com e-mail desses domínios
+    subdomains: bool | None = None  # vale também @br.empresa.com.br
+    skip: bool = False  # primeiro acesso: "configurar depois"
+
+
+@router.get("/workspace/company")
+def workspace_company(request: Request, db=Depends(db_dep)):
+    """O cadastro da empresa: nome, domínios, a regra de e-mail corporativo e os membros fora dela."""
+    return guard(lambda: svc.workspace.company(db, acc(request, db)))
+
+
+@router.put("/workspace/company")
+def workspace_company_set(body: CompanyBody, request: Request, db=Depends(db_dep)):
+    return guard(lambda: svc.workspace.set_company(db, acc(request, db), body.name, body.domains, body.enforce,
+                                                   body.subdomains, body.skip))
+
+
 @router.get("/workspace/sessions")
 def workspace_sessions(request: Request, user_id: int | None = None, db=Depends(db_dep)):
     return guard(lambda: svc.workspace.org_sessions(db, acc(request, db), user_id))

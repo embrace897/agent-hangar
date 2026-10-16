@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Company registration and corporate e-mail** (the admin's first access to the console, then *Configurações → Empresa*). See [docs/access.md](docs/access.md#company-registration-and-corporate-e-mail).
+  - **What the admin registers:** the company's name and its e-mail domains (`@empresa.com.br`, one or more).
+  - **The rule (optional):** *Só aceitar membros com e-mail desses domínios*, optionally with subdomains.
+  - **Where it applies:** registration and invites, the first SSO sign-in, SCIM and e-mail changes. It is checked on the server, and refusals are audited.
+  - **What is refused:** personal e-mail providers (Gmail, Outlook…) as company domains, and a domain that belongs to another company.
+  - **No lockout:** the admin's own e-mail must be in the domains to turn the rule on. `ADMIN_TOKEN` and bootstrap admins are not subject to it.
+  - **Nobody is removed:** members who joined before the rule are listed for the admin to keep, change or deactivate.
+
 ## [0.36.1] — 2026-10-15
 
 ### Fixed

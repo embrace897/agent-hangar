@@ -129,6 +129,42 @@ The data comes from `GET /api/me/home`, already filtered by the caller's permiss
 > Since the member workspace, the portal opens on a simpler **Início** (decisions, agents working now, my tasks, month
 > cost), and the builder pages (this one included) live in the console. See [workspace.md](workspace.md).
 
+## Company registration and corporate e-mail
+
+On the admin's **first access to the console**, before anything else, the console asks for the company's
+registration:
+
+- the company's name;
+- the company's e-mail domains (`@empresa.com.br`, `@empresa.com`…), one or more;
+- optionally, **Só aceitar membros com e-mail desses domínios**. With it on, every member must have an e-mail from
+  one of those domains. *Aceitar também os subdomínios* also accepts `@br.empresa.com.br`.
+
+*Configurar depois* skips the registration; it does not come back. You can change all of it later in
+**Configurações → Empresa** (admins only). Every change is audited.
+
+**Where the rule applies.** It applies to every path that creates an account or changes its e-mail. The check runs
+on the server, not only on the page:
+
+- registering a person, inviting them (including re-sending an invite), and adding a new e-mail to a team;
+- the first sign-in through SSO;
+- SCIM provisioning;
+- changing a member's e-mail.
+
+An e-mail outside the domains is refused with a message that names the accepted domains. The refusal is audited.
+
+**Safeguards**
+
+- **Personal e-mail is not a company domain:** Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton and similar are
+  refused as domains.
+- **A domain belongs to one company:** a domain that already belongs to another company in the installation is
+  refused.
+- **The owner can't lock themselves out:** the rule only turns on if the admin's own e-mail is in one of the domains.
+  The `ADMIN_TOKEN` and the `BOOTSTRAP_ADMIN_EMAILS` are not subject to the rule.
+- **Nobody is removed by the rule:** people who were already members with another e-mail stay as they are. The page
+  lists them; the admin keeps them, changes their e-mail to the corporate one in Membros, or deactivates them.
+
+The same domains also tell SSO which company a first sign-in belongs to (see [Signing in](#signing-in)).
+
 ## Signing in
 
 The UI opens on a login page. The buttons are the configured providers, plus **Sign in with token**:
@@ -228,3 +264,4 @@ Supported:
 | Visibility / owner team | agent → Acesso | — | `PATCH /api/agents/{slug}/access` | — |
 | Members (people, invites, sign-ins) | Membros (console) | — | `/api/users`, `/api/workspace/invites` | — |
 | SSO and SCIM | SSO e SCIM | — | `/api/sso…`, `/scim/v2` | — |
+| Company registration and corporate e-mail | first access / Configurações → Empresa | — | `GET/PUT /api/workspace/company` | — |

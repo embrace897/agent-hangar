@@ -346,6 +346,40 @@ async function membersPolicy(el) {
       monthly_budget_usd: Number($('#wp-budget').value || 0), llm_connections: $('#wp-llm').value.split(',').map(x => x.trim()).filter(Boolean) } } }).then(route), 'Política salva');
 }
 
+/* ---------- cadastro da empresa: primeiro acesso do admin e Configurações → Empresa ---------- */
+async function companyPage(first = false) {
+  const c = await api('/workspace/company');
+  const doms = c.domains.map(d => '@' + d).join('\n');
+  main.innerHTML = `${first ? '<div class="mute small">Primeiro acesso</div>' : ''}<h1>${first ? 'Cadastro da empresa' : 'Empresa'}</h1>
+    <div class="sub">${first ? 'Antes de começar: o nome da empresa e, se quiser, os domínios de e-mail dela. Dá para mudar depois em Configurações → Empresa.'
+      : 'O nome da empresa, os domínios de e-mail e se só entram membros com e-mail corporativo.'}</div>
+    <div class="card"><div class="grid g2">
+      <label>Nome da empresa<input id="co-name" value="${esc(c.name)}" data-noi18n></label>
+      <label>Domínios de e-mail da empresa (um por linha)<textarea id="co-doms" rows="3" placeholder="@empresa.com.br&#10;@empresa.com" data-noi18n>${esc(doms)}</textarea></label></div>
+      <label class="row small mt" style="gap:6px"><input type="checkbox" id="co-enforce" style="width:auto" ${c.enforce ? 'checked' : ''}> <b>Só aceitar membros com e-mail desses domínios</b></label>
+      <div class="mute small">Vale para todo jeito de entrar: convite e cadastro, primeiro login pelo SSO, SCIM e troca de e-mail. E-mail pessoal (Gmail, Outlook…) não é aceito como domínio da empresa.</div>
+      <label class="row small mt" style="gap:6px"><input type="checkbox" id="co-sub" style="width:auto" ${c.subdomains ? 'checked' : ''}> Aceitar também os subdomínios (ex.: @br.empresa.com.br)</label>
+      ${c.my_email ? `<div class="mute small mt"><span>O seu e-mail</span> <code class="inline" data-noi18n>${esc(c.my_email)}</code> <span>precisa estar num dos domínios para ligar a regra.</span></div>` : ''}
+      <div class="row mt"><button id="co-save">${first ? 'Salvar e continuar' : 'Salvar'}</button>${first ? '<button class="ghost" id="co-skip">Configurar depois</button>' : ''}</div></div>
+    ${c.outside.length ? `<div class="card mt warn-card"><h2>Membros fora dos domínios</h2>
+      <div class="mute small">${c.enforce ? 'A regra está ligada: estas pessoas entraram antes dela.' : 'Se a regra for ligada, estas pessoas continuam como estão.'} Nada muda sozinho: mantenha, troque o e-mail delas para o corporativo em Membros, ou desative.</div>
+      <table class="small mt"><tr><th>E-mail</th><th>Nome</th><th>Papel</th><th></th></tr>${c.outside.map(u => `<tr><td data-noi18n>${esc(u.email)}</td><td data-noi18n>${esc(u.name || '')}</td>
+        <td>${esc(window.t(u.org_role))}</td><td>${u.email === c.my_email ? '<span class="mute">você</span>' : `<button class="ghost small co-off" data-id="${u.id}">Desativar</button>`}</td></tr>`).join('')}</table></div>` : ''}`;
+  const done = () => { if (ME.org) ME.org.setup_done = true; if (first) location.hash = '#/'; else route(); };
+  $('#co-save').onclick = e => act(e.target, async () => {
+    const domains = $('#co-doms').value.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
+    const r = await api('/workspace/company', { method: 'PUT', body: { name: $('#co-name').value.trim(), domains,
+      enforce: $('#co-enforce').checked, subdomains: $('#co-sub').checked } });
+    if (r.enforce && r.outside.length) toast(`${r.outside.length} ${window.t('membro(s) fora dos domínios: veja a lista abaixo')}`);
+    if (first && r.enforce && r.outside.length) { route(); if (ME.org) ME.org.setup_done = true; return; }
+    done();
+  }, 'Cadastro da empresa salvo');
+  const skip = $('#co-skip');
+  if (skip) skip.onclick = e => act(e.target, () => api('/workspace/company', { method: 'PUT', body: { skip: true } }).then(done));
+  main.querySelectorAll('.co-off').forEach(b => b.onclick = e => confirm(window.t('Desativar este membro? Ele perde o acesso; dá para reativar em Membros.')) &&
+    act(e.target, () => api(`/users/${b.dataset.id}`, { method: 'PATCH', body: { active: false } }).then(route), 'Membro desativado'));
+}
+
 /* ---------- app instalado (PWA) e notificações do navegador (Web Push) ---------- */
 let installEvt = null;
 if (window.HANGAR_MODE === 'user' && 'serviceWorker' in navigator) {  // app.js (USER_MODE) carrega depois deste arquivo
@@ -412,7 +446,7 @@ const HUBS_CONSOLE = [
   { id: 'valor', tabs: [['value', 'Valor e oportunidades'], ['usage', 'Uso e custo'], ['budgets', 'Orçamentos']] },
   { id: 'auditoria', tabs: [['audit', 'Auditoria', 'auditor'], ['governance', 'Governança de dados', 'auditor']] },
   { id: 'pessoas', tabs: [['members', 'Membros', 'admin'], ['teams', 'Times'], ['packages', 'Pacotes de time'], ['sso', 'SSO e SCIM', 'admin']] },
-  { id: 'config', tabs: [['providers', 'Provedores de LLM', 'admin'], ['secrets', 'Segredos'], ['keys', 'Chaves de API'], ['announcements', 'Avisos', 'admin'],
+  { id: 'config', tabs: [['company', 'Empresa', 'admin'], ['providers', 'Provedores de LLM', 'admin'], ['secrets', 'Segredos'], ['keys', 'Chaves de API'], ['announcements', 'Avisos', 'admin'],
     ['orgs', 'Empresas', 'instance'], ['connect', 'Integrações']] },
 ];
 const HUBS_PORTAL = [{ id: 'mine', nav: 'my-issues', tabs: [['my-issues', 'Minhas issues'], ['work', 'Meu trabalho']] }];

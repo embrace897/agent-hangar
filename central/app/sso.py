@@ -316,9 +316,17 @@ def login_identity(db: Session, provider: str, ident: Identity, c: dict) -> User
     u = u or user_by_email(db, ident.email)  # pré-cadastro, SCIM ou outro provedor com o mesmo e-mail verificado
     created = u is None
     if created:
+        from .services.common import PlatformError
         from .services.orgs import org_for_email
+        from .services.workspace import check_email
+        oid = org_for_email(db, ident.email)
+        if ident.email not in config.BOOTSTRAP_ADMIN_EMAILS:  # a empresa pode exigir e-mail corporativo
+            try:
+                check_email(db, ident.email, oid)
+            except PlatformError as e:
+                raise AuthError(str(e)) from None
         u = User(email=ident.email, name=ident.name or ident.email.split("@")[0], active=True, org_role="member",
-                 org_id=org_for_email(db, ident.email))  # a empresa dona do domínio (multiempresa)
+                 org_id=oid)  # a empresa dona do domínio (multiempresa)
         db.add(u)
     if not u.active:
         raise AuthError("usuário desativado — fale com um administrador")
