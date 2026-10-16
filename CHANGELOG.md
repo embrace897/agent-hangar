@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.36.1] — 2026-10-15
+
 ### Fixed
 - `hangar doctor` no longer reports the `mcp-stdio-runner` image service as a stopped container: like the runtime and the harnesses, it only builds the image and exits (it failed the fresh install check since 0.35.0).
 
