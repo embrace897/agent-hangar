@@ -259,3 +259,19 @@ def test_doctor_lists_only_orphan_agent_volumes(monkeypatch):
         def get(self, url, headers=None, timeout=None):
             return type("Resp", (), {"status_code": 200, "json": lambda self: [{"slug": "vivo"}]})()
     assert dr.orphan_volumes(Http(), "http://x", {}) == ["agent-a-b-c-prod-data", "agent-apagado-stage-data"]
+
+
+def test_doctor_ignores_build_only_services(monkeypatch, tmp_path):
+    """Serviços que só constroem a imagem (runtime, harnesses, mcp-stdio-runner) saem logo: não são problema."""
+    rows = [{"Service": s, "State": st_} for s, st_ in (("central", "running"), ("agent-runtime", "exited"),
+                                                        ("harness-base", "exited"), ("mcp-stdio-runner", "exited"))]
+
+    class R:
+        def __init__(self, out):
+            self.returncode, self.stdout = 0, out
+    monkeypatch.setattr(dr.subprocess, "run", lambda args, **k: R("\n".join(__import__("json").dumps(x) for x in rows)
+                                                                    if "ps" in args else ""))
+    checks = dr.check_docker(tmp_path)
+    assert [c.status for c in checks if c.name == "Containers"] == [dr.OK]
+    rows.append({"Service": "postgres", "State": "exited"})
+    assert "postgres" in next(c.detail for c in dr.check_docker(tmp_path) if c.name == "Containers")

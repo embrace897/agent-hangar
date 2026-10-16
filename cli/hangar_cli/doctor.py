@@ -41,7 +41,7 @@ def check_docker(root: Path) -> list[Check]:
             rows += json.loads(line)
         elif line.startswith("{"):
             rows.append(json.loads(line))
-    jobs = ("agent-runtime", "harness-")  # serviços que só constroem/rodam e saem
+    jobs = ("agent-runtime", "harness-", "mcp-stdio-runner")  # serviços que só constroem/rodam e saem
     bad = [x for x in rows if not str(x.get("Service", "")).startswith(jobs)
            and (x.get("State") != "running" or x.get("Health") == "unhealthy")]
     if not rows:
