@@ -27,8 +27,21 @@ PING = {"name": "hangar_ping", "description": "teste",
         "parameters": {"type": "object", "properties": {"nonce": {"type": "string"}}}}
 
 
+try:  # com o SDK oficial instalado (pip install ag-ui-protocol, como no CI), cada evento e cada corpo é validado
+    from ag_ui.core import Event as _SdkEvent
+    from ag_ui.core import RunAgentInput as _SdkInput
+    from pydantic import TypeAdapter
+    _SDK = (TypeAdapter(_SdkEvent), _SdkInput)
+except ImportError:
+    _SDK = None
+
+
 def _events(text: str) -> list[dict]:
-    return [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: {")]
+    evs = [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: {")]
+    if _SDK is not None:
+        for e in evs:
+            _SDK[0].validate_python(e)
+    return evs
 
 
 def _types(evs: list[dict]) -> list[str]:
@@ -42,9 +55,11 @@ def api(rt):  # noqa: F811
 
 
 def _run(api, messages, tools=None, **extra):
-    r = api.post("/agui", json={"threadId": "t-1", "runId": "r-1", "messages": messages, "tools": tools or [],
-                                "context": [], "state": {}, "forwardedProps": {}, **extra},
-                 headers={"accept": "text/event-stream"})
+    body = {"threadId": "t-1", "runId": "r-1", "messages": messages, "tools": tools or [], "context": [], "state": {},
+            "forwardedProps": {}, **extra}
+    if _SDK is not None:
+        _SDK[1].model_validate(body)
+    r = api.post("/agui", json=body, headers={"accept": "text/event-stream"})
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream"), r.text
     return _events(r.text)
 
@@ -169,6 +184,8 @@ def test_employee_conversation_becomes_a_task_and_approval_is_an_interrupt(clien
     evs = _gw(client, slug, req, {"messages": [], "resume": [{"interruptId": first["id"], "status": "resolved"}]})
     it = evs[-1]["outcome"]["interrupts"][0]
     r = open_request(client, env, task_id)
+    board = [e for e in evs if e["type"] == "STATE_DELTA"][-1]["delta"][0]  # a tarefa no estado do app, numa chave própria
+    assert board["op"] == "add" and board["path"] == "/hangarTask" and board["value"]["status"] == "waiting_human"
     assert it["id"].startswith(f"hangar-decision-{r['id']}.") and it["reason"] == "hangar.approval"
     assert it["metadata"]["tool"] == "send_email" and "ana@cliente.com" not in json.dumps(it)
     assert any(e["type"] == "CUSTOM" and e["name"] == "hangar.task_event" and e["value"]["kind"] == "human_request" for e in evs)

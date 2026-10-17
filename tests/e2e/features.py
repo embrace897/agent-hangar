@@ -138,9 +138,9 @@ def phase_execution(conn: str):
     return slug
 
 
-def _agui(slug: str, messages: list, tools: list | None = None) -> list[dict]:
+def _agui(slug: str, messages: list, tools: list | None = None, state: dict | None = None) -> list[dict]:
     body = {"threadId": f"e2e-{RUN}", "runId": uuid.uuid4().hex[:8], "messages": messages, "tools": tools or [],
-            "context": [{"description": "tela", "value": "pedidos"}], "state": {}, "forwardedProps": {}}
+            "context": [{"description": "tela", "value": "pedidos"}], "state": state or {}, "forwardedProps": {}}
     r = admin.post(f"/gw-stage/{slug}/agui", json=body, headers={"Accept": "text/event-stream", "X-Channel": "agui"})
     check("AG-UI: responde em stream de eventos", r.status_code == 200 and r.headers.get("content-type", "").startswith(
         "text/event-stream"), (r.status_code, r.text[:200]))
@@ -159,6 +159,14 @@ def phase_agui(slug: str):
     text = "".join(e.get("delta", "") for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
     check("AG-UI: a rodada começa, responde e termina", kinds[0] == "RUN_STARTED" and kinds[-1] == "RUN_FINISHED"
           and f"agui-{RUN}" in text, kinds)
+    check("AG-UI: a resposta chega em stream, pedaço por pedaço", kinds.count("TEXT_MESSAGE_CONTENT") > 1, kinds)
+    check("AG-UI: o raciocínio do modelo aparece à parte", "REASONING_MESSAGE_CONTENT" in kinds, kinds)
+    evs = _agui(slug, [{"id": "1", "role": "user", "content": "use-tool app_state_update"}],
+                state={"pedido": {"id": "4471", "status": "aberto"}})
+    snap = next((e["snapshot"] for e in evs if e["type"] == "STATE_SNAPSHOT"), None)
+    check("AG-UI: o agente muda o estado do app (JSON Patch) e o app recebe o estado novo",
+          any(e["type"] == "STATE_DELTA" for e in evs) and snap == {"pedido": {"id": "4471", "status": "pago"}},
+          [e["type"] for e in evs])
     tool = {"name": "abrir_pedido", "description": "abre um pedido na tela do app",
             "parameters": {"type": "object", "properties": {"id": {"type": "string"}}}}
     user = {"id": "1", "role": "user", "content": "use-tool abrir_pedido"}

@@ -111,21 +111,52 @@ class Echo(BaseHTTPRequestHandler):
             text = last.get("content") if isinstance(last.get("content"), str) else json.dumps(last.get("content"))
             usage = {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}
             # "use-tool <nome>" com essa ferramenta na lista: o modelo pede a ferramenta; com o resultado, ecoa o resultado
+            message = {"role": "assistant", "content": f"eco: {text}"}
             if msgs and msgs[-1].get("role") == "tool":
-                return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
-                                   "choices": [{"index": 0, "finish_reason": "stop", "message": {
-                                       "role": "assistant", "content": f"eco-tool: {msgs[-1].get('content')}"}}]})
-            names = {(t.get("function") or {}).get("name") for t in req.get("tools") or []}
-            want = text.split("use-tool ", 1)[1].split()[0] if "use-tool " in (text or "") else ""
-            if want in names:
-                call = {"id": f"call_{len(LLM['requests'])}", "type": "function", "function": {"name": want, "arguments": "{\"id\": \"4471\"}"}}
-                return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
-                                   "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
-                                       "role": "assistant", "content": None, "tool_calls": [call]}}]})
-            return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"),
-                               "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": f"eco: {text}"}}],
-                               "usage": usage})
+                message = {"role": "assistant", "content": f"eco-tool: {msgs[-1].get('content')}"}
+            else:
+                names = {(t.get("function") or {}).get("name") for t in req.get("tools") or []}
+                want = text.split("use-tool ", 1)[1].split()[0] if "use-tool " in (text or "") else ""
+                if want in names:
+                    args = ({"patch": [{"op": "replace", "path": "/pedido/status", "value": "pago"}]}
+                            if want == "app_state_update" else {"id": "4471"})
+                    message = {"role": "assistant", "content": None, "tool_calls": [{
+                        "id": f"call_{len(LLM['requests'])}", "type": "function",
+                        "function": {"name": want, "arguments": json.dumps(args)}}]}
+            if req.get("stream"):
+                return self._llm_stream(req, message, usage)
+            finish = "tool_calls" if message.get("tool_calls") else "stop"
+            return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
+                               "choices": [{"index": 0, "finish_reason": finish, "message": message}]})
         return self._json({"error": "não existe"}, 404)
+
+    def _llm_stream(self, req: dict, message: dict, usage: dict):
+        """A mesma resposta em SSE, como um provedor de verdade: o texto palavra por palavra, a tool_call com os
+        argumentos fatiados e, com stream_options.include_usage, o uso num último pedaço."""
+        def chunk(delta, finish=None):
+            return {"id": "e2e", "object": "chat.completion.chunk", "model": req.get("model"),
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+        out = [chunk({"role": "assistant"})]
+        if message.get("tool_calls"):
+            c = message["tool_calls"][0]
+            args = c["function"]["arguments"]
+            out.append(chunk({"tool_calls": [{"index": 0, "id": c["id"], "type": "function",
+                                              "function": {"name": c["function"]["name"], "arguments": args[:5]}}]}))
+            out.append(chunk({"tool_calls": [{"index": 0, "function": {"arguments": args[5:]}}]}))
+            out.append(chunk({}, "tool_calls"))
+        else:
+            out.append(chunk({"reasoning": "pensando na resposta"}))
+            words = message["content"].split(" ")
+            out += [chunk({"content": w if i == 0 else " " + w}) for i, w in enumerate(words)]
+            out.append(chunk({}, "stop"))
+        if (req.get("stream_options") or {}).get("include_usage"):
+            out.append({"id": "e2e", "object": "chat.completion.chunk", "choices": [], "usage": usage})
+        raw = "".join(f"data: {json.dumps(x, ensure_ascii=False)}\n\n" for x in out).encode() + b"data: [DONE]\n\n"
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.send_header("content-length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _reply(self):
         n = int(self.headers.get("content-length") or 0)

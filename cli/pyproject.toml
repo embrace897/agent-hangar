@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-hangar-cli"
-version = "0.38.0"
+version = "0.39.0"
 description = "Command-line client for Agent Hangar: guided install (setup/doctor), GitOps apply, ship, test, rollback, jobs and API keys."
 readme = "README.md"
 license = "Apache-2.0"

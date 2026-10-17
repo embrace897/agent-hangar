@@ -240,10 +240,22 @@ The app sends a `RunAgentInput` (`threadId`, `runId`, `messages`, `tools`, `cont
 | What happens | Events |
 |---|---|
 | The run | `RUN_STARTED`, then `RUN_FINISHED` or `RUN_ERROR` |
-| The answer | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
-| A tool of the agent (MCP, HTTP, sub-agent) | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, `TOOL_CALL_RESULT` |
+| The answer, token by token | `TEXT_MESSAGE_START`, one `TEXT_MESSAGE_CONTENT` per piece, `TEXT_MESSAGE_END` |
+| The model's reasoning (models that expose it) | `REASONING_START`, `REASONING_MESSAGE_START`, `REASONING_MESSAGE_CONTENT`, `REASONING_MESSAGE_END`, `REASONING_END` |
+| A tool of the agent (MCP, HTTP, platform) | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, `TOOL_CALL_RESULT` |
+| A sub-agent (a specialist of a multi-agent team) | the tool call plus `SUBAGENT_STARTED` (with `parentToolCallId`) and `SUBAGENT_FINISHED` or `SUBAGENT_ERROR` |
 | A tool of the app (`tools` in the input) | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`. The app runs the tool and sends the result in the next run, as a `role: tool` message |
+| The app's state changes | `STATE_DELTA` (JSON Patch) as it happens, and `STATE_SNAPSHOT` with the whole state at the end |
 | Tokens and cost | `CUSTOM` named `hangar.usage` |
+
+**Streaming.** In an AG-UI run the runtime calls the model in stream, so the answer and the reasoning arrive as the
+model writes them. A provider that refuses `stream_options` gets a second try without it, and a provider that ignores
+`stream` still works: the answer then arrives in one piece. The other protocols keep calling the model as before.
+
+**Shared state.** When the app sends `state` (a non-empty object, for example the order on screen), the agent sees it
+and gets a tool, `app_state_update`, that changes it with JSON Patch (`add`, `replace`, `remove`). Each change goes to
+the app as `STATE_DELTA`, and the final state as `STATE_SNAPSHOT`. An invalid patch changes nothing, and the model
+sees the error. Without `state`, the tool doesn't exist.
 
 What the hangar adds to the protocol:
 - **The thread is the agent's session.** `threadId` separates workspaces and files per conversation, as
@@ -261,6 +273,9 @@ What the hangar adds to the protocol:
   - **Resuming:** the app sends `resume: [{interruptId, status: "resolved"}]` and gets what happened since, up to the
     answer or the next interrupt. `status: "cancelled"` cancels the task. Only the person who asked (or an admin) can
     follow a task this way.
+  - **The task in the app's state:** the task's status and plan (titles and steps) go to the app as `STATE_DELTA` on its
+    own key, `/hangarTask`, so the rest of the app's state is left alone. The events of the task (`CUSTOM`
+    `hangar.task_event`) say what happened, never the content: no arguments, results or names of who decided.
 - **Long tasks.** A run follows the task for up to 10 minutes, then ends with the interrupt `hangar.still_running`.
   Resuming keeps following the same task.
 - **Harness agents** (Claude Code, Codex…) run a job per run: `STEP_STARTED` and `STEP_FINISHED` around it, the

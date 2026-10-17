@@ -126,12 +126,66 @@ def progress(text: str):
 # Eventos estruturados da rodada (AG-UI): cada ferramenta do servidor vira início/resultado com id, nome e argumentos.
 # A fila só existe numa chamada /agui; nas outras, emit() não faz nada.
 EVENTS: contextvars.ContextVar = contextvars.ContextVar("events", default=None)
+# ferramentas que só existem nesta requisição (ex.: atualizar o estado compartilhado com o app no AG-UI)
+EXTRA_TOOLS: contextvars.ContextVar = contextvars.ContextVar("extra_tools", default=None)
 
 
 def emit(kind: str, **data):
     q = EVENTS.get()
     if q is not None:
         q.put_nowait({"kind": kind, **data})
+
+
+def _pointer(path: str) -> list[str]:
+    if path == "":
+        return []
+    if not path.startswith("/"):
+        raise ValueError(f"caminho inválido: {path!r}")
+    return [p.replace("~1", "/").replace("~0", "~") for p in path[1:].split("/")]
+
+
+def apply_patch(doc, ops):
+    """JSON Patch (RFC 6902) com add, replace e remove: o que o agente precisa para mudar o estado do app. Devolve
+    um documento novo; um patch inválido não muda nada (ValueError)."""
+    if not isinstance(ops, list) or not ops:
+        raise ValueError("patch: uma lista de operações")
+    doc = json.loads(json.dumps(doc))
+    for op in ops:
+        if not isinstance(op, dict) or op.get("op") not in ("add", "replace", "remove"):
+            raise ValueError(f"operação não suportada: {op!r} (use add, replace ou remove)")
+        parts = _pointer(str(op.get("path", "")))
+        if not parts:
+            if op["op"] == "remove":
+                raise ValueError("não dá para remover o documento inteiro")
+            doc = op.get("value")
+            continue
+        try:
+            parent = doc
+            for p in parts[:-1]:
+                parent = parent[int(p)] if isinstance(parent, list) else parent[p]
+            last = parts[-1]
+            if isinstance(parent, list):
+                i = len(parent) if last == "-" else int(last)
+                if op["op"] == "add":
+                    if not 0 <= i <= len(parent):
+                        raise IndexError(i)
+                    parent.insert(i, op.get("value"))
+                elif op["op"] == "replace":
+                    parent[i] = op.get("value")
+                else:
+                    parent.pop(i)
+            elif isinstance(parent, dict):
+                if op["op"] != "add" and last not in parent:
+                    raise KeyError(last)
+                if op["op"] == "remove":
+                    del parent[last]
+                else:
+                    parent[last] = op.get("value")
+            else:
+                raise TypeError("não é objeto nem lista")
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            raise ValueError(f"caminho {op.get('path')!r}: {e}") from None
+    return doc
 
 
 _ARG_HINTS = ("query", "code", "title", "path", "url", "filename", "message", "markdown")
@@ -743,6 +797,110 @@ async def _post_llm(c: httpx.AsyncClient, payload: dict, headers: dict, extra: d
     return r
 
 
+def _stream_parts(r: httpx.Response):
+    """Linhas `data:` de um stream SSE do provedor (comentários e linhas vazias ficam de fora)."""
+    async def gen():
+        async for line in r.aiter_lines():
+            if line.startswith("data:"):
+                d = line[5:].strip()
+                if d and d != "[DONE]":
+                    try:
+                        yield json.loads(d)
+                    except ValueError:
+                        continue
+    return gen()
+
+
+async def _llm_streaming(payload: dict, headers: dict) -> dict:
+    """A mesma chamada, em stream: cada pedaço de texto e de raciocínio vira evento na hora (AG-UI), e no fim volta
+    o mesmo formato da chamada sem stream (mensagem montada, tool_calls juntadas por índice, usage). Um provedor que
+    recuse um parâmetro opcional ou `stream_options` ganha uma segunda tentativa sem eles, como em _post_llm."""
+    global _OPTIONAL_OFF
+    base = {**payload, "stream": True}
+    attempts = [_with_options({**base, "stream_options": {"include_usage": True}}),
+                {**base, "stream_options": {"include_usage": True}}, base]
+    seen_bodies: list = []
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
+        for n, body in enumerate(attempts):
+            if body in seen_bodies:
+                continue
+            seen_bodies.append(body)
+            async with c.stream("POST", f"{LLM_BASE_URL}/chat/completions", json=body, headers=headers) as r:
+                if r.status_code in (400, 422) and n < len(attempts) - 1:
+                    await r.aread()
+                    if n == 0 and EXEC_OVERRIDE.get() is None and body != attempts[1]:
+                        print(f"[aviso] o provedor recusou um parâmetro do perfil de execução ({r.text[:200]}); "
+                              "seguindo sem esforço/limite/cache/paralelo", flush=True)
+                        _OPTIONAL_OFF = True
+                    continue
+                if r.status_code >= 400:
+                    await r.aread()
+                    raise RuntimeError(f"LLM {r.status_code}: {r.text[:300]}")
+                if not r.headers.get("content-type", "").startswith("text/event-stream"):
+                    data = json.loads(await r.aread())  # provedor que ignora `stream`: um pedaço só
+                    msg = data["choices"][0]["message"]
+                    if (msg.get("content") or "").strip():
+                        mid = f"msg-{uuid.uuid4().hex[:12]}"
+                        emit("text_start", id=mid)
+                        emit("text_delta", id=mid, delta=msg["content"])
+                        emit("text_end", id=mid, text=msg["content"])
+                    return data
+                return await _collect_stream(r)
+    raise RuntimeError("LLM: o provedor recusou a chamada em stream")
+
+
+async def _collect_stream(r: httpx.Response) -> dict:
+    text, reasoning, calls, usage, finish = "", "", {}, {}, None
+    mid = rid = None
+    async for chunk in _stream_parts(r):
+        usage = chunk.get("usage") or usage
+        for ch in chunk.get("choices") or []:
+            d = ch.get("delta") or {}
+            think = d.get("reasoning") or d.get("reasoning_content") or ""
+            if isinstance(think, str) and think:
+                if rid is None:
+                    rid = f"think-{uuid.uuid4().hex[:12]}"
+                    emit("reasoning_start", id=rid)
+                reasoning += think
+                emit("reasoning_delta", id=rid, delta=think)
+            piece = d.get("content") or ""
+            if isinstance(piece, str) and piece:
+                if rid is not None:  # o raciocínio acabou quando o texto começa
+                    emit("reasoning_end", id=rid)
+                    rid = None
+                if mid is None:
+                    mid = f"msg-{uuid.uuid4().hex[:12]}"
+                    emit("text_start", id=mid)
+                text += piece
+                emit("text_delta", id=mid, delta=piece)
+            for tc in d.get("tool_calls") or []:
+                c = calls.setdefault(tc.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                c["id"] = tc.get("id") or c["id"]
+                f = tc.get("function") or {}
+                c["function"]["name"] += f.get("name") or ""
+                c["function"]["arguments"] += f.get("arguments") or ""
+            finish = ch.get("finish_reason") or finish
+    if rid is not None:
+        emit("reasoning_end", id=rid)
+    if mid is not None:
+        emit("text_end", id=mid, text=text)
+    msg = {"role": "assistant", "content": text or None}
+    if calls:
+        msg["tool_calls"] = [calls[i] for i in sorted(calls)]
+    return {"choices": [{"index": 0, "message": msg, "finish_reason": finish}], "usage": usage}
+
+
+async def _llm(payload: dict, headers: dict) -> dict:
+    """Uma chamada ao LLM. Numa rodada AG-UI (alguém acompanhando eventos), em stream; nas outras, como sempre."""
+    if EVENTS.get() is not None:
+        return await _llm_streaming(payload, headers)
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
+        r = await _post_llm(c, payload, headers)
+    if r.status_code >= 400:
+        raise RuntimeError(f"LLM {r.status_code}: {r.text[:300]}")
+    return r.json()
+
+
 async def _lite(messages: list[dict]) -> tuple[str, dict, list]:
     """Uma chamada curta, sem tools e sem o prompt do agente — para títulos de conversa e tarefas triviais do
     cliente (o LibreChat manda os títulos por um endpoint com X-Hangar-Mode: lite)."""
@@ -776,7 +934,7 @@ async def _lite(messages: list[dict]) -> tuple[str, dict, list]:
 
 async def _chat(messages: list[dict], client_tools: list | None = None, tool_choice=None
                 ) -> tuple[str, dict, list, list]:
-    tools = await get_tools()
+    tools = await get_tools() + list(EXTRA_TOOLS.get() or [])
     messages = await prepare_attachments(_restore_hidden(messages), tools)
     # instruções de sistema do cliente (ex.: o prompt de Artifacts do LibreChat) vêm depois das do agente
     client_sys = "\n\n".join(text_of(m["content"]) for m in messages if m["role"] == "system")
@@ -839,11 +997,7 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
             payload["tools"] = [t.schema() for t in llm_tools] + ctools
             if tool_choice is not None and ctools:
                 payload["tool_choice"] = tool_choice
-        async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
-            r = await _post_llm(c, payload, headers)
-        if r.status_code >= 400:
-            raise RuntimeError(f"LLM {r.status_code}: {r.text[:300]}")
-        data = r.json()
+        data = await _llm(payload, headers)
         for k in usage:
             usage[k] += (data.get("usage") or {}).get(k, 0)
         msg = data["choices"][0]["message"]
@@ -884,11 +1038,10 @@ async def _loop(msgs, llm_tools, ctools, client_names, by_name, headers, usage, 
     # passos esgotados: uma última chamada SEM tools para o modelo resumir o que já tem
     msgs.append({"role": "user", "content": "Limite de passos atingido. Responda agora com o que já foi obtido, "
                                             "incluindo links de arquivos gerados, e diga o que ficou pendente."})
-    async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as c:
-        r = await _post_llm(c, {"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}, headers)
-    if r.status_code >= 400:
+    try:
+        data = await _llm({"model": MODEL, "messages": msgs, "temperature": LLM.get("temperature", 0.2)}, headers)
+    except RuntimeError:
         return "Limite de passos de ferramentas atingido.", usage, trace, []
-    data = r.json()
     for k in usage:
         usage[k] += (data.get("usage") or {}).get(k, 0)
     return data["choices"][0]["message"].get("content") or "", usage, trace, []
@@ -937,12 +1090,15 @@ async def _run_server_calls(calls: list, by_name: dict, trace: list, msgs: list,
 async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, rationale: str = ""):
     name = call["function"]["name"]
     args = {}
+    tool = None
     t_call = time.monotonic()
     try:
         args = json.loads(call["function"].get("arguments") or "{}")
         progress(_describe(name, args))
         emit("tool_start", id=call["id"], name=name, args=call["function"].get("arguments") or "{}")
         tool = by_name.get(name)
+        if tool is not None and tool.ref.startswith("agent:"):  # delegar a um especialista aparece como sub-agente
+            emit("subagent_start", id=call["id"], name=tool.ref[len("agent:"):], description=tool.description[:300])
         if EMPLOYEE and tool is not None and tool.ref:  # Digital employee: a alçada decide antes de executar
             g = await _gate(tool, args, rationale, {"ask_human": "ask_human", "request_capability": "capability",
                                                     "update_plan": "plan", "handoff_task": "handoff", "list_files": "files",
@@ -980,6 +1136,8 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
     failed = str(out).startswith(("erro", "ERRO DA FERRAMENTA", "tool "))
     progress(f" {'✗' if failed else '✓'} {time.monotonic() - t_call:.1f}s\n")
     emit("tool_result", id=call["id"], content=str(out)[:AGUI_RESULT_LIMIT], failed=failed)
+    if tool is not None and tool.ref.startswith("agent:"):
+        emit("subagent_end", id=call["id"], content=str(out)[:AGUI_RESULT_LIMIT], failed=failed)
     trace.append({"tool": name, "args": {k: (str(v)[:200]) for k, v in args.items()}, "result": str(out)[:300]})
     msgs.append({"role": "tool", "tool_call_id": call["id"], "content": str(out)})
 
@@ -1180,6 +1338,79 @@ def sse_event(ev: dict) -> str:
     return "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
 
 
+APP_STATE_TOOL = "app_state_update"
+APP_STATE_LIMIT = 8000
+APP_STATE_SCHEMA = {"type": "object", "required": ["patch"], "properties": {"patch": {
+    "type": "array", "description": "Operações JSON Patch (RFC 6902) sobre o estado do app.",
+    "items": {"type": "object", "required": ["op", "path"], "properties": {
+        "op": {"type": "string", "enum": ["add", "replace", "remove"]},
+        "path": {"type": "string", "description": "JSON Pointer, ex.: /pedido/status ou /itens/-"},
+        "value": {"description": "o valor novo (add e replace)"}}}}}}
+
+
+def _app_state_tool(box: dict) -> Tool:
+    """O estado compartilhado do AG-UI: o app manda o estado da tela (state) e o agente o muda com JSON Patch. Cada
+    mudança vira STATE_DELTA na hora; um patch inválido não muda nada e o modelo vê o erro."""
+    async def update(args):
+        patch = args.get("patch")
+        try:
+            box["state"] = apply_patch(box["state"], patch)
+        except ValueError as e:
+            return f"erro: patch inválido, nada mudou ({e})"
+        box["changed"] = True
+        emit("state_delta", delta=patch)
+        return "estado do app atualizado"
+    return Tool(APP_STATE_TOOL, "Muda o estado compartilhado com o app (o que a pessoa vê na tela) com JSON Patch: add, "
+                                "replace ou remove. Mude só o que o pedido exige.", APP_STATE_SCHEMA, update,
+                ref="builtin:app_state")
+
+
+def _state_message(state: dict) -> dict:
+    raw = json.dumps(state, ensure_ascii=False)
+    cut = raw[:APP_STATE_LIMIT] + ("…(cortado)" if len(raw) > APP_STATE_LIMIT else "")
+    return {"role": "system", "content": f"Estado atual do app (JSON, o que a pessoa vê na tela):\n{cut}\n"
+                                         f"Para mudar o estado, use a ferramenta {APP_STATE_TOOL}."}
+
+
+def _agui_frames(e: dict, started: set, streamed: set) -> list[dict]:
+    """Um evento interno da rodada -> eventos AG-UI."""
+    k = e["kind"]
+    if k == "tool_start":
+        started.add(e["id"])
+        return [{"type": "TOOL_CALL_START", "toolCallId": e["id"], "toolCallName": e["name"]},
+                {"type": "TOOL_CALL_ARGS", "toolCallId": e["id"], "delta": e["args"]},
+                {"type": "TOOL_CALL_END", "toolCallId": e["id"]}]
+    if k == "tool_result" and e["id"] in started:
+        return [{"type": "TOOL_CALL_RESULT", "messageId": f"msg-{e['id']}", "toolCallId": e["id"],
+                 "content": e["content"] or "(vazio)", "role": "tool"}]
+    if k == "text_start":
+        return [{"type": "TEXT_MESSAGE_START", "messageId": e["id"], "role": "assistant"}]
+    if k == "text_delta":
+        return [{"type": "TEXT_MESSAGE_CONTENT", "messageId": e["id"], "delta": e["delta"]}]
+    if k == "text_end":
+        streamed.add(e.get("text") or "")
+        return [{"type": "TEXT_MESSAGE_END", "messageId": e["id"]}]
+    if k == "reasoning_start":
+        return [{"type": "REASONING_START", "messageId": e["id"]},
+                {"type": "REASONING_MESSAGE_START", "messageId": e["id"], "role": "reasoning"}]
+    if k == "reasoning_delta":
+        return [{"type": "REASONING_MESSAGE_CONTENT", "messageId": e["id"], "delta": e["delta"]}]
+    if k == "reasoning_end":
+        return [{"type": "REASONING_MESSAGE_END", "messageId": e["id"]}, {"type": "REASONING_END", "messageId": e["id"]}]
+    if k == "state_delta":
+        return [{"type": "STATE_DELTA", "delta": e["delta"]}]
+    if k == "subagent_start":
+        ev = {"type": "SUBAGENT_STARTED", "subagentRunId": f"sub-{e['id']}", "name": e["name"], "parentToolCallId": e["id"]}
+        if e.get("description"):
+            ev["description"] = e["description"]
+        return [ev]
+    if k == "subagent_end":
+        if e.get("failed"):
+            return [{"type": "SUBAGENT_ERROR", "subagentRunId": f"sub-{e['id']}", "message": e["content"] or "falhou"}]
+        return [{"type": "SUBAGENT_FINISHED", "subagentRunId": f"sub-{e['id']}", "result": e["content"]}]
+    return []
+
+
 @app.post("/agui")
 async def agui(req: Request):
     try:
@@ -1194,6 +1425,14 @@ async def agui(req: Request):
     set_session(req, {"user": thread})
     EXEC_OVERRIDE.set(_exec_override(req))
     messages, tools = agui_messages(body), agui_tools(body)
+    box = None
+    state = body.get("state")
+    if isinstance(state, dict) and state:  # o app compartilha o estado da tela: o agente lê e pode mudar
+        box = {"state": state, "changed": False}
+        messages.insert(0, _state_message(state))
+        EXTRA_TOOLS.set([_app_state_tool(box)])
+    else:
+        EXTRA_TOOLS.set(None)
     events: asyncio.Queue = asyncio.Queue()
     EVENTS.set(events)
     PROGRESS.set(None)
@@ -1202,6 +1441,7 @@ async def agui(req: Request):
     async def stream():
         yield sse_event({"type": "RUN_STARTED", "threadId": thread, "runId": run})
         started: set[str] = set()
+        streamed: set[str] = set()  # textos que já saíram em stream (não repetir no fim)
         while not task.done() or not events.empty():
             getter = asyncio.ensure_future(events.get())
             done, _ = await asyncio.wait({getter, task}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
@@ -1210,21 +1450,14 @@ async def agui(req: Request):
                 if not done:
                     yield ": keepalive\n\n"
                 continue
-            e = getter.result()
-            if e["kind"] == "tool_start":
-                started.add(e["id"])
-                yield sse_event({"type": "TOOL_CALL_START", "toolCallId": e["id"], "toolCallName": e["name"]})
-                yield sse_event({"type": "TOOL_CALL_ARGS", "toolCallId": e["id"], "delta": e["args"]})
-                yield sse_event({"type": "TOOL_CALL_END", "toolCallId": e["id"]})
-            elif e["kind"] == "tool_result" and e["id"] in started:
-                yield sse_event({"type": "TOOL_CALL_RESULT", "messageId": f"msg-{e['id']}", "toolCallId": e["id"],
-                                 "content": e["content"] or "(vazio)", "role": "tool"})
+            for frame in _agui_frames(getter.result(), started, streamed):
+                yield sse_event(frame)
         try:
             text, usage, _trace, calls = task.result()
         except Exception as e:
             yield sse_event({"type": "RUN_ERROR", "message": f"Erro no agente: {e}", "code": "agent_error"})
             return
-        if text and not text.startswith(CONTINUE_MARK):
+        if text and not text.startswith(CONTINUE_MARK) and text not in streamed:
             mid = f"msg-{uuid.uuid4().hex[:12]}"
             yield sse_event({"type": "TEXT_MESSAGE_START", "messageId": mid, "role": "assistant"})
             yield sse_event({"type": "TEXT_MESSAGE_CONTENT", "messageId": mid, "delta": render_for_channel(text)})
@@ -1233,6 +1466,8 @@ async def agui(req: Request):
             yield sse_event({"type": "TOOL_CALL_START", "toolCallId": c["id"], "toolCallName": c["function"]["name"]})
             yield sse_event({"type": "TOOL_CALL_ARGS", "toolCallId": c["id"], "delta": c["function"].get("arguments") or "{}"})
             yield sse_event({"type": "TOOL_CALL_END", "toolCallId": c["id"]})
+        if box is not None and box["changed"]:  # o estado final inteiro, para o app que perdeu algum delta
+            yield sse_event({"type": "STATE_SNAPSHOT", "snapshot": box["state"]})
         # tokens e custo num evento próprio: o gateway da central lê para as métricas, e o app pode ignorar
         yield sse_event({"type": "CUSTOM", "name": "hangar.usage", "value": usage})
         yield sse_event({"type": "RUN_FINISHED", "threadId": thread, "runId": run})

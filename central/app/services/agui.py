@@ -124,7 +124,11 @@ def _snapshot(task_id: int, after: int, org: int | None) -> dict:
                           .order_by(HumanRequest.id))
         events = [(ev.id, ev.kind, {k: v for k, v in (ev.payload or {}).items() if k in EVENT_FIELDS}) for ev in evs]
         seen = events[-1][0] if events else after
-        return {"status": task.status, "result": task.result, "error": task.error, "events": events,
+        # o que o app pode mostrar ao vivo: a situação e o plano (títulos e etapas, sem notas)
+        board = {"taskId": task.id, "status": task.status,
+                 "plan": [{"title": str(x.get("title", ""))[:200], "status": x.get("status", "todo")}
+                          for x in (task.plan or []) if isinstance(x, dict)]}
+        return {"status": task.status, "result": task.result, "error": task.error, "events": events, "board": board,
                 "interrupts": [_interrupt(r, task, seen) for r in reqs] if task.status in NEEDS_PERSON else [],
                 "still_running": _still_running(task, seen)}
 
@@ -164,8 +168,12 @@ async def employee_stream(task_id: int, after: int, thread: str, run: str, wait_
     yield sse({"type": "RUN_STARTED", "threadId": thread, "runId": run})
     yield sse({"type": "CUSTOM", "name": "hangar.task", "value": {"taskId": task_id}})
     t0 = last_ping = time.monotonic()
+    board = None
     while True:
         snap = await run_in_threadpool(_snapshot, task_id, after, org)
+        if snap["board"] != board:  # estado compartilhado: a tarefa numa chave própria, sem mexer no resto do app
+            board = snap["board"]
+            yield sse({"type": "STATE_DELTA", "delta": [{"op": "add", "path": "/hangarTask", "value": board}]})
         for ev_id, kind, payload in snap["events"]:
             after = ev_id
             if kind == "tool" and payload.get("tool"):

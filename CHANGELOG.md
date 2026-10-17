@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-10-17
+
+### Added
+- **AG-UI, phase 2.** See [docs/clients.md](docs/clients.md#ag-ui-the-agent-inside-your-app).
+  - **Streaming:** in an AG-UI run the answer arrives token by token, and the model's reasoning arrives in its own events. The other protocols call the model as before.
+  - **Shared state:** when the app sends its state, the agent sees it and changes it with JSON Patch (`app_state_update`). Each change reaches the app as `STATE_DELTA`, and the final state as `STATE_SNAPSHOT`.
+  - **Sub-agents:** delegating to a specialist of a multi-agent team shows up as `SUBAGENT_STARTED` and `SUBAGENT_FINISHED`, linked to the tool call.
+  - **Digital employees:** the task's status and plan go to the app's state, on its own key (`/hangarTask`).
+  - **Validation:** the tests check every event and input against the official `ag-ui-protocol` SDK.
+
 ## [0.38.0] — 2026-10-17
 
 ### Added
