@@ -31,6 +31,26 @@ https://github.com/user-attachments/assets/62836990-f66c-4c94-950b-4632cf9fc160
 
 <sub>2 min 45 s, with captions: what Agent Hangar is, how to install it, build, test and ship agents, use them over every protocol (inside your app too), put Digital employees to work, and keep cost and governance under control. [MP4 version](docs/assets/agent-hangar-end-to-end.mp4)</sub>
 
+<details><summary><b>Step-by-step tutorial: from zero to an agent at work, in 9 steps</b> (8 min 41 s, in Portuguese, with captions)</summary>
+
+**Part 1 (0:00–3:56):** install in one command, register the company and the model, create the agent from the tool you
+already use: chat agents, harness agents (Claude Code, Codex) for complex problems, and agents from other frameworks
+over AG-UI.
+
+https://github.com/user-attachments/assets/da63a2dc-1831-4a00-abfe-29b8174cb5e5
+
+**Part 2 (3:56–6:30):** test in stage and ship with approval, put the agent inside your app over AG-UI, hire a Digital
+employee, and work through the issues board, with the approval showing up in Slack, Teams or on your app's screen.
+
+https://github.com/user-attachments/assets/95097335-cbbc-40bd-8fc1-72e9e460a4af
+
+**Part 3 (6:30–8:41):** connect tools and skills, pick the right model and effort, and keep cost and audit under
+control.
+
+https://github.com/user-attachments/assets/e249551f-f706-4936-be19-4251564139c1
+
+</details>
+
 > **Status: alpha (v0.40).** It works end to end and is covered by tests, but APIs may still change. Run it inside
 > your network until you have read [docs/security.md](docs/security.md).
 
