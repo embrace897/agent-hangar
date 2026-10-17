@@ -228,5 +228,50 @@ claude mcp add --transport http ticket-triage http://localhost:8090/gw/ticket-tr
 
 **A2A.** Agent Card: `GET /gw/<slug>/.well-known/agent.json`. RPC: `POST /gw/<slug>/a2a` with `message/send`.
 
+## AG-UI: the agent inside your app
+
+[AG-UI](https://docs.ag-ui.com) is the open protocol between an agent and the interface of an app (CopilotKit, React
+Native, Slack, Teams, and the SDKs for TypeScript, Python, Kotlin, Go and others). Every shipped agent answers it at
+`POST /gw/<slug>/agui`, with the same invoke key, usage metering and audit as the other protocols. In the agent's
+**Connect** tab, pick **CopilotKit** or **Outro cliente AG-UI** to get the key and the code to paste.
+
+The app sends a `RunAgentInput` (`threadId`, `runId`, `messages`, `tools`, `context`) and receives SSE events:
+
+| What happens | Events |
+|---|---|
+| The run | `RUN_STARTED`, then `RUN_FINISHED` or `RUN_ERROR` |
+| The answer | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
+| A tool of the agent (MCP, HTTP, sub-agent) | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, `TOOL_CALL_RESULT` |
+| A tool of the app (`tools` in the input) | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`. The app runs the tool and sends the result in the next run, as a `role: tool` message |
+| Tokens and cost | `CUSTOM` named `hangar.usage` |
+
+What the hangar adds to the protocol:
+- **The thread is the agent's session.** `threadId` separates workspaces and files per conversation, as
+  `X-Conversation-Id` does for LibreChat.
+- **The app's tools follow the client-tools rules.** Under the company's code policy, an agent whose LLM connection is
+  not approved for code answers `403` to a run that carries tools. `llm.client_tools: false` turns them off.
+- **A Digital employee works through a task.** The conversation becomes a task (source `agui`), so every action goes
+  through the employee's authority.
+  - **When the run pauses:** an action needs approval, the employee asks a question, or the delivery goes to review.
+    The run ends with `RUN_FINISHED` and `outcome: interrupt`.
+  - **What the interrupt carries:** the reason (`hangar.approval`, `hangar.question`, `hangar.capability`,
+    `hangar.review`), the task, the tool and the action type. The action's arguments never leave the hangar.
+  - **Who decides:** the person the authority names, in the hangar (portal, Slack, Teams, e-mail). The app's key never
+    gains the power to approve.
+  - **Resuming:** the app sends `resume: [{interruptId, status: "resolved"}]` and gets what happened since, up to the
+    answer or the next interrupt. `status: "cancelled"` cancels the task. Only the person who asked (or an admin) can
+    follow a task this way.
+- **Long tasks.** A run follows the task for up to 10 minutes, then ends with the interrupt `hangar.still_running`.
+  Resuming keeps following the same task.
+- **Harness agents** (Claude Code, Codex…) run a job per run: `STEP_STARTED` and `STEP_FINISHED` around it, the
+  answer, and a `CUSTOM` event `hangar.job` with the job id and the diff.
+
+```bash
+curl -N http://localhost:8090/gw/ticket-triage/agui \
+  -H "Authorization: Bearer <invoke key>" -H "Content-Type: application/json" -H "Accept: text/event-stream" \
+  -d '{"threadId": "t1", "runId": "r1", "messages": [{"id": "m1", "role": "user", "content": "Olá!"}],
+       "tools": [], "context": [], "state": {}, "forwardedProps": {}}'
+```
+
 **Slack / Teams.** Native adapters are on the roadmap. Until then, a bot can call the OpenAI-compatible endpoint
 with `X-Channel: slack`.

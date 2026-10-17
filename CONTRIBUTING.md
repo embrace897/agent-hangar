@@ -35,7 +35,7 @@ are published by the *Release images* workflow; see `release-notes/README.md`.
 | `central/app/mcp_tools.py` | The platform MCP server (what Claude/ChatGPT/Codex call) |
 | `central/app/spec.py` | Agent spec schema and merge patch |
 | `central/migrations/` | Alembic migrations. Add one for every model change: `alembic revision -m "..."` |
-| `runtime/` | Image of a chat agent (OpenAI, A2A, ACP, MCP endpoints + tool loop) |
+| `runtime/` | Image of a chat agent (OpenAI, A2A, ACP, MCP and AG-UI endpoints + tool loop) |
 | `harness/` | Job images and `entrypoint.js` (one runner per harness) |
 | `cli/` | `hangar` CLI |
 

@@ -123,6 +123,17 @@ def progress(text: str):
         q.put_nowait(text)
 
 
+# Eventos estruturados da rodada (AG-UI): cada ferramenta do servidor vira início/resultado com id, nome e argumentos.
+# A fila só existe numa chamada /agui; nas outras, emit() não faz nada.
+EVENTS: contextvars.ContextVar = contextvars.ContextVar("events", default=None)
+
+
+def emit(kind: str, **data):
+    q = EVENTS.get()
+    if q is not None:
+        q.put_nowait({"kind": kind, **data})
+
+
 _ARG_HINTS = ("query", "code", "title", "path", "url", "filename", "message", "markdown")
 
 
@@ -930,6 +941,7 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
     try:
         args = json.loads(call["function"].get("arguments") or "{}")
         progress(_describe(name, args))
+        emit("tool_start", id=call["id"], name=name, args=call["function"].get("arguments") or "{}")
         tool = by_name.get(name)
         if EMPLOYEE and tool is not None and tool.ref:  # Digital employee: a alçada decide antes de executar
             g = await _gate(tool, args, rationale, {"ask_human": "ask_human", "request_capability": "capability",
@@ -967,6 +979,7 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
         out = f"erro: {e}"
     failed = str(out).startswith(("erro", "ERRO DA FERRAMENTA", "tool "))
     progress(f" {'✗' if failed else '✓'} {time.monotonic() - t_call:.1f}s\n")
+    emit("tool_result", id=call["id"], content=str(out)[:AGUI_RESULT_LIMIT], failed=failed)
     trace.append({"tool": name, "args": {k: (str(v)[:200]) for k, v in args.items()}, "result": str(out)[:300]})
     msgs.append({"role": "tool", "tool_call_id": call["id"], "content": str(out)})
 
@@ -1096,6 +1109,136 @@ async def chat_completions(req: Request):
             "created": created, "model": SLUG,
             "choices": [{"index": 0, "finish_reason": "tool_calls" if calls else "stop", "message": message}],
             "usage": usage, "x_trace": trace}
+
+
+# ---------------------------------------------------------------- AG-UI (o agente dentro do app de alguém)
+# https://docs.ag-ui.com: o app manda um RunAgentInput (threadId, runId, messages, tools, context) e recebe eventos
+# por SSE. As ferramentas do app (tools) seguem o caminho das ferramentas do cliente: o agente as chama, a rodada
+# termina com TOOL_CALL_* e o app executa e manda o resultado numa rodada nova (mensagem role=tool).
+AGUI_RESULT_LIMIT = 4000
+
+
+def _agui_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    return "\n".join(p.get("text", "") for p in content or [] if isinstance(p, dict) and p.get("type") == "text")
+
+
+def _agui_content(content):
+    """Texto puro, ou partes no formato OpenAI quando o app manda imagem (binary com data/url)."""
+    if isinstance(content, str) or not isinstance(content, list):
+        return content or ""
+    parts = []
+    for p in content:
+        if not isinstance(p, dict):
+            continue
+        if p.get("type") == "text":
+            parts.append({"type": "text", "text": p.get("text", "")})
+        elif p.get("type") == "binary" and str(p.get("mimeType", "")).startswith("image/"):
+            url = p.get("url") or (f"data:{p['mimeType']};base64,{p['data']}" if p.get("data") else "")
+            if url:
+                parts.append({"type": "image_url", "image_url": {"url": url}})
+    return parts if any(x["type"] != "text" for x in parts) else "\n".join(x["text"] for x in parts)
+
+
+def agui_messages(body: dict) -> list[dict]:
+    """Mensagens AG-UI -> OpenAI. O contexto que o app manda (context: [{description, value}]) entra como uma
+    mensagem de sistema do cliente, depois das instruções do agente."""
+    out: list[dict] = []
+    ctx = [c for c in body.get("context") or [] if isinstance(c, dict)]
+    if ctx:
+        out.append({"role": "system", "content": "Contexto do app:\n" + "\n".join(
+            f"- {c.get('description', '')}: {c.get('value', '')}" for c in ctx)})
+    for m in body.get("messages") or []:
+        role = m.get("role") if isinstance(m, dict) else None
+        if role in ("system", "developer"):
+            out.append({"role": "system", "content": _agui_text(m.get("content"))})
+        elif role == "user":
+            out.append({"role": "user", "content": _agui_content(m.get("content"))})
+        elif role == "assistant":
+            calls = [{"id": c.get("id"), "type": "function", "function": {
+                "name": (c.get("function") or {}).get("name", ""), "arguments": (c.get("function") or {}).get("arguments") or "{}"}}
+                for c in m.get("toolCalls") or [] if isinstance(c, dict)]
+            msg = {"role": "assistant", "content": _agui_text(m.get("content")) or ("" if not calls else None)}
+            if calls:
+                msg["tool_calls"] = calls
+            out.append(msg)
+        elif role == "tool":
+            text = _agui_text(m.get("content"))
+            out.append({"role": "tool", "tool_call_id": m.get("toolCallId"),
+                        "content": f"erro: {m['error']}" if m.get("error") and not text else text})
+    return out
+
+
+def agui_tools(body: dict) -> list[dict]:
+    return [{"type": "function", "function": {"name": t.get("name", ""), "description": t.get("description", ""),
+                                              "parameters": t.get("parameters") or {"type": "object", "properties": {}}}}
+            for t in body.get("tools") or [] if isinstance(t, dict)]
+
+
+def sse_event(ev: dict) -> str:
+    return "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+
+
+@app.post("/agui")
+async def agui(req: Request):
+    try:
+        body = await req.json()
+        if not isinstance(body, dict):
+            raise ValueError
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"error": "corpo inválido: envie um RunAgentInput (JSON)"}, status_code=400)
+    thread = str(body.get("threadId") or uuid.uuid4())
+    run = str(body.get("runId") or uuid.uuid4())
+    # a conversa do app é a sessão do agente (workspace e arquivos por conversa), salvo cabeçalho explícito
+    set_session(req, {"user": thread})
+    EXEC_OVERRIDE.set(_exec_override(req))
+    messages, tools = agui_messages(body), agui_tools(body)
+    events: asyncio.Queue = asyncio.Queue()
+    EVENTS.set(events)
+    PROGRESS.set(None)
+    task = asyncio.create_task(chat_full(messages, tools or None))
+
+    async def stream():
+        yield sse_event({"type": "RUN_STARTED", "threadId": thread, "runId": run})
+        started: set[str] = set()
+        while not task.done() or not events.empty():
+            getter = asyncio.ensure_future(events.get())
+            done, _ = await asyncio.wait({getter, task}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+            if getter not in done:
+                getter.cancel()
+                if not done:
+                    yield ": keepalive\n\n"
+                continue
+            e = getter.result()
+            if e["kind"] == "tool_start":
+                started.add(e["id"])
+                yield sse_event({"type": "TOOL_CALL_START", "toolCallId": e["id"], "toolCallName": e["name"]})
+                yield sse_event({"type": "TOOL_CALL_ARGS", "toolCallId": e["id"], "delta": e["args"]})
+                yield sse_event({"type": "TOOL_CALL_END", "toolCallId": e["id"]})
+            elif e["kind"] == "tool_result" and e["id"] in started:
+                yield sse_event({"type": "TOOL_CALL_RESULT", "messageId": f"msg-{e['id']}", "toolCallId": e["id"],
+                                 "content": e["content"] or "(vazio)", "role": "tool"})
+        try:
+            text, usage, _trace, calls = task.result()
+        except Exception as e:
+            yield sse_event({"type": "RUN_ERROR", "message": f"Erro no agente: {e}", "code": "agent_error"})
+            return
+        if text and not text.startswith(CONTINUE_MARK):
+            mid = f"msg-{uuid.uuid4().hex[:12]}"
+            yield sse_event({"type": "TEXT_MESSAGE_START", "messageId": mid, "role": "assistant"})
+            yield sse_event({"type": "TEXT_MESSAGE_CONTENT", "messageId": mid, "delta": render_for_channel(text)})
+            yield sse_event({"type": "TEXT_MESSAGE_END", "messageId": mid})
+        for c in calls:  # ferramentas do app: ele executa e manda o resultado na próxima rodada
+            yield sse_event({"type": "TOOL_CALL_START", "toolCallId": c["id"], "toolCallName": c["function"]["name"]})
+            yield sse_event({"type": "TOOL_CALL_ARGS", "toolCallId": c["id"], "delta": c["function"].get("arguments") or "{}"})
+            yield sse_event({"type": "TOOL_CALL_END", "toolCallId": c["id"]})
+        # tokens e custo num evento próprio: o gateway da central lê para as métricas, e o app pode ignorar
+        yield sse_event({"type": "CUSTOM", "name": "hangar.usage", "value": usage})
+        yield sse_event({"type": "RUN_FINISHED", "threadId": thread, "runId": run})
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 def _card():

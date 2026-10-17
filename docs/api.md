@@ -309,6 +309,7 @@ Agents reach the memory at `/internal/memory/mcp` with their internal token and 
 | A2A | `GET .well-known/agent.json` (also `agent-card.json`), `POST a2a` (`message/send`) |
 | ACP | `GET acp/agents`, `POST acp/runs` |
 | MCP | `POST mcp` (Streamable HTTP, stateless, JSON responses) |
+| AG-UI | `POST agui` (a `RunAgentInput`; the answer is an SSE stream of AG-UI events). See [clients.md](clients.md#ag-ui-the-agent-inside-your-app) |
 
 Optional header `X-Channel: <name>` tags usage for per-channel metrics. Without it, a key created by a tool
 connection tags usage with its tool (`claude-code`, `open-webui`, …); other keys fall back to `api`.

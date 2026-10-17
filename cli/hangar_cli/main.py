@@ -472,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add(sub, "connect", cmd_connect, "conecta um agente a uma ferramenta (MCP ou modelo), plug and play")
     s.add_argument("slug")
     s.add_argument("client", nargs="?", help="claude-code, codex, opencode, librechat, open-webui… (vazio = lista)")
-    s.add_argument("--mode", default="mcp", choices=["mcp", "model"])
+    s.add_argument("--mode", default="mcp", choices=["mcp", "model", "agui"])
     s.add_argument("--preview", action="store_true", help="só mostra o trecho, sem gerar chave")
     s.add_argument("--list", action="store_true", help="lista as conexões ativas do agente")
 

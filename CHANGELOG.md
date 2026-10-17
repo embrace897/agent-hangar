@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-10-17
+
+### Added
+- **AG-UI: the agent inside your app.** Every shipped agent answers the [AG-UI](https://docs.ag-ui.com) protocol at `POST /gw/<slug>/agui`, for CopilotKit and the other AG-UI clients. See [docs/clients.md](docs/clients.md#ag-ui-the-agent-inside-your-app).
+  - **Events:** the run, the answer, and each of the agent's tool calls with its result. Tokens and cost go in a `hangar.usage` event.
+  - **The app's tools:** the agent calls them and the app runs them, under the same rules as the client tools of coding agents.
+  - **Digital employees:** the conversation becomes a task, so every action goes through the authority. An approval, a question or a review ends the run with an `interrupt`. The decision stays in the hangar (portal, Slack, Teams, e-mail) with the person the authority names, and the app resumes to follow the task.
+  - **Harness agents:** a job per run, with the diff in a `hangar.job` event.
+  - **Connect tab:** CopilotKit (a ready Next.js route that keeps the key on the server) and any other AG-UI client (`hangar connect <slug> copilotkit --mode agui`).
+
 ## [0.37.1] — 2026-10-16
 
 ### Fixed

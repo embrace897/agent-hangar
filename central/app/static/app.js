@@ -304,13 +304,14 @@ async function agentDetail(slug, tab = 'overview') {
 
 async function agentConnect(t, a) {
   const [clients, conns] = await Promise.all([api('/connect/clients'), api(`/agents/${a.slug}/connections`)]);
-  const modeLabel = { mcp: 'Como ferramenta (MCP)', model: 'Como modelo' };
-  const modeIcon = { mcp: 'plug', model: 'chat' };
+  const modeLabel = { mcp: 'Como ferramenta (MCP)', model: 'Como modelo', agui: 'No seu app (AG-UI)' };
+  const modeIcon = { mcp: 'plug', model: 'chat', agui: 'globe' };
   const warn = a.prod ? '' : `<div class="card warn-card">Este agente ainda não está em <b>produção</b>: as conexões apontam para <code>/gw/${esc(a.slug)}</code> e só respondem depois do ship.</div>`;
   t.innerHTML = `${warn}
   <div class="card"><h2>Conectar a ferramentas — plug and play, opcional por ferramenta</h2>
     <div class="mute small"><b>MCP</b>: o agente vira uma <i>ferramenta</i> que o LLM da ferramenta chama (todas as plataformas).
     <b>Modelo</b>: o agente vira um <i>modelo</i> no seletor do chat e conduz a conversa — recebe anexos e usa as próprias tools (LibreChat, Open WebUI, OpenCode, SDKs).
+    <b>AG-UI</b>: o agente dentro do <i>seu app</i> (CopilotKit e outros), com as ferramentas do app e, num Digital employee, as aprovações da alçada na tela.
     Cada conexão gera uma chave só desta ferramenta e deste agente, <b>em seu nome</b>: revogue quando quiser, sem afetar as outras; o uso aparece por ferramenta. Se você perder o acesso ao agente, suas chaves são revogadas automaticamente.${can(a, 'manage') ? '' : ' Você vê só as suas conexões.'}</div></div>
   ${vscodeCard(a)}
   <div class="card mt"><div class="row between"><div><h2>Testar conexão — agente de código</h2>

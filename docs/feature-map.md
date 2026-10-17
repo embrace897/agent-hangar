@@ -94,6 +94,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Stage tests, promotion to production (four eyes optional), rollback, schedules | Agent page | [concepts.md](concepts.md) |
 | Team packages: export, preview, install; ready-made teams | Portal → Team packages | [work.md](work.md#team-packages) |
 | Remote MCP gateway | Agent → Connect | [remote-mcp.md](remote-mcp.md) |
+| AG-UI: the agent inside your app (CopilotKit and other clients), with the app's tools and a Digital employee's approvals as interrupts | Agent → Connect | [clients.md](clients.md#ag-ui-the-agent-inside-your-app) |
 
 ## Administration (console)
 

@@ -24,7 +24,8 @@ def test_dict(t: TestRun) -> dict:
 def endpoints(slug: str) -> dict:
     base = f"{config.PUBLIC_BASE_URL}/gw/{slug}"
     return {"openai": base + "/v1/chat/completions", "a2a": base + "/a2a",
-            "agent_card": base + "/.well-known/agent.json", "acp": base + "/acp/runs", "mcp": base + "/mcp"}
+            "agent_card": base + "/.well-known/agent.json", "acp": base + "/acp/runs", "mcp": base + "/mcp",
+            "agui": base + "/agui"}
 
 
 def agent_dict(db: Session, a: Agent, detail=False, acc=None) -> dict:

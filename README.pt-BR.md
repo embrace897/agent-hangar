@@ -6,8 +6,8 @@
 
 As pessoas criam agentes onde já trabalham: Claude, ChatGPT, Cursor, VS Code, Codex, OpenCode. O Agent Hangar
 reúne todos num só lugar, roda cada um no seu container e deixa que sejam usados em **qualquer** plataforma, via
-**OpenAI-compatible, MCP, A2A e ACP**. Todos podem encontrar os agentes, conversar com eles e combiná-los em
-agentes novos.
+**OpenAI-compatible, MCP, A2A e ACP**, e dentro do seu próprio app via **AG-UI**. Todos podem encontrar os agentes,
+conversar com eles e combiná-los em agentes novos.
 
 [Demo interativa (inglês)](https://valteresj2.github.io/agent-hangar/demo/) · [English](README.md) · [Documentação](docs/) · [Roadmap](ROADMAP.md)
 
@@ -32,7 +32,7 @@ outro lugar, e ninguém sabe quanto custam ou quem aprovou. O Agent Hangar resol
   versões e um dono.
 - **Agnóstico de plataforma.** Um agente criado no Claude pode ser usado no ChatGPT, Cursor, VS Code, LibreChat,
   Open WebUI, bots de chat, scripts ou por outro agente. Cada agente é um endpoint padrão (OpenAI-compatible, MCP,
-  A2A, ACP), e não um recurso preso a um fornecedor.
+  A2A, ACP, AG-UI), e não um recurso preso a um fornecedor.
 - **Todos podem conhecer e conversar.** O catálogo mostra cada agente, o que ele faz e quem é o dono. As pessoas
   testam no playground do portal, pedem acesso e conectam na própria ferramenta em um clique. O acesso segue
   times, papéis e aprovações.
@@ -71,7 +71,7 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Preço e licença | Apache-2.0; sem custo de licença, você paga infraestrutura e tokens do LLM | Framework OSS; AMP com plano Basic gratuito e Enterprise sob consulta, cobrança por execução | Self-hosted exige plano Enterprise e chave de licença; valores não encontrados | Community gratuita; Cloud de US$ 59 a US$ 159 por workspace/mês; Enterprise sob consulta | Não verificado | Não verificado |
 | Agentes feitos em Claude, ChatGPT, Cursor, Codex vão para um catálogo único | Sim, é o foco: a ferramenta cria o agente pelo MCP do hangar | Parcial: MCP server expõe operações de deploy do AMP a clientes como Claude | Parcial: faz deploy de LangGraph, Deep Agents e outros frameworks | Não encontrado | Sim, para MCP, A2A e agent cards sincronizados por URL (preview) | Parcial: agentes do Foundry, Copilot Studio e registrados por admin |
 | Catálogo de agentes | Sim: dono, versão, pedido de acesso, playground | Sim: Agent Repositories e Marketplace | Não encontrado | Marketplace de plugins, não de agentes | Sim: Agent Registry, com aprovação manual opcional | Sim: Agent 365 registry e Entra Agent Registry |
-| Acesso agnóstico a plataforma | OpenAI-compatível, MCP, A2A e ACP, por agente | A2A (0.2 e 0.3, early release) e API REST por crew | MCP e A2A nativos | API, web app, embed e ferramenta MCP | MCP via Gateway e A2A no Runtime | A2A 1.0, Responses e Activity; MCP via Toolbox |
+| Acesso agnóstico a plataforma | OpenAI-compatível, MCP, A2A, ACP e AG-UI, por agente | A2A (0.2 e 0.3, early release) e API REST por crew | MCP e A2A nativos | API, web app, embed e ferramenta MCP | MCP via Gateway e A2A no Runtime | A2A 1.0, Responses e Activity; MCP via Toolbox |
 | Portabilidade e lock-in | Baixo: spec em YAML com JSON Schema, GitOps (hangar apply), endpoints padrão e self-hosted | Médio: código do framework é portável; o deploy gerenciado é do AMP | Médio: LangGraph é aberto e há Agent Server standalone com Docker; plataforma completa é Enterprise | Médio: apps exportáveis como YAML DSL; self-hosted disponível | Protocolos abertos (MCP, A2A), mas runtime e Registry ficam na AWS | Aceita qualquer framework e A2A, mas hospedagem e registry ficam no Azure e no Microsoft 365 |
 | Agentes combinados em novos agentes | Sim: sub\_agents via A2A, com checagem de permissão | Sim: crews, núcleo do framework | Sim: RemoteGraph via MCP e A2A | Sim: workflows com agentes encadeados | Sim: A2A entre agentes | Sim: ferramenta A2A |
 | Catálogo de ferramentas | 230+ MCP servers do catálogo Docker; MCPs remotos com OAuth | Tool Repository e MCP servers próprios | Não encontrado | Marketplace com tools e integrações MCP | Gateway agrega APIs, Lambdas e MCPs num MCP virtual | Toolbox: endpoint MCP único, com governança e versão |

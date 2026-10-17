@@ -17,6 +17,8 @@ def test_every_supported_combination_renders(client):
             json.loads(r["content"])  # JSON pronto para colar, válido
         if mode == "mcp":
             assert "/gw/meu-agente/mcp" in r["content"]
+        elif mode == "agui":
+            assert "/gw/meu-agente/agui" in r["content"]
         else:
             assert "/gw/meu-agente/v1" in r["content"]
 

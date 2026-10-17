@@ -191,12 +191,23 @@ def run_tests(db: Session, slug: str, actor="admin") -> TestRun:
         tools = r.json().get("result", {}).get("tools", [])
         return bool(tools), f"{len(tools)} tool(s)"
 
+    def t_agui():
+        r = httpx.post(base + "/agui", timeout=smoke_timeout, headers={"Accept": "text/event-stream"}, json={
+            "threadId": f"smoke-{uuid.uuid4().hex[:8]}", "runId": "smoke", "messages": [
+                {"id": "1", "role": "user", "content": "ping"}], "tools": [], "context": [], "state": {}, "forwardedProps": {}})
+        evs = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: {")]
+        kinds = [e.get("type") for e in evs]
+        text = "".join(e.get("delta", "") for e in evs if e.get("type") == "TEXT_MESSAGE_CONTENT")
+        ok = bool(kinds) and kinds[0] == "RUN_STARTED" and kinds[-1] == "RUN_FINISHED" and bool(text.strip())
+        return ok, text[:120] if ok else f"eventos: {kinds[:8]}"
+
     check("smoke: health", t_health)
     check("smoke: agent card A2A", t_card)
     check("smoke: OpenAI-compatible", t_openai)
     check("smoke: A2A message/send", t_a2a)
     check("smoke: ACP run", t_acp)
     check("smoke: MCP tools/list", t_mcp)
+    check("smoke: AG-UI run", t_agui)
 
     for i, case in enumerate(spec.get("tests", [])):
         def run_case(case=case):

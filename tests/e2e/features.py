@@ -16,11 +16,20 @@ Apaga o que criou no final (também quando falha). Sai com código != 0 na prime
 """
 import base64
 import io
+import json
 import os
 import sys
 import time
 import uuid
 import zipfile
+
+try:  # o SDK oficial (pip install ag-ui-protocol) valida os eventos quando está instalado
+    from ag_ui.core import Event as _AguiEvent
+    from ag_ui.core import RunAgentInput as _AguiInput
+    from pydantic import TypeAdapter as _TypeAdapter
+    AGUI_SDK = (_TypeAdapter(_AguiEvent), _AguiInput)
+except ImportError:
+    AGUI_SDK = None
 
 import httpx
 
@@ -126,6 +135,45 @@ def phase_execution(conn: str):
     ok(admin.patch(f"/api/agents/{slug}", json={"execution": {"effort": "low"}}))
     p2 = ok(admin.get(f"/api/agents/{slug}/execution", params={"env": "stage"}))["profile"]
     check("execução: o esforço definido no agente vale", p2["effort"] == "low" and p2["effort_source"] == "definido no agente", p2)
+    return slug
+
+
+def _agui(slug: str, messages: list, tools: list | None = None) -> list[dict]:
+    body = {"threadId": f"e2e-{RUN}", "runId": uuid.uuid4().hex[:8], "messages": messages, "tools": tools or [],
+            "context": [{"description": "tela", "value": "pedidos"}], "state": {}, "forwardedProps": {}}
+    r = admin.post(f"/gw-stage/{slug}/agui", json=body, headers={"Accept": "text/event-stream", "X-Channel": "agui"})
+    check("AG-UI: responde em stream de eventos", r.status_code == 200 and r.headers.get("content-type", "").startswith(
+        "text/event-stream"), (r.status_code, r.text[:200]))
+    evs = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: {")]
+    if AGUI_SDK is not None:  # os eventos e o corpo validados pelo SDK oficial do protocolo
+        for e in evs:
+            AGUI_SDK[0].validate_python(e)
+        AGUI_SDK[1].model_validate(body)
+    return evs
+
+
+def phase_agui(slug: str):
+    """AG-UI no agente de chat, pelo gateway: texto, uma ferramenta do app (ida e volta) e a medição por canal."""
+    evs = _agui(slug, [{"id": "1", "role": "user", "content": f"agui-{RUN}"}])
+    kinds = [e["type"] for e in evs]
+    text = "".join(e.get("delta", "") for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
+    check("AG-UI: a rodada começa, responde e termina", kinds[0] == "RUN_STARTED" and kinds[-1] == "RUN_FINISHED"
+          and f"agui-{RUN}" in text, kinds)
+    tool = {"name": "abrir_pedido", "description": "abre um pedido na tela do app",
+            "parameters": {"type": "object", "properties": {"id": {"type": "string"}}}}
+    user = {"id": "1", "role": "user", "content": "use-tool abrir_pedido"}
+    evs = _agui(slug, [user], [tool])
+    start = next((e for e in evs if e["type"] == "TOOL_CALL_START"), None)
+    args = "".join(e["delta"] for e in evs if e["type"] == "TOOL_CALL_ARGS")
+    check("AG-UI: o agente pede a ferramenta do app", start and start["toolCallName"] == "abrir_pedido"
+          and json.loads(args) == {"id": "4471"}, [e["type"] for e in evs])
+    evs = _agui(slug, [user, {"id": "2", "role": "assistant", "toolCalls": [{"id": start["toolCallId"], "type": "function", "function": {
+        "name": "abrir_pedido", "arguments": args}}]}, {"id": "3", "role": "tool", "toolCallId": start["toolCallId"],
+                                                       "content": "pedido 4471 aberto"}], [tool])
+    text = "".join(e.get("delta", "") for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
+    check("AG-UI: o agente usa o resultado que o app devolveu", "pedido 4471 aberto" in text, text)
+    rows = [u for u in ok(admin.get("/api/usage")) if u["agent"] == slug and u["protocol"] == "agui"]
+    check("AG-UI: o uso fica medido por canal, com tokens", rows and rows[0]["channel"] == "agui" and rows[0]["tokens"] > 0, rows[:2])
 
 
 def phase_harness():
@@ -209,7 +257,7 @@ def main():
         check("health", ok(admin.get("/api/health"))["status"] == "ok")
         phase_company()
         conn = phase_llm()
-        phase_execution(conn)
+        phase_agui(phase_execution(conn))
         phase_harness()
         phase_connectors()
         phase_skills()

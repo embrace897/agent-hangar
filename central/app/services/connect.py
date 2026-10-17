@@ -7,6 +7,8 @@ Dois modos, opcionais e independentes por ferramenta:
   conduz a conversa, recebe anexos e usa as próprias tools. Em clientes de código (chat do VS Code, Cline, Roo Code,
   Continue) o cliente também manda as ferramentas DELE (ler/editar arquivos, terminal): o agente as chama e o cliente
   executa na máquina do dev, com a aprovação dele (ver probe() para o teste de ponta a ponta).
+- "agui": o agente dentro do APP de alguém pelo protocolo AG-UI (CopilotKit e outros clientes): eventos de execução,
+  ferramentas do app e, num Digital employee, as decisões da alçada como interrupt (ver services/agui.py).
 Cada conexão tem a sua chave (escopo invoke, só aquele agente, marcada com cliente/modo): revogável sozinha, e o
 uso aparece por ferramenta nas métricas mesmo quando o cliente não manda X-Channel.
 """
@@ -23,7 +25,7 @@ from .. import auth, config, deploy
 from ..models import ApiKey
 from .common import PlatformError, audit, get_agent, spec_of
 
-MODES = ("mcp", "model")
+MODES = ("mcp", "model", "agui")
 KEY_PLACEHOLDER = "<SUA_CHAVE>"
 
 # id -> (rótulo, modos suportados, nota)
@@ -43,6 +45,9 @@ CLIENTS: dict[str, tuple[str, tuple[str, ...], str]] = {
     "open-webui": ("Open WebUI", ("model", "mcp"), "Como modelo (conexão OpenAI) ou como ferramenta (MCP)."),
     "openai-sdk": ("SDK OpenAI / outros", ("model",), "Qualquer cliente OpenAI-compatible (Python, JS, n8n…)."),
     "generic-mcp": ("Outro cliente MCP", ("mcp",), "Qualquer cliente MCP com Streamable HTTP e cabeçalhos."),
+    "copilotkit": ("CopilotKit", ("agui",), "O agente dentro do seu app React/Next.js, pelo protocolo AG-UI: ferramentas "
+                                            "do app e as aprovações da alçada na tela."),
+    "agui": ("Outro cliente AG-UI", ("agui",), "Qualquer cliente AG-UI (@ag-ui/client, SDKs de Python, Kotlin, Go…)."),
 }
 
 
@@ -61,7 +66,7 @@ def snippet(client: str, mode: str, slug: str, agent_name: str, key: str = KEY_P
     if mode not in CLIENTS[client][1]:
         raise PlatformError(f"{CLIENTS[client][0]} não suporta o modo '{mode}' (suporta: {list(CLIENTS[client][1])})")
     base = config.PUBLIC_BASE_URL
-    mcp_url, v1 = f"{base}/gw/{slug}/mcp", f"{base}/gw/{slug}/v1"
+    mcp_url, v1, agui_url = f"{base}/gw/{slug}/mcp", f"{base}/gw/{slug}/v1", f"{base}/gw/{slug}/agui"
     name = _name(slug)
     hdr = {"Authorization": f"Bearer {key}", "X-Channel": client}
     in_docker = base.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
@@ -118,6 +123,47 @@ def snippet(client: str, mode: str, slug: str, agent_name: str, key: str = KEY_P
                 "steps": ["Cliente MCP genérico: transporte Streamable HTTP, servidor stateless (sem sessão)."],
                 "content": f"URL: {mcp_url}\nHeaders:\n  Authorization: Bearer {key}\n  X-Channel: {client}\n"
                            f"Tool: {name} (argumento: message)\n"}
+
+    if mode == "agui":
+        if client == "copilotkit":
+            content = "\n".join([
+                "// app/api/copilotkit/route.ts (Next.js, App Router): a chave fica no servidor, nunca no navegador",
+                'import { CopilotRuntime, ExperimentalEmptyAdapter, copilotRuntimeNextJSAppRouterEndpoint } from "@copilotkit/runtime";',
+                'import { HttpAgent } from "@ag-ui/client";',
+                "",
+                "const runtime = new CopilotRuntime({",
+                "  agents: {",
+                f'    "{slug}": new HttpAgent({{',
+                f'      url: "{agui_url}",',
+                f'      headers: {{ Authorization: "Bearer {key}", "X-Channel": "copilotkit" }},',
+                "    }),",
+                "  },",
+                "});",
+                "",
+                "export const POST = async (req: Request) => {",
+                "  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({",
+                '    runtime, serviceAdapter: new ExperimentalEmptyAdapter(), endpoint: "/api/copilotkit",',
+                "  });",
+                "  return handleRequest(req);",
+                "};",
+                "",
+                "// no layout ou na página:",
+                f'// <CopilotKit runtimeUrl="/api/copilotkit" agent="{slug}"> <CopilotChat /> </CopilotKit>',
+                ""])
+            return {"language": "typescript", "file": "app/api/copilotkit/route.ts",
+                    "steps": ["npm install @copilotkit/react-core @copilotkit/react-ui @copilotkit/runtime @ag-ui/client",
+                              "Crie a rota abaixo (a chave fica no servidor) e envolva a página com <CopilotKit>.",
+                              "Ferramentas do app (useCopilotAction) chegam ao agente; num Digital employee, a conversa "
+                              "vira tarefa e as aprovações aparecem como interrupt (quem decide é quem a alçada indica)."],
+                    "content": content}
+        body = json.dumps({"threadId": "t1", "runId": "r1", "messages": [{"id": "m1", "role": "user", "content": "Olá!"}],
+                           "tools": [], "context": [], "state": {}, "forwardedProps": {}}, ensure_ascii=False)
+        return {"language": "bash", "file": None,
+                "steps": ["POST de um RunAgentInput; a resposta é um stream SSE de eventos AG-UI.",
+                          "Com @ag-ui/client: new HttpAgent({ url, headers }) e agent.runAgent()."],
+                "content": (f'curl -N {agui_url} \\\n  -H "Authorization: Bearer {key}" -H "X-Channel: agui" \\\n'
+                            f'  -H "Content-Type: application/json" -H "Accept: text/event-stream" \\\n'
+                            f"  -d '{body}'\n")}
 
     # ---------------------------------------------------------------- modo modelo
     if client == "vscode":

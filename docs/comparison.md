@@ -7,7 +7,7 @@ Comparison as of October 3, 2026. Versão em português: [comparison.pt-BR.md](c
 Among the sources consulted, Agent Hangar is the only one that combines three things in one self-hosted product:
 
 - a central catalog of agents created in any tool;
-- access through four protocols (OpenAI-compatible, MCP, A2A, ACP);
+- access through five protocols (OpenAI-compatible, MCP, A2A, ACP, and AG-UI for apps);
 - promotion to production only after stage tests.
 
 The other platforms fall into three groups:
@@ -32,7 +32,7 @@ Watch out for maturity: Agent Hangar is in alpha (v0.30), and the repository doe
 | Price and license | Apache-2.0; no license cost, you pay for infrastructure and LLM tokens | OSS framework; AMP with a free Basic plan and Enterprise on request, billed per execution | Self-hosted requires the Enterprise plan and a license key; prices not found | Community is free; Cloud from US$59 to US$159 per workspace/month; Enterprise on request | Not verified | Not verified |
 | Agents made in Claude, ChatGPT, Cursor, Codex go to one catalog | Yes, that is the focus: the tool creates the agent through the hangar's MCP | Partial: an MCP server exposes AMP deploy operations to clients such as Claude | Partial: deploys LangGraph, Deep Agents and other frameworks | Not found | Yes, for MCP, A2A and agent cards synced by URL (preview) | Partial: agents from Foundry, Copilot Studio and registered by an admin |
 | Agent catalog | Yes: owner, version, access requests, playground | Yes: Agent Repositories and Marketplace | Not found | Plugin marketplace, not an agent catalog | Yes: Agent Registry, with optional manual approval | Yes: Agent 365 registry and Entra Agent Registry |
-| Platform-agnostic access | OpenAI-compatible, MCP, A2A and ACP, per agent | A2A (0.2 and 0.3, early release) and a REST API per crew | Native MCP and A2A | API, web app, embed and MCP tool | MCP through the Gateway and A2A in the Runtime | A2A 1.0, Responses and Activity; MCP through the Toolbox |
+| Platform-agnostic access | OpenAI-compatible, MCP, A2A, ACP and AG-UI, per agent | A2A (0.2 and 0.3, early release) and a REST API per crew | Native MCP and A2A | API, web app, embed and MCP tool | MCP through the Gateway and A2A in the Runtime | A2A 1.0, Responses and Activity; MCP through the Toolbox |
 | Portability and lock-in | Low: YAML spec with JSON Schema, GitOps (`hangar apply`), standard endpoints, self-hosted | Medium: framework code is portable; the managed deploy belongs to AMP | Medium: LangGraph is open and there is a standalone Agent Server with Docker; the full platform is Enterprise | Medium: apps export as YAML DSL; self-hosted available | Open protocols (MCP, A2A), but the runtime and Registry stay on AWS | Accepts any framework and A2A, but hosting and registry stay on Azure and Microsoft 365 |
 | Agents combined into new agents | Yes: `sub_agents` over A2A, with permission checks | Yes: crews, the core of the framework | Yes: RemoteGraph through MCP and A2A | Yes: workflows with chained agents | Yes: A2A between agents | Yes: A2A tool |
 | Tool catalog | 230+ MCP servers from the Docker catalog; remote MCPs with OAuth | Tool Repository and its own MCP servers | Not found | Marketplace with tools and MCP integrations | The Gateway aggregates APIs, Lambdas and MCPs into a virtual MCP | Toolbox: a single MCP endpoint, with governance and versioning |

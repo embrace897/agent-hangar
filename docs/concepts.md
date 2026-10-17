@@ -33,7 +33,7 @@ Each agent has two environments, **stage** and **prod**, each with its own conta
 
 1. Ship sub-agents first (recursively).
 2. Deploy the current version to **stage**.
-3. Run tests: protocol smoke tests (health, Agent Card, OpenAI, A2A, ACP, MCP) plus the spec's test cases.
+3. Run tests: protocol smoke tests (health, Agent Card, OpenAI, A2A, ACP, MCP, AG-UI) plus the spec's test cases.
 4. Record the test run against that version.
 5. Promote to **prod** only if the run passed. `promote`/`deploy prod` enforce the same gate.
 

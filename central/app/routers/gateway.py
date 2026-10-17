@@ -1,6 +1,7 @@
 """Gateway dos agentes: /gw/<slug> (produção) e /gw-stage/<slug> para clientes externos, e /internal/gw
 para agente -> sub-agente. Agentes de chat são proxiados para o container deles; agentes-com-harness
-(sem container fixo) são atendidos aqui mesmo, disparando um job por chamada."""
+(sem container fixo) são atendidos aqui mesmo, disparando um job por chamada. No AG-UI (POST <slug>/agui), um
+Digital employee recebe a conversa como tarefa, para passar pela alçada (ver services/agui.py)."""
 import json
 import re
 import time
@@ -15,6 +16,8 @@ from starlette.background import BackgroundTask
 from .. import config, deploy
 from .. import services as svc
 from ..db import SessionLocal
+from ..models import Employee
+from ..services import agui
 from .internal import caller_agent, may_call
 
 router = APIRouter()
@@ -60,6 +63,8 @@ def protocol_of(path: str) -> str:
         return "acp"
     if path.startswith("mcp"):
         return "mcp"
+    if path == "agui":
+        return "agui"
     return "other"
 
 
@@ -159,6 +164,13 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
         return {"agents": [{"name": info["slug"], "description": info["objective"], "metadata": meta}]}
     if path == f"acp/agents/{info['slug']}":
         return {"name": info["slug"], "description": info["objective"], "metadata": meta}
+    if path == "agui":
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "corpo inválido: envie um RunAgentInput (JSON)"}, 400)
+        return StreamingResponse(agui.harness_stream(lambda text: _invoke(info, text, env, channel), body),
+                                 media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
     if path not in ("v1/chat/completions", "a2a", "acp/runs"):
         return JSONResponse({"error": f"caminho '{path}' não suportado para agente com harness"}, 501)
     try:
@@ -201,6 +213,24 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
 
 
 # ------------------------------------------------------------------ proxy
+# `usage"` (sem a aspa de abertura) casa com {"usage": …} do OpenAI e com "name": "hangar.usage" do AG-UI
+USAGE_MARK = b'usage"'
+
+
+def usage_of(line: bytes) -> dict | None:
+    """Tokens e custo de uma linha SSE. OpenAI: {"usage": …}; AG-UI: {"type": "CUSTOM", "name": "hangar.usage",
+    "value": …}."""
+    if not line.startswith(b"data: {") or USAGE_MARK not in line:
+        return None
+    try:
+        ev = json.loads(line[6:])
+    except ValueError:
+        return None
+    if not isinstance(ev, dict):
+        return None
+    return (ev.get("value") if ev.get("name") == "hangar.usage" else ev.get("usage")) or None
+
+
 async def _proxy(request: Request, slug: str, path: str, env: str):
     with SessionLocal() as db:
         a = svc.find_agent(db, slug)
@@ -221,12 +251,15 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
                 "summary": svc.guides.card_summary(db, a) if path in CARD_PATHS else ""}
         is_harness = bool(spec.get("harness"))
         code_ok, code_msg = svc.code_allowed(db, spec, env)
-    if not code_ok and protocol_of(path) == "openai" and _sends_client_tools(await request.body()):
+        employee = agui.employee_of(db, a.id) if path == "agui" else None
+    if not code_ok and protocol_of(path) in ("openai", "agui") and _sends_client_tools(await request.body()):
         # modo agente de código (VS Code, Cline…): o cliente mandaria arquivos e saídas de terminal para esse LLM
         return JSONResponse({"error": {"message": code_msg, "type": "code_policy"}}, 403)
     # sessão já fechada aqui: nada abaixo segura conexão do pool enquanto espera o agente
     if is_harness:
         return await _proxy_harness(info, path, request, env)
+    if employee is not None and request.scope.get("state", {}).get("principal") is not None:
+        return await _agui_employee(request, info, employee.id, env)
 
     channel = channel_of(request)
     uid = user_of(request)
@@ -265,13 +298,9 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
             async for chunk in upstream.aiter_bytes():
                 yield chunk
                 tail = (tail + chunk)[-65536:]
-                if b'"usage"' in chunk or b'"usage"' in tail[-len(chunk) - 16:]:
+                if USAGE_MARK in chunk or USAGE_MARK in tail[-len(chunk) - 16:]:
                     for line in tail.split(b"\n"):
-                        if line.startswith(b"data: {") and b'"usage"' in line:
-                            try:
-                                seen["usage"] = json.loads(line[6:]).get("usage") or seen["usage"]
-                            except ValueError:
-                                pass
+                        seen["usage"] = usage_of(line) or seen["usage"]
 
         async def done():
             await upstream.aclose()
@@ -296,6 +325,30 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
             payload = None
         await run_in_threadpool(_record, info["id"], env, channel, proto, t0, ok, payload, uid)
     return Response(content, upstream.status_code, headers=headers)
+
+
+async def _agui_employee(request: Request, info: dict, employee_id: int, env: str):
+    """AG-UI de um Digital employee: a conversa vira tarefa (ou a rodada retoma a tarefa de um interrupt)."""
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError
+    except Exception:
+        return JSONResponse({"error": "corpo inválido: envie um RunAgentInput (JSON)"}, 400)
+    channel, uid, t0 = channel_of(request), user_of(request), time.time()
+
+    def start():
+        with SessionLocal() as db:
+            acc = svc.access.of(db, request.scope["state"]["principal"])
+            return agui.start_or_resume(db, acc, db.get(Employee, employee_id), info["slug"], body)
+    try:
+        task_id, after, _resumed = await run_in_threadpool(start)
+    except (svc.PlatformError, svc.access.Forbidden) as e:
+        return JSONResponse({"error": str(e)}, 403 if isinstance(e, svc.access.Forbidden) else 400)
+    await run_in_threadpool(_record, info["id"], env, channel, "agui", t0, True, None, uid)
+    thread, run = agui.ids(body)
+    return StreamingResponse(agui.employee_stream(task_id, after, thread, run), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.api_route("/gw/{slug}/{path:path}", methods=["GET", "POST"])

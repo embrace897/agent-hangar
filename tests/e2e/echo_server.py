@@ -106,11 +106,25 @@ class Echo(BaseHTTPRequestHandler):
         if path == "/v1/chat/completions":
             req = json.loads(body or "{}")
             LLM["requests"].append({k: v for k, v in req.items() if k != "messages"} | {"n_messages": len(req.get("messages", []))})
-            last = next((m for m in reversed(req.get("messages", [])) if m.get("role") == "user"), {})
+            msgs = req.get("messages", [])
+            last = next((m for m in reversed(msgs) if m.get("role") == "user"), {})
             text = last.get("content") if isinstance(last.get("content"), str) else json.dumps(last.get("content"))
+            usage = {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}
+            # "use-tool <nome>" com essa ferramenta na lista: o modelo pede a ferramenta; com o resultado, ecoa o resultado
+            if msgs and msgs[-1].get("role") == "tool":
+                return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
+                                   "choices": [{"index": 0, "finish_reason": "stop", "message": {
+                                       "role": "assistant", "content": f"eco-tool: {msgs[-1].get('content')}"}}]})
+            names = {(t.get("function") or {}).get("name") for t in req.get("tools") or []}
+            want = text.split("use-tool ", 1)[1].split()[0] if "use-tool " in (text or "") else ""
+            if want in names:
+                call = {"id": f"call_{len(LLM['requests'])}", "type": "function", "function": {"name": want, "arguments": "{\"id\": \"4471\"}"}}
+                return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
+                                   "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+                                       "role": "assistant", "content": None, "tool_calls": [call]}}]})
             return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"),
                                "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": f"eco: {text}"}}],
-                               "usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}})
+                               "usage": usage})
         return self._json({"error": "não existe"}, 404)
 
     def _reply(self):

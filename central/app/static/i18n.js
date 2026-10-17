@@ -495,6 +495,9 @@
     'Como modelo (recomendado: anexos, workspace por conversa, progresso ao vivo) ou como ferramenta MCP.':
       'As a model (recommended: attachments, per-conversation workspace, live progress) or as an MCP tool.',
     'Como modelo (conexão OpenAI) ou como ferramenta (MCP).': 'As a model (OpenAI connection) or as a tool (MCP).',
+    'O agente dentro do seu app React/Next.js, pelo protocolo AG-UI: ferramentas do app e as aprovações da alçada na tela.':
+      'The agent inside your React/Next.js app over the AG-UI protocol: the app’s tools and the authority approvals on screen.',
+    'Qualquer cliente AG-UI (@ag-ui/client, SDKs de Python, Kotlin, Go…).': 'Any AG-UI client (@ag-ui/client, Python, Kotlin, Go SDKs…).',
     'Qualquer cliente OpenAI-compatible (Python, JS, n8n…).': 'Any OpenAI-compatible client (Python, JS, n8n…).',
     'Qualquer cliente MCP com Streamable HTTP e cabeçalhos.': 'Any MCP client with Streamable HTTP and headers.',
     'SDK OpenAI / outros': 'OpenAI SDK / others', 'Outro cliente MCP': 'Other MCP client',
@@ -669,7 +672,12 @@
       'that the tool\'s LLM calls (all platforms).', ': o agente vira um': ': the agent becomes a',
     'no seletor do chat e conduz a conversa — recebe anexos e usa as próprias tools (LibreChat, Open WebUI, OpenCode, SDKs). Cada conexão gera uma chave só desta ferramenta e deste agente,':
       'in the chat picker and leads the conversation — it receives attachments and uses its own tools (LibreChat, Open WebUI, OpenCode, SDKs). Each connection creates a key just for this tool and this agent,',
-    'em seu nome': 'in your name', 'Como ferramenta (MCP)': 'As a tool (MCP)', 'Como modelo': 'As a model',
+    'no seletor do chat e conduz a conversa — recebe anexos e usa as próprias tools (LibreChat, Open WebUI, OpenCode, SDKs).':
+      'in the chat picker and leads the conversation — it receives attachments and uses its own tools (LibreChat, Open WebUI, OpenCode, SDKs).',
+    ': o agente dentro do': ': the agent inside', 'seu app': 'your app',
+    '(CopilotKit e outros), com as ferramentas do app e, num Digital employee, as aprovações da alçada na tela. Cada conexão gera uma chave só desta ferramenta e deste agente,':
+      '(CopilotKit and others), with the app’s tools and, for a Digital employee, the authority approvals on screen. Each connection creates a key just for this tool and this agent,',
+    'em seu nome': 'in your name', 'Como ferramenta (MCP)': 'As a tool (MCP)', 'Como modelo': 'As a model', 'No seu app (AG-UI)': 'In your app (AG-UI)',
     'Conexões ativas (': 'Active connections (', 'Nenhuma ainda — escolha uma ferramenta abaixo.': 'None yet — pick a tool below.',
     'A chave aparece só agora.': 'The key is shown only now.',
     'Para desligar, use “Desconectar” acima (só esta ferramenta perde o acesso).':
@@ -2608,7 +2616,7 @@
     [/^Este texto foi escrito para a v(\d+); a versão descrita agora é a v(\d+)\. Confira se ainda vale\.$/,
       'This text was written for v$1; the version described is now v$2. Check that it still applies.'],
     [/(\d+)\/(\d+) checks aprovados/, '$1/$2 checks passed'], [/\((\d+) ativa\(s\)\)/, '($1 active)'],
-    [/ — Como ferramenta \(MCP\)$/, ' — As a tool (MCP)'], [/ — Como modelo$/, ' — As a model'],
+    [/ — Como ferramenta \(MCP\)$/, ' — As a tool (MCP)'], [/ — Como modelo$/, ' — As a model'], [/ — No seu app \(AG-UI\)$/, ' — In your app (AG-UI)'],
     [/^Já existe um guia escrito para a v(\d+); ele aparece aqui quando essa versão for publicada\.$/,
       'A guide is already written for v$1; it shows here when that version is published.'],
     [/\(empresa\)$/, '(company)'], [/\(privado\)$/, '(private)'], [/\(aberto\)$/, '(open)']];
