@@ -11,9 +11,10 @@ The person stays in the loop for everything sensitive, and **the platform enforc
 prompt**. Before every tool call, the agent's runtime asks the central (`/internal/gate`). If the central does not
 answer, the action does not run (it fails closed).
 
-Phases F1 (the job, authority and decisions) and F2 (recurring work, inbound webhooks, measured goals, weekly
-reports and learning from decisions) are done. Integrations with the company's chat tool are planned for F3; see
-[Roadmap](#roadmap).
+Phases F1 to F4 are done: the job, authority and decisions; recurring work, inbound webhooks, measured goals and
+learning from decisions; decisions and tasks in Slack, Microsoft Teams and e-mail; and teamwork between employees. See
+[Roadmap](#roadmap). In an app, a Digital employee also works over AG-UI, with its decisions as interrupts
+([clients.md](clients.md#ag-ui-the-agent-inside-your-app)).
 
 ## Lifecycle
 

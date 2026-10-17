@@ -319,5 +319,6 @@ curl -N http://localhost:8090/gw/ticket-triage/agui \
        "tools": [], "context": [], "state": {}, "forwardedProps": {}}'
 ```
 
-**Slack / Teams.** Native adapters are on the roadmap. Until then, a bot can call the OpenAI-compatible endpoint
-with `X-Channel: slack`.
+**Slack / Teams.** Digital employees take tasks and decisions in Slack and Microsoft Teams natively
+([digital-employee.md](digital-employee.md#tasks-from-chat)). For any other agent, a bot can call the OpenAI-compatible
+endpoint with `X-Channel: slack`, or use AG-UI's Slack and Teams clients.

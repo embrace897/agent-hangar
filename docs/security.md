@@ -136,8 +136,8 @@ plugins are denied.
 **Limitation.** Anyone who controls the hangar process can still create a container with arbitrary settings,
 such as a privileged container or a host bind mount. With a Docker backend, that is equivalent to root on the
 host. The proxy reduces the attack surface, but it is not a sandbox boundary against a compromised hangar. For
-real multi-tenant isolation, use a rootless Docker/Podman host, a dedicated VM, or the Kubernetes driver planned
-on the roadmap, together with admission policies.
+real multi-tenant isolation, use a rootless Docker/Podman host, a dedicated VM, or the Kubernetes driver
+([kubernetes.md](kubernetes.md)), with its NetworkPolicies, together with admission policies.
 
 ## Data Studio (code execution)
 

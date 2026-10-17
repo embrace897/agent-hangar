@@ -10,7 +10,7 @@ Cursor, Gemini, VS Code, OpenCode) keeps connecting through the platform MCP, ex
 ## What the member sees
 
 The portal shows only what belongs to the person, even when that person is an admin:
-- The menu has nine items: Início, Minhas issues, Issues, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos.
+- The menu has eight items: Início, Minhas issues, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos. Each person sees their own issues; the company's board is in the console, read-only ([issues.md](issues.md#who-sees-what)).
 - Everything else (building agents, catalog, plugins, queues, budgets, teams, governance…) is in the console (`/ui`), for admins.
 - In the portal, other addresses go back to Início. Projects, agents, Digital employees and tasks open only as a detail page, from a link.
 - The global search only returns issues, Digital employees and tasks.

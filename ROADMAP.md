@@ -1,41 +1,33 @@
 # Roadmap
 
-Each item links to a GitHub issue once the repository is public. Priorities follow feedback: 👍 the issues you care about.
+Priorities follow feedback: open an issue or 👍 the ones you care about. What each release delivered is in the
+[CHANGELOG](CHANGELOG.md).
 
-## v0.1 — first public cut ✅
-- Registry, immutable versions, stage → tests → prod gate, one-click rollback
-- Chat, harness (Claude Code, Codex, Hermes, DeepSeek Harness) and multi-agent (A2A) agents
-- OpenAI-compatible, A2A, ACP and MCP per agent, behind an authenticated gateway
-- Scoped API keys, per-agent internal tokens, encrypted connection keys, Docker socket proxy
-- Async jobs with SSE, cancel and orphan recovery; one image per harness with pinned versions
-- LLM-as-judge tests; cost in US$ per call, agent, channel and job
-- UI (create, spec editor, templates, keys), `hangar` CLI, GitOps `apply`, 6 templates
-- Alembic migrations, pytest suite, CI
+## Delivered
 
-## v0.2 — delivered ✅ (Data Studio, LibreChat kit, live progress, sandbox per conversation)
-- See CHANGELOG 0.2.0
+| Area | What is there today | Since |
+|---|---|---|
+| Lifecycle | Registry, immutable versions, stage tests as a gate to production, four-eyes approval, rollback, GitOps | v0.1 |
+| Agent types | Chat, harness (Claude Code, Codex, Hermes, DeepSeek Harness), multi-agent over A2A, remote agents over AG-UI | v0.1, v0.40 |
+| Protocols | OpenAI-compatible, MCP, A2A, ACP and AG-UI per agent, behind one authenticated gateway | v0.1, v0.38 |
+| AG-UI | Agents inside your app (CopilotKit): streaming, reasoning, the app's tools, shared state, sub-agents, approvals as interrupts | v0.38–v0.39 |
+| Images | Published to GHCR for amd64 and arm64, signed with cosign, with an SBOM | v0.12 |
+| Teams and access | Teams and roles, SSO (OIDC, SAML), SCIM, several companies per installation, corporate e-mail rule | v0.3, v0.25, v0.37 |
+| Memory | Temporal knowledge graph per agent, team or company | v0.6 |
+| Kubernetes | Runtime driver, Helm chart, NetworkPolicies, high availability, Terraform for GKE, AKS and EKS | v0.10–v0.12 |
+| Observability | Prometheus metrics, JSON logs, OpenTelemetry traces | v0.12 |
+| Digital employees | Hiring, probation, authority per action type, decisions in the portal, Slack, Teams and e-mail, routines, teamwork | v0.16–v0.24 |
+| Plugins and connectors | Declarative plugins with four-eyes review and an egress proxy; MCP connectors with tools approved one by one | v0.21–v0.24, v0.33–v0.35 |
+| Cost and data | Budgets per company, team, agent or project with a hard stop; DLP, classification and retention; secrets vault | v0.25–v0.26 |
+| Model use | Execution profile (effort, output limit, parallel tools, prompt cache), measured and compared per model | v0.36 |
 
-## v0.3 — reliable (moved from v0.2)
-- Real token streaming from the agent runtime (today the full answer is sent as one SSE chunk)
-- Redis-backed job queue so the hangar can run with multiple replicas
-- A2A task lifecycle (`tasks/get`, streaming, push notifications)
-- Images published to GHCR on every release (`docker compose pull`, no build)
-- Eval datasets per agent + regression check against the prod version before promoting
+## Next
 
-## v0.3 — adoptable
-- Slack and Microsoft Teams channel adapters
-- Docs site, hero GIF, 20 `good first issue`s
-- React/Svelte frontend with component library; version diff view
-- Telemetry (opt-in, anonymous) for time-to-first-agent
-
-## v0.4 — observable & governed
-- OpenTelemetry traces end-to-end (gateway → agent → LLM → tools → sub-agents), Langfuse export
-- Rate limits per agent and per consumer key (monthly budgets per team: done)
-- Guardrails (prompt-injection detection, PII redaction) as gateway plugins
-- Secret references for HTTP tool auth (`secret:crm-token`)
-
-## v1.0 — enterprise-ready
-- Kubernetes runtime driver + Helm chart + NetworkPolicies (done in v0.10, with GKE/AKS/EKS presets; next: high availability)
-- Multi-tenancy (several companies per installation; `org_id` is already on the tables). Done earlier: OAuth2 SSO, teams and roles, SCIM
-- Egress allowlist for jobs; human approval for destructive harness actions
-- Exportable audit trail (SIEM)
+- **Token streaming on the OpenAI-compatible endpoint** for chat agents (AG-UI already streams token by token).
+- **A2A task lifecycle:** `tasks/get`, streaming and push notifications.
+- **Egress allowlist for harness jobs and Data Studio kernels** (plugins with code already reach only their declared
+  hosts).
+- **Human approval for destructive harness actions**, like the authority of Digital employees.
+- **Exportable audit trail** for a SIEM.
+- **Remote agents over A2A**, besides AG-UI.
+- **Live tests of the channels** against a real Slack workspace, a Teams tenant and an IMAP mailbox.

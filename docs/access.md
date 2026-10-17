@@ -112,7 +112,7 @@ addresses, so links and favorites keep working:
 
 *Portal do usuário* is a link at the bottom of the menu.
 
-**The portal's menu** has only the person's own items: *Início, Minhas issues, Issues, Meus agentes, Organograma,
+**The portal's menu** has only the person's own items: *Início, Minhas issues, Meus agentes, Organograma,
 Decisões, Caixa de entrada, Conectar minha IA, Meus acessos* — the same for admins. Building agents, the catalog, plugins,
 queues, budgets, teams, audit and **Membros** are in the console (`/ui`). See [workspace.md](workspace.md).
 

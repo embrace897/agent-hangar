@@ -7,7 +7,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 
 | Feature | Where | Docs |
 |---|---|---|
-| Issues (kanban): board, list, table, swimlanes and timeline; assign to a Digital employee and it works on the issue (with authority and budget); comments with @mentions, sub-issues in stages, relations, labels, custom statuses | Portal → Issues, Minhas issues · Console → Issues | [issues.md](issues.md) |
+| Issues (kanban): board, list, table, swimlanes and timeline; assign to a Digital employee and it works on the issue (with authority and budget); comments with @mentions, sub-issues in stages, relations, labels, custom statuses | Portal → Minhas issues (each person sees their own) · Console → Issues (the company's view, read-only) | [issues.md](issues.md) |
 | Member workspace: simple menu, home (decisions, agents working now, my tasks, month cost), personal agents, visual org chart with drag-and-drop, *Connect my AI*, my sign-ins, installable app with notifications | Portal → Início, Meus agentes, Organograma, Conectar minha IA, Meus acessos | [workspace.md](workspace.md) |
 | Members: invite by e-mail (link to the portal), people and roles, open sign-ins, sign-in methods and personal-agent rules | Console → Membros | [workspace.md](workspace.md#admin-members) |
 | Full dashboard: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |

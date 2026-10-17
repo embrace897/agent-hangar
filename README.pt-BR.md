@@ -18,7 +18,13 @@ Claude um Assistente Comercial, que é criado, testado e publicado pelo MCP do H
 agente, o Playground, a memória do time, o resumo diário agendado, as conexões e o catálogo da empresa"></p>
 <p align="center"><sub>O portal do usuário, gravado numa instalação local · <a href="docs/assets/portal-tour.mp4">versão MP4</a></sub></p>
 
-> **Status: alpha (v0.30).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
+### Assista: o Agent Hangar de ponta a ponta
+
+https://github.com/user-attachments/assets/62836990-f66c-4c94-950b-4632cf9fc160
+
+<sub>2 min 45 s, em inglês e com legendas: o que é o Agent Hangar, como instalar, criar, testar e publicar agentes, usá-los em todos os protocolos (inclusive dentro do seu app), pôr Digital employees para trabalhar e manter custo e governança sob controle. [Versão MP4](docs/assets/agent-hangar-end-to-end.mp4)</sub>
+
+> **Status: alpha (v0.40).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
 > sua rede até ler [docs/security.md](docs/security.md).
 
 ## Por que o Agent Hangar
@@ -78,10 +84,10 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Agentes de código e IDE | Harnesses (Claude Code, Codex, Hermes, DeepSeek Harness) como agentes; extensão de VS Code; Cline, Roo Code e Continue | Parcial: plugin de skills que ensina o CrewAI a agentes de código | Não encontrado | Não encontrado | Não encontrado | Não encontrado |
 | Promoção com testes | Sim: versão imutável, gate de testes em stage, aprovação de segundo mantenedor, rollback | Não encontrado | Avaliação na mesma stack; gate de promoção não encontrado | Não encontrado | Não encontrado | Versiona agentes e cria endpoints estáveis; gate não encontrado |
 | Memória de longo prazo | Grafo temporal por agente, time ou org (Graphiti) | Memória e knowledge no framework | Estado por thread, execução durável | Base de conhecimento (RAG) | Não verificado | Memory como ferramenta nativa |
-| Governança e custo | SSO, SCIM, papéis, auditoria, orçamento mensal por time com corte opcional, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
+| Governança e custo | SSO, SCIM, papéis, regra de e-mail corporativo, auditoria, DLP e retenção, orçamento por empresa, time, agente ou projeto com corte, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
-| Maturidade | Alpha (v0.30), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
+| Maturidade | Alpha (v0.40), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
 
 ## Exemplo: do pedido no Claude ao agente funcionando
 
@@ -190,25 +196,62 @@ O cliente chama as ferramentas do hangar e faz o resto:
 4. Faz deploy num container de **stage** e roda os testes.
 5. Registra o resultado e só promove para **produção** se os testes passarem.
 
-A partir daí o agente é um serviço com quatro endpoints padrão. Você pode plugá-lo no LibreChat, no Open WebUI, no
-OpenCode, no Claude Desktop, num bot de Slack, em outro agente (via A2A) ou em qualquer SDK da OpenAI. Cada agente
+A partir daí o agente é um serviço com cinco protocolos padrão (OpenAI-compatible, MCP, A2A, ACP e AG-UI). Você
+pode plugá-lo no LibreChat, no Open WebUI, no OpenCode, no Claude Desktop, num bot de Slack, em outro agente (via
+A2A), no seu próprio app (via AG-UI) ou em qualquer SDK da OpenAI. Cada agente
 também é **um servidor MCP próprio**, então as skills e tools dele continuam funcionando dentro de outras
 ferramentas.
 
-**Times e SSO:**
+**Times, SSO e governança:**
 - Cada pessoa entra com Google, Microsoft Entra ID, GitHub ou outro provedor OAuth2.
+- No primeiro acesso, o admin cadastra a empresa e os domínios de e-mail, com a regra opcional de só aceitar e-mail
+  corporativo, em todas as entradas (convite, SSO, SCIM).
 - Cada agente pertence a um time, com os papéis mantenedor, developer e consumer.
-- Produção exige a aprovação de outro mantenedor.
+- Produção pode exigir a aprovação de outro mantenedor.
 - Os outros times encontram agentes no catálogo da empresa e pedem acesso.
 - O SCIM sincroniza usuários e grupos com o diretório.
+- Orçamento por empresa, time, agente ou projeto, por dia ou por mês, com aviso e corte.
+- Governança de dados (classificação, DLP, retenção), cofre de segredos (`secret://`) e auditoria.
 
 Veja [docs/access.md](docs/access.md).
 
 **Plug and play:** na aba **Conectar** do agente (ou `hangar connect <slug> <ferramenta>`) você escolhe a
 ferramenta e o modo, e recebe uma chave só daquela ferramenta com a configuração pronta para colar. Toda ferramenta
 pode usar o agente **via MCP** (Claude Code, Claude Desktop, Codex, OpenCode, Cursor, VS Code, LibreChat, Open WebUI);
-as de chat também podem usá-lo **como modelo** (LibreChat, Open WebUI, OpenCode, SDKs OpenAI). Cada conexão é
-opcional e pode ser revogada sozinha.
+as de chat também podem usá-lo **como modelo** (LibreChat, Open WebUI, OpenCode, SDKs OpenAI); e um app pode tê-lo
+**dentro da tela, via AG-UI** (CopilotKit e outros clientes). Cada conexão é opcional e pode ser revogada sozinha.
+
+**O agente dentro do seu app (AG-UI).** Coloque qualquer agente no seu produto com o CopilotKit ou outro cliente
+[AG-UI](https://docs.ag-ui.com). A resposta chega token a token, com o raciocínio do modelo, cada ferramenta e o
+resultado. O agente pode chamar as ferramentas do app e mudar o estado da tela (JSON Patch). Um Digital employee
+mantém a alçada: uma ação que precisa de aprovação pausa a rodada com um interrupt, e a decisão fica com quem a
+alçada indica. Veja [docs/clients.md](docs/clients.md#ag-ui-the-agent-inside-your-app).
+
+**Agentes de qualquer framework (agentes remotos).** Um agente feito em LangGraph, Google ADK, Mastra, Microsoft Agent
+Framework ou AWS Strands passa a ser governado pelo hangar sem mudar o código: basta o endereço AG-UI dele na spec.
+Ele ganha versão, testes em stage antes da produção, orçamento, medição e auditoria, e fica disponível em OpenAI,
+A2A, ACP, MCP e AG-UI. As credenciais saem só do cofre. Veja
+[docs/clients.md](docs/clients.md#agents-from-other-frameworks-remote-ag-ui-agents).
+
+**O esforço certo para cada modelo.** Cada agente tem um perfil de execução: esforço de raciocínio, limite de saída,
+ferramentas em paralelo e cache do prompt, enviados no dialeto de cada provedor e nas flags de cada harness. O esforço
+começa pelo papel do agente, o hangar mede custo e acerto por modelo e esforço, e uma comparação em stage sugere um
+nível mais barato ou mais forte, com os números. Nada muda sozinho. Veja [docs/execution.md](docs/execution.md).
+
+**Issues, para pessoas e agentes.** Um quadro kanban (quadro, lista, tabela, linha do tempo) em que a issue atribuída
+a um Digital employee vira trabalho dentro da alçada e do orçamento dele: ele comenta o andamento e entrega o
+resultado para revisão. Cada pessoa vê as próprias issues; o console é a visão da empresa, só de leitura. Issues
+nunca são apagadas. Veja [docs/issues.md](docs/issues.md).
+
+**Ferramentas para os agentes:**
+- **Conectores**, no formato do catálogo do ChatGPT: servidores MCP remotos (com OAuth), servidores locais via stdio
+  num container isolado ou um JSON `mcpServers` importado do Claude Desktop ou do Cursor. Cada ferramenta é aprovada
+  uma a uma, e uma ferramenta nova ou alterada fica bloqueada até um admin aprovar ([docs/connectors.md](docs/connectors.md)).
+- **230+ servidores MCP** do catálogo oficial da Docker, cada um num container isolado.
+- **Skills** no estilo das Skills do Claude, com verificação de segurança no upload; o Skill Studio guarda versões e
+  casos de teste.
+- **Plugins** conectam qualquer sistema com um manifesto declarativo, revisado por quatro olhos
+  ([docs/plugins.md](docs/plugins.md)).
 
 **Um guia para cada agente.** Cada agente tem a aba **Guia**, pensada para quem vai usá-lo:
 - um fluxo montado a partir da spec (pedido, agente, as skills, ferramentas, memória e especialistas que ele usa, e
@@ -244,8 +287,18 @@ Veja [docs/digital-employee.md](docs/digital-employee.md).
 
 ## Início rápido
 
+O instalador guiado faz as perguntas e cuida do resto (o `.env`, a stack, o teste do LLM, o admin e a configuração
+das suas ferramentas de IA). Veja [docs/install.md](docs/install.md).
+
 ```bash
 git clone https://github.com/valteresj2/agent-hangar && cd agent-hangar
+./scripts/install.sh                                              # Linux, macOS, WSL
+# Windows: powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+```
+
+Para experimentar sem custo, `hangar test-drive` percorre o caminho inteiro com o modelo de teste. Sem o instalador:
+
+```bash
 ./scripts/setup.sh              # Windows: powershell -File scripts/setup.ps1  → gera o .env com segredos aleatórios
 docker compose up -d --build
 ```
@@ -276,8 +329,8 @@ Harnesses de código são opcionais porque as imagens são grandes:
 - **Um container por agente e um por job.** Agentes de chat rodam em containers endurecidos. Harnesses (Claude
   Code, Codex, Hermes, DeepSeek Harness) sobem **um container efêmero por chamada** e devolvem o resultado e o
   `git diff`.
-- **Todos os protocolos.** Cada agente expõe OpenAI-compatible, **A2A**, **ACP** e **MCP** atrás de um gateway
-  autenticado, com métricas por canal.
+- **Todos os protocolos.** Cada agente expõe OpenAI-compatible, **A2A**, **ACP**, **MCP** e **AG-UI** atrás de um
+  gateway autenticado, com métricas por canal.
 - **Use o seu gateway de LLM.** O hangar nunca hospeda modelo: os agentes chamam o seu LiteLLM, OpenRouter ou
   provedor por meio de *conexões*. As chaves ficam criptografadas, há override por ambiente e o custo é calculado
   em US$.
@@ -294,13 +347,39 @@ Exemplo completo de agente como **motor de uma interface de chat**:
 
 Veja [integrations/librechat](integrations/librechat/).
 
+## Estado do projeto
+
+O Agent Hangar está em **alpha**: funciona de ponta a ponta, cada versão roda a suíte e2e completa e uma instalação
+numa máquina limpa, e as APIs ainda podem mudar. As versões recentes:
+
+| Versão | O que trouxe |
+|---|---|
+| v0.40 | Agentes remotos: agentes de LangGraph, Google ADK, Mastra e outros frameworks AG-UI, governados pelo hangar |
+| v0.39 | AG-UI com resposta token a token, raciocínio do modelo, estado compartilhado com o app e sub-agentes no stream |
+| v0.38 | AG-UI: qualquer agente dentro do seu app (CopilotKit), com as aprovações do Digital employee como interrupt |
+| v0.37 | Cadastro da empresa no primeiro acesso, com a regra opcional de e-mail corporativo |
+| v0.36 | Perfil de execução (esforço, limite de saída, paralelo, cache), medido e comparado por modelo |
+| v0.35 | Servidores MCP locais (stdio) como conectores, num container isolado |
+| v0.33–v0.34 | Conectores no formato do catálogo do ChatGPT, com ferramentas aprovadas uma a uma; Skills no estilo do Claude |
+| v0.32 | Página de provedores de LLM, com a lista de modelos, preços e recursos de cada um |
+| v0.30–v0.31 | Quadro de issues para pessoas e Digital employees; menu do console por assunto; Data Studio e navegador no Helm |
+
+O histórico completo está no [CHANGELOG](CHANGELOG.md) e o que vem pela frente no [ROADMAP.md](ROADMAP.md).
+
 ## Documentação
 
-[Conceitos](docs/concepts.md) · [Referência da spec](docs/spec.md) · [Harnesses](docs/harnesses.md) ·
-[API](docs/api.md) · [CLI](docs/cli.md) · [Clientes](docs/clients.md) · [Templates](docs/templates.md) ·
-[Segurança](docs/security.md) ·
-[Digital employee](docs/digital-employee.md) · [Trabalho do dia a dia](docs/work.md) · [Workspace do membro](docs/workspace.md) · [Issues (quadro kanban)](docs/issues.md) ·
-[Mapa de funcionalidades](docs/feature-map.md)
+| | |
+|---|---|
+| [Instalação](docs/install.md) · [VM na nuvem](docs/cloud-vm.md) · [Kubernetes](docs/kubernetes.md) | Instalador guiado, túneis, `hangar doctor`, upgrades; Docker numa VM; GKE, AKS e EKS |
+| [Conceitos](docs/concepts.md) · [Referência da spec](docs/spec.md) · [Templates](docs/templates.md) | O que é um agente e como descrevê-lo |
+| [Clientes](docs/clients.md) | Claude, ChatGPT, Codex, OpenCode, Cursor, VS Code, LibreChat, Open WebUI; AG-UI no seu app; agentes remotos |
+| [Acesso, times e SSO](docs/access.md) · [Workspace do membro](docs/workspace.md) | Papéis, aprovações, orçamentos, OAuth2/SCIM, cadastro da empresa e e-mail corporativo |
+| [Issues](docs/issues.md) · [Digital employee](docs/digital-employee.md) · [Trabalho do dia a dia](docs/work.md) | Quadro kanban; agentes com cargo, gestor e alçada; metas, projetos, orçamentos, caixa de entrada |
+| [O dia a dia do analista](docs/analyst.md) | Análise de dados, extração de documentos, calculadoras, playbooks, filas, base de conhecimento, governança de dados |
+| [Conectores](docs/connectors.md) · [Plugins](docs/plugins.md) · [Memória](docs/memory.md) · [Catálogo MCP](docs/mcp-catalog.md) | O que os agentes sabem e usam |
+| [Harnesses](docs/harnesses.md) · [Perfil de execução](docs/execution.md) · [Reúso](docs/composer.md) · [Guia do agente](docs/guide.md) | Agentes de código, esforço por modelo, agentes a partir de outros, a aba Guia |
+| [Observabilidade](docs/observability.md) · [Backup e upgrade](docs/backup.md) · [Cadeia de suprimentos](docs/supply-chain.md) | Métricas, logs, traces; `hangar backup`/`upgrade`; imagens assinadas e SBOM |
+| [API](docs/api.md) · [CLI](docs/cli.md) · [Segurança](docs/security.md) · [Comparativo](docs/comparison.pt-BR.md) · [Mapa de funcionalidades](docs/feature-map.md) | Referência, endurecimento e como o hangar se compara |
 
 ## Licença
 

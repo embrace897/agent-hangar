@@ -25,7 +25,13 @@ MCP. Then come her Início page, the agent, a Playground answer, the team memory
 connections and the company catalog."></p>
 <p align="center"><sub>The user portal, recorded on a local install · <a href="docs/assets/portal-tour.mp4">MP4 version</a></sub></p>
 
-> **Status: alpha (v0.30).** It works end to end and is covered by tests, but APIs may still change. Run it inside
+### Watch: Agent Hangar end to end
+
+https://github.com/user-attachments/assets/62836990-f66c-4c94-950b-4632cf9fc160
+
+<sub>2 min 45 s, with captions: what Agent Hangar is, how to install it, build, test and ship agents, use them over every protocol (inside your app too), put Digital employees to work, and keep cost and governance under control. [MP4 version](docs/assets/agent-hangar-end-to-end.mp4)</sub>
+
+> **Status: alpha (v0.40).** It works end to end and is covered by tests, but APIs may still change. Run it inside
 > your network until you have read [docs/security.md](docs/security.md).
 
 ## Why Agent Hangar
@@ -83,10 +89,10 @@ it does not prove the feature is missing. Where each one is ahead, the model opt
 | Coding agents and IDE | Harnesses (Claude Code, Codex, Hermes, DeepSeek Harness) as agents; VS Code extension; Cline, Roo Code and Continue | Partial: a skills plugin that teaches CrewAI to coding agents | Not found | Not found | Not found | Not found |
 | Promotion gated by tests | Yes: immutable versions, stage test gate, approval by a second maintainer, rollback | Not found | Evaluation in the same stack; promotion gate not found | Not found | Not found | Versions agents and creates stable endpoints; gate not found |
 | Long-term memory | Temporal graph per agent, team or org (Graphiti) | Memory and knowledge in the framework | Per-thread state, durable execution | Knowledge base (RAG) | Not verified | Memory as a native tool |
-| Governance and cost | SSO, SCIM, roles, audit, monthly budget per team with optional cutoff, cost per agent | RBAC and security controls | Custom auth; ABAC when self-hosted | SSO/SAML, RBAC and audit (Enterprise) | IAM/JWT and Cedar policies in the Gateway | Entra ID and Agent 365 controls |
+| Governance and cost | SSO, SCIM, roles, corporate e-mail rule, audit, DLP and retention, budgets per company, team, agent or project with a hard stop, cost per agent | RBAC and security controls | Custom auth; ABAC when self-hosted | SSO/SAML, RBAC and audit (Enterprise) | IAM/JWT and Cedar policies in the Gateway | Entra ID and Agent 365 controls |
 | Data residency and compliance | Data on your infrastructure, encrypted secrets, signed images with SBOM; no certifications cited | On-premises or cloud deployment; certifications not found | Self-hosted for data residency and isolated (air-gapped) environments | Self-hosted keeps data in-house; Enterprise with SOC 2 Type II and ISO 27001 | Not verified | Not verified |
 | Observability | Prometheus, JSON logs, OpenTelemetry, metrics per channel | Real-time observability | Strong point: traces and evaluation | Built-in observability | AgentCore Observability and CloudWatch | Application Insights and Agent 365 telemetry |
-| Maturity | Alpha (v0.30), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
+| Maturity | Alpha (v0.40), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
 
 ## From a request in Claude to a working agent
 
@@ -267,14 +273,44 @@ with your approval, while the hangar supplies their instructions, skills, MCPs a
 through the portal. Cline, Roo Code and Continue work too. See [docs/clients.md](docs/clients.md#vs-code-extension-agent-hangar).
 
 **Every protocol.** Each agent answers on `/v1/chat/completions` (OpenAI-compatible, with streaming), **A2A**
-(Agent Card + `message/send`), **ACP** and **MCP**. All of it sits behind one authenticated gateway with
+(Agent Card + `message/send`), **ACP**, **MCP** and **AG-UI**. All of it sits behind one authenticated gateway with
 per-channel metrics. The **Connect** tab gives a revocable key per tool and the config to paste.
 
+**Agents inside your own app (AG-UI).** Put any agent in your product with [CopilotKit](https://www.copilotkit.ai) or
+any [AG-UI](https://docs.ag-ui.com) client. The answer streams token by token, with the model's reasoning, each tool
+call and its result. The agent can call your app's tools and change the state on screen (JSON Patch). A Digital
+employee keeps its authority: an action that needs approval pauses the run with an interrupt, and the decision stays
+with the person the authority names. See [docs/clients.md](docs/clients.md#ag-ui-the-agent-inside-your-app).
+
+**Agents from any framework (remote agents).** An agent built with LangGraph, Google ADK, Mastra, Microsoft Agent
+Framework or AWS Strands is governed by the hangar without moving its code: add its AG-UI address to the spec.
+It gets a version, stage tests before production, budget, metering and audit, and becomes reachable over OpenAI,
+A2A, ACP, MCP and AG-UI. Credentials come only from the vault. See
+[docs/clients.md](docs/clients.md#agents-from-other-frameworks-remote-ag-ui-agents).
+
+**The right effort for every model.** Each agent has an execution profile: reasoning effort, output limit, parallel
+tools and prompt cache, sent in each provider's dialect and to each harness's flags. The effort starts from the
+agent's role, the hangar measures cost and accuracy per model and effort, and a comparison in stage suggests a
+cheaper or a stronger level with the numbers. Nothing changes on its own. See [docs/execution.md](docs/execution.md).
+
+**Issues, for people and agents.** A kanban board (board, list, table, timeline) where an issue assigned to a
+Digital employee becomes work under its authority and budget: it comments as it goes and hands the result over for
+review. Each person sees their own issues; the console is the company's read-only view. Issues are never deleted.
+See [docs/issues.md](docs/issues.md).
+
 **Tools for agents.**
+- **Connectors**, in the layout of ChatGPT's catalog: remote MCP servers (with OAuth), local servers over stdio in
+  an isolated container, or a `mcpServers` JSON imported from Claude Desktop or Cursor. Each tool is approved one by
+  one, and a tool that is new or changes stays blocked until an admin approves it
+  ([docs/connectors.md](docs/connectors.md)).
 - **230+ prebuilt MCP servers** from Docker's official catalog, each in an isolated container
   ([docs/mcp-catalog.md](docs/mcp-catalog.md)).
 - **Remote MCPs with OAuth,** such as Activepieces with 280+ business apps, Notion or Linear. They are connected
   once, and the tokens are kept and refreshed by the hangar ([docs/remote-mcp.md](docs/remote-mcp.md)).
+- **Skills** in the style of Claude's Skills: upload a `SKILL.md` or a package, with a security check that blocks
+  secrets and flags instruction overrides; Skill Studio keeps versions and test cases.
+- **Plugins** connect any system with a declarative manifest: tools, a team credential and action types for the
+  authority, reviewed by four eyes ([docs/plugins.md](docs/plugins.md)).
 - **Data Studio:** Python and DuckDB analysis that produces dashboards and decks.
 
 **A guide for every agent.** Each agent has a **Guide** tab for the people who will use it.
@@ -322,9 +358,13 @@ a Slack or Teams webhook.
 
 **Teams and governance.**
 - Sign-in with Google, Microsoft Entra ID, GitHub or OAuth2, plus local accounts, and SCIM provisioning.
-- Maintainer, developer and consumer roles; a company catalog with access requests; monthly budgets per team, with
-  an optional hard stop.
-- Scoped API keys, an audit log, GitOps (`hangar apply -f agents.yaml`) and a JSON Schema for the spec.
+- Company registration on the admin's first access, with the company's e-mail domains and an optional rule that only
+  corporate e-mails join, for every way in (invites, SSO, SCIM).
+- Maintainer, developer and consumer roles; a company catalog with access requests.
+- Budgets per company, team, agent or project, by day or month, with a warning and a hard stop.
+- Data governance: classification, DLP, retention and data subject requests ([docs/analyst.md](docs/analyst.md#data-governance)).
+- A secrets vault (`secret://`), scoped API keys, an audit log, GitOps (`hangar apply -f agents.yaml`) and a JSON
+  Schema for the spec. One installation can serve several isolated companies.
 
 **Bring your own LLM gateway.** The hangar never hosts a model. Agents call your LiteLLM, OpenRouter or provider
 through *connections*: URL, model and key, encrypted at rest. Connections can differ per environment and track cost
@@ -341,7 +381,7 @@ flowchart LR
   end
   B -- "MCP /mcp (personal or admin key)" --> H
   U -- "session (SSO or local)" --> H
-  T -- "/gw/&lt;slug&gt; OpenAI · A2A · ACP · MCP" --> H
+  T -- "/gw/&lt;slug&gt; OpenAI · A2A · ACP · MCP · AG-UI" --> H
   subgraph Hangar[Agent Hangar]
     H[API · gateway · registry<br/>versions · tests · approvals · audit · usage/cost · schedules]
     DB[(Postgres)]
@@ -355,6 +395,7 @@ flowchart LR
   P --> J[ephemeral job container<br/>claude-code · codex · hermes · dsh]
   A1 -- "memory, sub-agents, OAuth MCPs<br/>via /internal (per-agent token)" --> H
   A1 & J --> L[(Your LLM gateway / provider)]
+  H -- "AG-UI" --> R[remote agent<br/>LangGraph · ADK · Mastra…]
   classDef c fill:#eef2ff,stroke:#4f46e5
 ```
 
@@ -364,6 +405,8 @@ flowchart LR
 | **Chat agent** | An LLM loop with tools, always on, in its own container |
 | **Harness agent** | Hands each task to Claude Code / Codex / Hermes / DeepSeek Harness in a throwaway container |
 | **Multi-agent** | A chat agent with `sub_agents`: it delegates over A2A through the hangar, which checks it is allowed |
+| **Remote agent** | An agent that runs in another framework and speaks AG-UI; the hangar governs it and bridges every protocol to it |
+| **Digital employee** | An agent hired for a job, with a human manager and an authority level the platform enforces on every action |
 | **Connection** | An external LLM endpoint + default model + key (encrypted) + optional price |
 | **Stage → prod** | `ship` = deploy to stage → run tests → record → promote only if green (and approved, if the team requires it) |
 
@@ -399,6 +442,7 @@ curl http://localhost:8090/gw/doc-qa/v1/chat/completions \
 | A2A | `GET /gw/<slug>/.well-known/agent.json`, `POST /gw/<slug>/a2a` |
 | ACP | `POST /gw/<slug>/acp/runs` |
 | MCP | `POST /gw/<slug>/mcp` (one tool named after the agent) |
+| AG-UI | `POST /gw/<slug>/agui` (a `RunAgentInput`; the answer is a stream of AG-UI events) |
 
 Use `/gw-stage/<slug>/…` for the stage version. Send `X-Channel: slack` (or any name) for per-channel metrics.
 
@@ -427,17 +471,18 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 |---|---|
 | [Installation](docs/install.md) | Guided installer, exposure (Cloudflare, ngrok, Tailscale), unattended install, `hangar doctor`, upgrades |
 | [Concepts](docs/concepts.md) · [Spec reference](docs/spec.md) · [Templates](docs/templates.md) | What an agent is and how to describe one |
-| [Clients](docs/clients.md) | Connecting Claude, ChatGPT, Codex, OpenCode, Cursor, VS Code, LibreChat, Open WebUI |
+| [Clients](docs/clients.md) | Connecting Claude, ChatGPT, Codex, OpenCode, Cursor, VS Code, LibreChat, Open WebUI; AG-UI in your app; remote agents |
 | [Access, teams, SSO and the portal](docs/access.md) | Roles, approvals, budgets, OAuth2/SCIM, where each person lands |
 | [Issues (kanban board)](docs/issues.md) | The board for people and Digital employees: assign an issue and the agent works on it, with authority, budget and review |
 | [Member workspace](docs/workspace.md) | The member's portal: personal agents, visual org chart, connect my AI, sign-ins and activation codes, installable app with notifications |
-| [Memory](docs/memory.md) · [MCP catalog](docs/mcp-catalog.md) · [Remote MCPs + Activepieces](docs/remote-mcp.md) | What agents can know and use |
+| [Memory](docs/memory.md) · [Connectors](docs/connectors.md) · [MCP catalog](docs/mcp-catalog.md) · [Remote MCPs + Activepieces](docs/remote-mcp.md) | What agents can know and use |
 | [Harnesses](docs/harnesses.md) | Claude Code, Codex, Hermes and DeepSeek Harness as agents |
 | [Execution profile](docs/execution.md) | Reasoning effort, output limit, parallel tools and prompt cache, per provider and harness |
 | [Reuse before you build](docs/composer.md) | New agents from existing ones: plan, pieces, skills, read-only rules |
 | [Agent guide](docs/guide.md) | The Guide tab: flow from the spec, fact sheet, the users' guide and its drafts |
 | [Plugins](docs/plugins.md) | Connect any system with a declarative manifest: tools, team credential, action types for the authority, review and install per team |
 | [Digital employee](docs/digital-employee.md) | Agents with a job, a manager and an authority level: self-mode hiring, probation, tasks, decisions, reports |
+| [The analyst's day to day](docs/analyst.md) | Data analysis and deliverables, document extraction, calculators, playbooks, queues, knowledge base, governed browser and desktop, data governance |
 | [Day-to-day work](docs/work.md) · [Feature map](docs/feature-map.md) | Goals, projects, the task's conversation, budgets, inbox, files, companies; every feature by who uses it |
 | [Cloud VM](docs/cloud-vm.md) · [Comparison](docs/comparison.md) | Docker on AWS, Azure or Google Cloud; how Agent Hangar compares with other platforms |
 | [Kubernetes](docs/kubernetes.md) · [Terraform](deploy/terraform/README.md) | GKE, AKS, EKS: chart, high availability, vault secrets, cloud identity, one-`apply` stacks |
@@ -446,9 +491,26 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 
 ## Project status and roadmap
 
-v0.30 adds an issues board where people and Digital employees work together: assign an issue and the agent works on it under its authority and budget, comments as it goes and hands the result over for review; the member portal now shows only the person's own work, with their agents in their own org chart. v0.29 gives each member a simple workspace portal: personal agents within the company's rules, a visual org chart, one-click setup to connect their own AI, sign-in management with activation codes, and an installable app with decision notifications. v0.28 connects Jira, Linear, Asana and ServiceNow as on-ramps for queues, turns work that went well into reusable knowledge, lets the company propose changes to its own structure, and adds a maximizer mode per project. v0.27 adds the governed desktop — Digital employees operate desktop applications with no API by looking at the screen, under the same authority — and long tasks that continue across rounds; it publishes the governed browser and desktop images. v0.26 covers the analyst's day to day ([docs/analyst.md](docs/analyst.md)): data analysis and formatted deliverables, document extraction with field review, certified calculators, business calendar, playbooks, team queues, conversations with people outside, meetings, a knowledge base with permissions, a governed browser, data governance (classification, DLP, retention, LGPD), document change proposals, decision memos, watchers, pair mode and learning tracks, ROI and opportunities, and golden tasks with regression. v0.25 brings the day-to-day work together: goals and projects, the task's conversation, budgets with a hard stop, an inbox and search, dependencies and review, files and deliverables, recovery, the org chart, Skill Studio, team packages and a secrets vault; one installation serves several isolated companies; a Digital employee can run in your own agent (external worker via heartbeat); Telegram and Discord become task channels; plus a getting-started checklist, announcements, favorites, a live view, phone layouts and `hangar test-drive`. v0.24 closes what was left half done: plugins with code reach only their declared hosts (egress proxy), images are verified with cosign, each install has a rate limit and a call log, OAuth2 works for plugins with code and triggers are testable in stage; Digital employees take tasks from Slack and Teams, get a quality score (an LLM judge on a sample, or the manager) that counts in the career, and managers get a dashboard of cost, deadlines and bottlenecks. v0.23 adds Creator mode (build a plugin from the chat over MCP, with stage tests and four-eyes review) and the company's internal plugin gallery. v0.22 let plugins connect OAuth2 accounts, turn system events into tasks (signed webhooks) and bring code as an MCP server in an isolated container per install. v0.21 added plugins (connect any system with a declarative manifest: tools, team credential and action types, reviewed by four eyes and installed per team) and teamwork for Digital employees (handoffs between employees, a visible plan approved before long tasks, memory of past work and an e-mail inbox). v0.20 let managers decide in Slack (buttons in the message), Microsoft Teams or e-mail (signed links), with a daily digest, a warning before a decision expires and task deadlines that escalate. v0.19 added shadow mode (a new employee works for real while every action that changes something is only simulated for the manager to review) and a career plan (promotion and step-back suggestions from the track record). v0.18 let a Digital employee ask for a capability it lacks (the manager attaches a specialist or builds one; an agent never gives itself new agents). v0.17 let Digital employees work on their own: routines, an inbound webhook, measured goals with a weekly report, and suggestions learned from the manager's decisions. v0.16 added the **Digital employee** (agents hired for a job, with a manager, an authority level enforced by the platform and a human in the loop for sensitive actions). v0.15 added the agent **Guide** (a flow drawn from the spec, a fact sheet and a guide for users, written by the AI tool as a step of the build). v0.14 added the portal and console in English, ARM64 images and harness jobs fixed on Kubernetes. v0.13 added “reuse before you build”: new agents are composed from existing ones (semantic catalog search, read-only pieces, skills with their own tests). v0.12 added observability (Prometheus, JSON logs, OpenTelemetry), backup and upgrade (`hangar backup`/`upgrade`, pre-upgrade backups in the chart), vault secrets, cloud identity, signed images with SBOM, and Terraform for GKE, AKS and EKS. v0.11 added OAuth on the platform MCP (Claude.ai and ChatGPT on the web connect with just the URL) and high availability on Kubernetes (several central replicas). v0.10 added the guided installer (`hangar setup` / `hangar doctor`), tunnels (Cloudflare, ngrok, Tailscale) and Kubernetes (Helm chart, runtime driver, GKE/AKS/EKS presets). Earlier releases added code evaluations and code governance (v0.9), coding agents in VS Code (v0.8), the user portal (v0.7), long-term memory (v0.6), the MCP catalog with OAuth MCPs and
-Activepieces (v0.5), schedules and edit-after-ship (v0.4), and teams with SSO (v0.3). Next up: Slack/Teams adapters and egress allowlists for jobs. See
-[ROADMAP.md](ROADMAP.md), the [CHANGELOG](CHANGELOG.md) and the issues.
+Agent Hangar is in **alpha**: it works end to end, every release runs a full end-to-end suite and a clean-machine
+install, and APIs may still change. Recent releases:
+
+| Version | What it added |
+|---|---|
+| v0.40 | Remote agents: agents from LangGraph, Google ADK, Mastra and other AG-UI frameworks, governed by the hangar |
+| v0.39 | AG-UI streaming token by token, the model's reasoning, state shared with the app, sub-agents in the stream |
+| v0.38 | AG-UI: any agent inside your app (CopilotKit), with a Digital employee's approvals as interrupts |
+| v0.37 | Company registration on first access, with an optional corporate e-mail rule |
+| v0.36 | Execution profile (effort, output limit, parallel tools, prompt cache), measured and compared per model |
+| v0.35 | Local MCP servers (stdio) as connectors, in an isolated container |
+| v0.33–v0.34 | Connectors in the layout of ChatGPT's catalog, with tools approved one by one; Skills in the style of Claude's |
+| v0.32 | LLM providers page with the model list, prices and capabilities per provider |
+| v0.30–v0.31 | Issues board for people and Digital employees; console menu by subject; Data Studio and the browser in Helm |
+
+Earlier releases built the base: the registry with the stage gate (v0.1), teams and SSO (v0.3), memory (v0.6), the
+portal (v0.7), coding agents in VS Code (v0.8), the installer and Kubernetes (v0.10), observability and signed images
+(v0.12), Digital employees (v0.16–v0.24), several companies per installation (v0.25), the analyst's day to day
+(v0.26) and the governed desktop (v0.27). Everything is in the [CHANGELOG](CHANGELOG.md); what comes next is in
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

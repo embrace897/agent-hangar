@@ -21,6 +21,7 @@ See [guide.md](guide.md).
 | **Chat** (default) | A long-running container with an LLM tool-calling loop (max 6 steps) | Q&A, analysis, writing, classification, calling tools/MCPs, orchestration |
 | **Harness** (`spec.harness`) | A new ephemeral container **per call**, running a real coding agent CLI | Tasks that need to *execute*: edit files, run code, produce a diff |
 | **Multi-agent** (`spec.sub_agents`) | A chat agent whose tools include `ask_<sub-agent>` | Objectives that split into specialist roles |
+| **Remote** (`spec.remote`) | Outside the hangar, in another framework that speaks AG-UI (LangGraph, Google ADK, Mastra…) | Agents a team already built elsewhere, now versioned, tested, metered and reachable over every protocol |
 
 A harness agent cannot have sub-agents, but it can *be* a sub-agent of a chat orchestrator. When building through
 MCP, the model picks the type from the objective (the hangar's instructions explain the criteria); users can always
@@ -177,8 +178,9 @@ model has no quality score, there is no comparison; the page asks for its profil
 ## Gateway and channels
 
 Clients reach agents through the hangar at `/gw/<slug>/…` (prod) and `/gw-stage/<slug>/…`, authenticated with an
-API key. The gateway proxies to the agent container, streams SSE responses, and records usage (tokens, cost,
-latency, errors) per agent, environment, **channel** (the `X-Channel` header, e.g. `slack`) and protocol.
+API key, over OpenAI-compatible, A2A, ACP, MCP and AG-UI. The gateway proxies to the agent container (or, for harness
+and remote agents, answers itself), streams SSE responses, and records usage (tokens, cost, latency, errors) per
+agent, environment, **channel** (the `X-Channel` header, e.g. `slack`) and protocol.
 
 ## Jobs
 
