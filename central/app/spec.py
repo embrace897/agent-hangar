@@ -5,6 +5,7 @@ substituídos, e `null` APAGA o campo. Isso resolve o caso real em que um `llm.m
 uma troca de `llm.connection` — agora basta mandar `{"llm": {"connection": "x", "model": null}}`.
 """
 import copy
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -54,6 +55,39 @@ class HarnessSpec(_Strict):
     model: str = Field(default="", description="modelo da conexão (vazio = o padrão da conexão)")
     stage: HarnessEnvOverride | None = None
     prod: HarnessEnvOverride | None = None
+
+
+class RemoteEnvOverride(_Strict):
+    url: str | None = None
+
+
+class RemoteSpec(_Strict):
+    """Agente remoto: o agente roda fora do hangar (LangGraph, Google ADK, Mastra, Microsoft Agent Framework, AWS
+    Strands…) e fala AG-UI. O hangar governa o ciclo de vida (versão, testes em stage, promoção, orçamento, medição,
+    auditoria) e o expõe em todos os protocolos dele."""
+    protocol: Literal["agui"] = "agui"
+    url: str = Field(description="endpoint AG-UI do agente (POST de um RunAgentInput, resposta em SSE)")
+    headers: dict[str, str] = Field(default_factory=dict,
+                                    description="cabeçalhos enviados ao agente; um valor pode ser secret://nome do cofre")
+    timeout_s: int = Field(default=120, ge=5, le=900, description="tempo máximo de uma rodada")
+    stage: RemoteEnvOverride | None = None
+    prod: RemoteEnvOverride | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _http(cls, v):
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("a URL do agente remoto começa com http:// ou https://")
+        return v
+
+    @field_validator("headers")
+    @classmethod
+    def _credentials_in_vault(cls, v):
+        # a spec é versionada e aparece para quem vê o agente: credencial só pelo cofre
+        for k, val in (v or {}).items():
+            if re.search(r"auth|token|key|secret|cookie|password", k, re.I) and not str(val).startswith("secret://"):
+                raise ValueError(f"o cabeçalho '{k}' é uma credencial: guarde o valor no cofre e use secret://nome")
+        return v
 
 
 class ExecutionSpec(_Strict):
@@ -145,6 +179,7 @@ class TestCase(_Strict):
 class AgentSpec(_Strict):
     llm: LlmSpec = Field(default_factory=LlmSpec)
     harness: HarnessSpec | None = None
+    remote: RemoteSpec | None = None
     execution: ExecutionSpec | None = None
     judge: JudgeSpec | None = None
     instructions: str = ""
@@ -171,6 +206,15 @@ class AgentSpec(_Strict):
         if self.harness and self.llm.connection:
             raise ValueError("defina `llm` (agente de chat) OU `harness` (agente executor), não os dois — "
                              "para trocar de tipo, mande o outro campo como null")
+        if self.remote:
+            # o que roda dentro do agente é dele: o hangar não aplicaria (e diria que aplica)
+            inside = [k for k in ("harness", "skills", "mcps", "tools", "sub_agents", "memory", "plugins", "instructions")
+                      if getattr(self, k)]
+            if self.llm.connection:
+                inside.insert(0, "llm.connection")
+            if inside:
+                raise ValueError(f"um agente remoto roda fora do hangar: {', '.join(inside)} são dele, não do hangar "
+                                 "(tire esses campos, mandando null)")
         return self
 
 

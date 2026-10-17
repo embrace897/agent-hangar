@@ -311,6 +311,9 @@ Agents reach the memory at `/internal/memory/mcp` with their internal token and 
 | MCP | `POST mcp` (Streamable HTTP, stateless, JSON responses) |
 | AG-UI | `POST agui` (a `RunAgentInput`; the answer is an SSE stream of AG-UI events). See [clients.md](clients.md#ag-ui-the-agent-inside-your-app) |
 
+A remote agent (spec `remote`) answers the same paths: the hangar turns each call into an AG-UI run on the agent.
+`POST /api/agents/<slug>/remote/test {"env": "stage"}` checks the address, the vault and one full run.
+
 Optional header `X-Channel: <name>` tags usage for per-channel metrics. Without it, a key created by a tool
 connection tags usage with its tool (`claude-code`, `open-webui`, …); other keys fall back to `api`.
 

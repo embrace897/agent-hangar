@@ -229,6 +229,9 @@ def mp_area(a: str) -> str:
 def for_agent(db: Session, agent: Agent, role: str = "", env: str = "prod", ctx: dict | None = None) -> dict:
     """O papel do agente (deduzido ou informado), o modelo atual e a sugestão, se houver uma melhor."""
     spec = spec_of(agent)
+    if spec.get("remote"):
+        return {"agent": agent.slug, "supported": False,
+                "why": "um agente remoto escolhe o próprio modelo, fora do hangar"}
     if spec.get("harness"):
         return {"agent": agent.slug, "supported": False,
                 "why": "a recomendação por papel é para agentes de chat; num agente com harness, escolha o modelo em harness.model"}

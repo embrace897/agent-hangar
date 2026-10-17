@@ -91,7 +91,7 @@ def refresh_deployments(db: Session, agents=None):
         return
     changed = False
     for a in agents if agents is not None else db.scalars(select(Agent)):
-        if spec_of(a).get("harness"):
+        if spec_of(a).get("harness") or spec_of(a).get("remote"):
             continue
         for d in a.deployments:
             if d.status == "running":
@@ -113,7 +113,8 @@ def _deploy_harness_marker(db: Session, a: Agent, env: str, actor="admin") -> De
     db.add(dep)
     a.status = "production" if env == "prod" else (a.status if a.status == "production" else "stage")
     db.commit()
-    audit(db, actor, f"deploy.{env}", a.slug, f"v{a.current_version} (harness, sem container fixo)")
+    kind = "agente remoto, AG-UI" if spec_of(a).get("remote") else "harness, sem container fixo"
+    audit(db, actor, f"deploy.{env}", a.slug, f"v{a.current_version} ({kind})")
     return dep
 
 
@@ -135,7 +136,7 @@ def deploy_env(db: Session, slug: str, env: str, actor="admin", _stack=()) -> De
         if not gate or gate.status != "passed":
             raise PlatformError(
                 f"Promoção bloqueada: v{a.current_version} não tem teste aprovado em stage. Rode run_tests antes.")
-    if spec_of(a).get("harness"):
+    if spec_of(a).get("harness") or spec_of(a).get("remote"):  # sem container: o deploy é um marcador do ambiente
         return _deploy_harness_marker(db, a, env, actor)
     pieces = read_only_pieces(db, a)
     for sub in spec_of(a).get("sub_agents", []):

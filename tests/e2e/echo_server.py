@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>"""
 JIRA = {"issues": {}, "comments": [], "transitions": [], "attachments": []}
+AGUI_AGENT = {"calls": 0, "authorization": "", "roles": [], "thread": None}
 LLM = {"requests": []}
 LLM_MODELS = [
     {"id": "e2e/thinker", "name": "E2E Thinker", "context_length": 128000, "supported_parameters": ["tools", "reasoning"],
@@ -158,9 +159,36 @@ class Echo(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _agui_agent(self, body: str):
+        """Um agente AG-UI de fora do hangar (como um LangGraph ou um Google ADK): responde em eventos SSE, com uma
+        ferramenta e o texto em pedaços. /agui-agent/_state diz o que chegou (a credencial que o hangar tirou do cofre)."""
+        if self.path.endswith("/_state"):
+            return self._json(AGUI_AGENT)
+        inp = json.loads(body or "{}")
+        AGUI_AGENT.update(calls=AGUI_AGENT["calls"] + 1, authorization=self.headers.get("authorization", ""),
+                          roles=[m.get("role") for m in inp.get("messages", [])], thread=inp.get("threadId"))
+        last = next((m.get("content") for m in reversed(inp.get("messages", [])) if m.get("role") == "user"), "")
+        t, r = inp.get("threadId", "t"), inp.get("runId", "r")
+        evs = [{"type": "RUN_STARTED", "threadId": t, "runId": r},
+               {"type": "TOOL_CALL_START", "toolCallId": "c1", "toolCallName": "consultar_estoque"},
+               {"type": "TOOL_CALL_ARGS", "toolCallId": "c1", "delta": '{"sku": "A1"}'},
+               {"type": "TOOL_CALL_END", "toolCallId": "c1"},
+               {"type": "TOOL_CALL_RESULT", "messageId": "r1", "toolCallId": "c1", "content": "12 unidades"},
+               {"type": "TEXT_MESSAGE_START", "messageId": "m1", "role": "assistant"}]
+        evs += [{"type": "TEXT_MESSAGE_CONTENT", "messageId": "m1", "delta": w} for w in ["remoto: ", str(last)]]
+        evs += [{"type": "TEXT_MESSAGE_END", "messageId": "m1"}, {"type": "RUN_FINISHED", "threadId": t, "runId": r}]
+        raw = "".join(f"data: {json.dumps(e, ensure_ascii=False)}\n\n" for e in evs).encode()
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.send_header("content-length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
     def _reply(self):
         n = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(n).decode(errors="replace") if n else ""
+        if self.path.startswith("/agui-agent"):
+            return self._agui_agent(body)
         if self.path.startswith("/llm/"):
             return self._llm(body)
         if self.path.startswith("/portal") and self._portal(body):

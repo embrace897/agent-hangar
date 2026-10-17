@@ -295,6 +295,9 @@ def probe(db: Session, slug: str, env: str = "prod") -> dict:
     from .runtime import active_deployment, refresh_deployments
 
     a = get_agent(db, slug)
+    if spec_of(a).get("remote"):
+        return {"ok": False, "env": env, "steps": [{"name": "tipo", "ok": False, "detail":
+                "agente remoto: o teste de conexão dele é o de Agente remoto (POST /api/agents/<slug>/remote/test)"}]}
     if spec_of(a).get("harness"):
         return {"ok": False, "env": env, "steps": [{"name": "tipo", "ok": False, "detail":
                 "agente com harness roda num container efêmero próprio e não recebe ferramentas do cliente; "

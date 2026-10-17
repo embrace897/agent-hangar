@@ -68,11 +68,11 @@ docker compose --profile harness build harness-claude-code
   other harnesses are pulled from ghcr.io.
 - **Kubernetes:** build the image and push it to your own registry, then point the hangar at it:
   ```bash
-  docker build --target claude-code -t registry.acme.com/agent-hangar/harness-claude-code:0.39.0 harness/
-  docker push registry.acme.com/agent-hangar/harness-claude-code:0.39.0
+  docker build --target claude-code -t registry.acme.com/agent-hangar/harness-claude-code:0.40.0 harness/
+  docker push registry.acme.com/agent-hangar/harness-claude-code:0.40.0
   ```
   Either mirror all images there (`image.registry`), or set only this one with
-  `central.extraEnv: {HARNESS_IMAGE_CLAUDE_CODE: registry.acme.com/agent-hangar/harness-claude-code:0.39.0}`.
+  `central.extraEnv: {HARNESS_IMAGE_CLAUDE_CODE: registry.acme.com/agent-hangar/harness-claude-code:0.40.0}`.
 - Using Claude Code is subject to Anthropic's terms, and its calls need an Anthropic-compatible connection.
 
 A harness without a connection runs on `harness-base` in **mock** mode: it writes a `JOB_NOTES.md` and returns.

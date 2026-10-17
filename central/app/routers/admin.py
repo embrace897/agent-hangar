@@ -665,6 +665,17 @@ def connection_test(slug: str, body: EnvBody, request: Request, db=Depends(db_de
     return guard(lambda: svc.connect.probe(db, slug, body.env))
 
 
+@router.post("/agents/{slug}/remote/test")
+def remote_test(slug: str, body: EnvBody, request: Request, db=Depends(db_dep)):
+    """Agente remoto (spec `remote`, AG-UI): endereço, cofre e uma rodada de ponta a ponta. Quem edita o agente testa."""
+    a = _agent(request, db, slug, "edit")
+    spec = svc.spec_of(a)
+    if not spec.get("remote"):
+        raise HTTPException(400, "este agente não é remoto (spec sem `remote`)")
+    from ..services import remote_agui
+    return guard(lambda: remote_agui.probe(db, a, spec, body.env))
+
+
 @router.get("/agents/{slug}/connections/snippet")
 def connection_snippet(slug: str, client: str, request: Request, mode: str = "mcp", db=Depends(db_dep)):
     """Prévia do trecho com <SUA_CHAVE> no lugar da chave (não cria nada)."""

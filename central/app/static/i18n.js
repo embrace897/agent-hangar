@@ -677,6 +677,12 @@
     ': o agente dentro do': ': the agent inside', 'seu app': 'your app',
     '(CopilotKit e outros), com as ferramentas do app e, num Digital employee, as aprovações da alçada na tela. Cada conexão gera uma chave só desta ferramenta e deste agente,':
       '(CopilotKit and others), with the app’s tools and, for a Digital employee, the authority approvals on screen. Each connection creates a key just for this tool and this agent,',
+    'agente remoto (AG-UI)': 'remote agent (AG-UI)', 'Endereço em stage': 'Address in stage', 'Cabeçalhos': 'Headers',
+    'Tempo máximo': 'Time limit',
+    'O agente roda fora do hangar e fala AG-UI. O hangar cuida da versão, dos testes em stage, da promoção, do orçamento, da medição e da auditoria, e o expõe em OpenAI, MCP, A2A, ACP e AG-UI.':
+      'The agent runs outside the hangar and speaks AG-UI. The hangar takes care of the version, the stage tests, the promotion, the budget, metering and audit, and exposes it over OpenAI, MCP, A2A, ACP and AG-UI.',
+    'Agente remoto: cada chamada (OpenAI, A2A, ACP ou MCP) vira uma rodada AG-UI no agente; o AG-UI vai direto, evento por evento.':
+      'Remote agent: each call (OpenAI, A2A, ACP or MCP) becomes an AG-UI run on the agent; AG-UI goes straight through, event by event.',
     'em seu nome': 'in your name', 'Como ferramenta (MCP)': 'As a tool (MCP)', 'Como modelo': 'As a model', 'No seu app (AG-UI)': 'In your app (AG-UI)',
     'Conexões ativas (': 'Active connections (', 'Nenhuma ainda — escolha uma ferramenta abaixo.': 'None yet — pick a tool below.',
     'A chave aparece só agora.': 'The key is shown only now.',

@@ -39,7 +39,8 @@ STDIO = os.environ.get("E2E_STDIO", "1") == "1"  # servidor local (npx): precisa
 RUN = uuid.uuid4().hex[:6]
 admin = httpx.Client(base_url=URL, timeout=300, headers={"Authorization": f"Bearer {os.environ['HANGAR_TOKEN']}"})
 passed = 0
-made = {"agents": [], "connections": [], "connectors": [], "skills": [], "users": [], "keys": [], "company": None}
+made = {"agents": [], "connections": [], "connectors": [], "skills": [], "users": [], "keys": [], "secrets": [],
+        "company": None}
 
 
 def check(name, cond, detail=""):
@@ -184,6 +185,46 @@ def phase_agui(slug: str):
     check("AG-UI: o uso fica medido por canal, com tokens", rows and rows[0]["channel"] == "agui" and rows[0]["tokens"] > 0, rows[:2])
 
 
+def phase_remote():
+    """Agente remoto (AG-UI): um agente de fora do hangar, governado por ele. A credencial sai do cofre; os testes em
+    stage passam pela ponte; o agente fica disponível em OpenAI, A2A, MCP e AG-UI."""
+    sec = f"e2e-remoto-{RUN}"
+    s = ok(admin.put("/api/secrets", json={"name": sec, "value": f"tok-{RUN}"}))
+    made["secrets"].append(s["id"])
+    a = ok(admin.post("/api/agents", json={"name": f"Estoque remoto {RUN}", "objective": "responde sobre estoque",
+                                           "final_output": "resposta"}))
+    slug = a["slug"]
+    made["agents"].append(slug)
+    ok(admin.patch(f"/api/agents/{slug}", json={
+        "remote": {"url": f"{ECHO}/agui-agent", "headers": {"Authorization": f"secret://{sec}"}},
+        "tests": [{"name": "eco", "input": f"sku-{RUN}", "expect_contains": f"sku-{RUN}"}]}))
+    bad = admin.patch(f"/api/agents/{slug}", json={"remote": {"headers": {"Authorization": "Bearer exposto"}}})
+    check("agente remoto: credencial na spec é recusada (só pelo cofre)", bad.status_code == 400, bad.text[:200])
+    p = ok(admin.post(f"/api/agents/{slug}/remote/test", json={"env": "stage"}))
+    check("agente remoto: teste de conexão (endereço, cofre, rodada AG-UI)", p["ok"], p["steps"])
+    t = ok(admin.post(f"/api/agents/{slug}/test"))
+    check("agente remoto: testes em stage pela ponte", t["status"] == "passed" and "(remoto)" in t["summary"], t["summary"])
+    used = next((x for x in ok(admin.get("/api/secrets")).get("secrets", []) if x["name"] == sec), {})
+    check("agente remoto: a credencial sai do cofre (uso registrado)", used.get("uses", 0) >= 1, used)
+    gw = f"/gw-stage/{slug}"
+    r = ok(admin.post(f"{gw}/v1/chat/completions", json={"messages": [
+        {"role": "user", "content": "oi"}, {"role": "assistant", "content": "olá"}, {"role": "user", "content": f"via-openai-{RUN}"}]}))
+    check("agente remoto: OpenAI-compatible pela ponte", r["choices"][0]["message"]["content"] == f"remoto: via-openai-{RUN}", r)
+    a2a = ok(admin.post(f"{gw}/a2a", json={"jsonrpc": "2.0", "id": "1", "method": "message/send", "params": {"message": {
+        "kind": "message", "role": "user", "messageId": "m", "parts": [{"kind": "text", "text": f"via-a2a-{RUN}"}]}}}))
+    check("agente remoto: A2A pela ponte", a2a["result"]["parts"][0]["text"] == f"remoto: via-a2a-{RUN}", a2a)
+    tools = ok(admin.post(f"{gw}/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))["result"]["tools"]
+    call = ok(admin.post(f"{gw}/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+        "name": tools[0]["name"], "arguments": {"message": f"via-mcp-{RUN}"}}}))
+    check("agente remoto: MCP pela ponte", call["result"]["content"][0]["text"] == f"remoto: via-mcp-{RUN}", call)
+    evs = _agui(slug, [{"id": "1", "role": "user", "content": f"via-agui-{RUN}"}])
+    kinds = [e["type"] for e in evs]
+    check("agente remoto: AG-UI direto, evento por evento", kinds[0] == "RUN_STARTED" and "TOOL_CALL_RESULT" in kinds
+          and kinds[-1] == "RUN_FINISHED", kinds)
+    rows = {u["protocol"] for u in ok(admin.get("/api/usage")) if u["agent"] == slug}
+    check("agente remoto: cada protocolo entra na medição", {"openai", "a2a", "mcp", "agui"} <= rows, rows)
+
+
 def phase_harness():
     a = ok(admin.post("/api/agents", json={"name": f"Dev harness {RUN}", "objective": "corrige código", "final_output": "diff"}))
     slug = a["slug"]
@@ -256,6 +297,8 @@ def cleanup():
         admin.post(f"/api/skills/{n}/status", json={"status": "deprecated"})
     for k in made["keys"]:
         admin.delete(f"/api/keys/{k}")
+    for sid in made["secrets"]:
+        admin.delete(f"/api/secrets/{sid}")
     for u in made["users"]:
         admin.patch(f"/api/users/{u}", json={"active": False})
 
@@ -266,6 +309,7 @@ def main():
         phase_company()
         conn = phase_llm()
         phase_agui(phase_execution(conn))
+        phase_remote()
         phase_harness()
         phase_connectors()
         phase_skills()

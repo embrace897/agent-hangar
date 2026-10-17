@@ -110,9 +110,9 @@ def _card(info: dict, base: str) -> dict:
             or [{"id": info["slug"], "name": info["name"], "description": info["final_output"], "tags": []}]}
 
 
-async def _invoke(info, task, env, channel):
+async def _invoke(info, task, env, channel, proto="openai"):
     # sessão própria dentro da thread: não prende conexão do pool durante o job inteiro
-    return await run_in_threadpool(svc.chat_new_session, info["slug"], task, env, channel)
+    return await run_in_threadpool(svc.chat_new_session, info["slug"], task, env, channel, proto)
 
 
 async def _harness_mcp(info: dict, request: Request, env: str, channel: str):
@@ -144,7 +144,7 @@ async def _harness_mcp(info: dict, request: Request, env: str, channel: str):
         if params.get("name") != tool:
             return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32602, "message": f"tool desconhecida: {params.get('name')}"}}
         try:
-            r = await _invoke(info, (params.get("arguments") or {}).get("message", ""), env, channel)
+            r = await _invoke(info, (params.get("arguments") or {}).get("message", ""), env, channel, "mcp")
         except svc.PlatformError as e:
             return {"jsonrpc": "2.0", "id": rid, "result": {"content": [{"type": "text", "text": f"erro: {e}"}], "isError": True}}
         return {"jsonrpc": "2.0", "id": rid,
@@ -169,15 +169,19 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "corpo inválido: envie um RunAgentInput (JSON)"}, 400)
-        return StreamingResponse(agui.harness_stream(lambda text: _invoke(info, text, env, channel), body),
+        if info.get("remote"):
+            return await _remote_agui(info, body, request, env, channel)
+        return StreamingResponse(agui.harness_stream(lambda text: _invoke(info, text, env, channel, "agui"), body),
                                  media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
     if path not in ("v1/chat/completions", "a2a", "acp/runs"):
-        return JSONResponse({"error": f"caminho '{path}' não suportado para agente com harness"}, 501)
+        return JSONResponse({"error": f"caminho '{path}' não suportado para este agente (sem container)"}, 501)
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "corpo inválido"}, 400)
 
+    if path == "v1/chat/completions" and info.get("remote"):
+        return await _remote_openai(info, body, request, env, channel)
     if path == "v1/chat/completions":
         task = next((m.get("content", "") for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
         try:
@@ -194,7 +198,7 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
             return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": "Method not found"}}
         task = "".join(p.get("text", "") for p in body.get("params", {}).get("message", {}).get("parts", []))
         try:
-            r = await _invoke(info, task, env, channel)
+            r = await _invoke(info, task, env, channel, "a2a")
         except svc.PlatformError as e:
             return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32000, "message": str(e)}}
         return {"jsonrpc": "2.0", "id": rid, "result": {
@@ -204,12 +208,74 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
     # acp/runs
     task = "\n".join(p.get("content", "") for m in body.get("input", []) for p in m.get("parts", []))
     try:
-        r = await _invoke(info, task, env, channel)
+        r = await _invoke(info, task, env, channel, "acp")
     except svc.PlatformError as e:
         return JSONResponse({"status": "failed", "error": {"message": str(e)}}, 502)
     return {"run_id": str(uuid.uuid4()), "agent_name": info["slug"], "status": "completed",
             "output": [{"role": f"agent/{info['slug']}", "parts": [{"content_type": "text/plain", "content": r["reply"]}]}],
             "metadata": {"job_id": r.get("job_id"), "diff": r.get("diff"), "usage": r["usage"]}}
+
+
+# ------------------------------------------------------------------ agente remoto (spec `remote`, AG-UI)
+def _remote_target(info: dict, env: str) -> tuple[str, dict, int]:
+    """URL (conferida contra rede interna), cabeçalhos (com os segredos do cofre) e tempo máximo."""
+    from ..services import remote_agui
+    url, timeout = remote_agui.target({"remote": info["remote"]}, env)
+    remote_agui.check_url(url)
+    with SessionLocal() as db:
+        hdr = remote_agui.headers_for({"remote": info["remote"]}, info["team_id"], info["slug"], db)
+    return url, hdr, timeout
+
+
+async def _remote_agui(info: dict, body: dict, request: Request, env: str, channel: str):
+    """AG-UI de ponta a ponta: o RunAgentInput vai ao agente e os eventos voltam como chegam. A chamada entra na
+    medição (o agente remoto não informa tokens: conta a chamada e o tempo)."""
+    from ..services import remote_agui
+    try:
+        url, hdr, timeout = await run_in_threadpool(_remote_target, info, env)
+    except svc.PlatformError as e:
+        return JSONResponse({"error": str(e)}, 400)
+    uid, t0 = user_of(request), time.time()
+    return StreamingResponse(remote_agui.relay(url, hdr, body, timeout), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                             background=BackgroundTask(_record, info["id"], env, channel, "agui", t0,
+                                                       True, None, uid))
+
+
+async def _remote_openai(info: dict, body: dict, request: Request, env: str, channel: str):
+    """OpenAI-compatible para um agente remoto: a conversa inteira vai ao agente (não só a última mensagem); com
+    `stream: true`, a resposta volta em SSE no formato OpenAI."""
+    from ..services import remote_agui
+    uid, t0 = user_of(request), time.time()
+
+    def go():
+        with SessionLocal() as db:
+            a = svc.get_agent(db, info["slug"])
+            return remote_agui.ask(db, a, svc.spec_of(a), env, body.get("messages") or [],
+                                   request.headers.get("x-session-id") or request.headers.get("x-conversation-id"))
+    try:
+        out = await run_in_threadpool(go)
+    except svc.PlatformError as e:
+        await run_in_threadpool(_record, info["id"], env, channel, "openai", t0, False, None, uid)
+        return JSONResponse({"error": {"message": str(e), "type": "remote_error"}}, 502)
+    ok = out["status"] != "failed"
+    await run_in_threadpool(_record, info["id"], env, channel, "openai", t0, ok, None, uid)
+    cid, created = f"chatcmpl-{uuid.uuid4().hex[:12]}", int(time.time())
+    if body.get("stream"):
+        def chunk(delta, finish=None):
+            return "data: " + json.dumps({"id": cid, "object": "chat.completion.chunk", "created": created,
+                                          "model": info["slug"], "choices": [{"index": 0, "delta": delta,
+                                                                              "finish_reason": finish}]},
+                                         ensure_ascii=False) + "\n\n"
+
+        async def sse():
+            yield chunk({"role": "assistant", "content": out["reply"]})
+            yield chunk({}, "stop")
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(sse(), media_type="text/event-stream")
+    return {"id": cid, "object": "chat.completion", "created": created, "model": info["slug"],
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": out["reply"]}}],
+            "usage": {}, "x_trace": out["trace"], "x_status": out["status"]}
 
 
 # ------------------------------------------------------------------ proxy
@@ -249,7 +315,8 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
         info = {"slug": a.slug, "name": a.name, "objective": a.objective, "final_output": a.final_output,
                 "version": a.current_version, "skills": spec.get("skills", []), "id": a.id,
                 "summary": svc.guides.card_summary(db, a) if path in CARD_PATHS else ""}
-        is_harness = bool(spec.get("harness"))
+        is_harness = bool(spec.get("harness") or spec.get("remote"))  # sem container: a central atende
+        info.update(remote=spec.get("remote"), team_id=a.team_id)
         code_ok, code_msg = svc.code_allowed(db, spec, env)
         employee = agui.employee_of(db, a.id) if path == "agui" else None
     if not code_ok and protocol_of(path) in ("openai", "agui") and _sends_client_tools(await request.body()):

@@ -18,6 +18,11 @@ harness:                  # harness agents only
   connection: anthropic   # protocol must match the harness; empty = mock
   model: ""               # empty = the connection's default model
   stage: {connection: ...}
+remote:                   # remote agents only: the agent runs elsewhere and speaks AG-UI (see clients.md)
+  url: https://agents.example.com/support/agui
+  headers: {Authorization: "secret://support-agent-key"}   # credentials only from the vault
+  timeout_s: 120          # time limit of one run (5–900)
+  stage: {url: https://staging.example.com/support/agui}    # optional: another address in stage
 execution:                # optional; absent = automatic (see execution.md)
   effort: auto            # auto | minimal | low | medium | high | max (reasoning effort)
   max_output_tokens: 8000 # output limit (256–128000); absent = the provider's default
@@ -99,6 +104,10 @@ the **Testes** tab like any other case. A failed case blocks promotion to produc
 
 - A spec cannot set both `llm.connection` and `harness`.
 - A harness agent cannot have `sub_agents`.
+- A remote agent (`remote`) cannot have `llm.connection`, `harness`, `skills`, `mcps`, `tools`, `sub_agents`,
+  `memory`, `plugins` or `instructions`: those belong to the agent, which runs outside the hangar.
+- In `remote.headers`, a credential header (a name with auth, token, key, secret, cookie or password) only takes a
+  `secret://name` value, so the credential never sits in the spec.
 - Sub-agents must exist, and an agent cannot list itself.
 - Catalog references (skills, MCPs, connections) are resolved at deploy time; a missing one fails the deploy
   with a clear message.

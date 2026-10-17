@@ -281,6 +281,37 @@ What the hangar adds to the protocol:
 - **Harness agents** (Claude Code, Codex…) run a job per run: `STEP_STARTED` and `STEP_FINISHED` around it, the
   answer, and a `CUSTOM` event `hangar.job` with the job id and the diff.
 
+### Agents from other frameworks (remote AG-UI agents)
+
+An agent built with LangGraph, Google ADK, Mastra, Microsoft Agent Framework, AWS Strands or any framework that
+speaks AG-UI can be **governed by the hangar** without moving its code. Register it with a `remote` block in the spec
+([spec.md](spec.md)):
+
+```yaml
+remote:
+  url: https://agents.example.com/support/agui
+  headers: {Authorization: "secret://support-agent-key"}
+  stage: {url: https://staging.example.com/support/agui}
+tests:
+  - {name: refund, input: "Can I get a refund for order 7?", expect_contains: "order 7"}
+```
+
+| What the hangar does | How |
+|---|---|
+| Version and owner | The spec is versioned like any other agent, with a team and an owner |
+| Credentials | Headers take `secret://` from the vault; a credential header written in the spec is refused |
+| Network | The address follows the plugins' rule: internal networks only with `PLUGIN_ALLOW_PRIVATE=1` |
+| Tests before production | `run_tests` sends a run to the stage address (an AG-UI smoke check) and the spec's test cases; promotion needs them to pass |
+| Every protocol | OpenAI-compatible (the whole conversation, `stream` supported), A2A, ACP and MCP become an AG-UI run on the agent; AG-UI goes straight through, event by event |
+| Budget, metering and audit | The gateway applies the budget stop; each call is metered by protocol and channel (the agent doesn't report tokens: calls and time); deploys and tests go to the audit log |
+| Decisions | When the agent ends a run with an interrupt, AG-UI clients get it as is; the other protocols get the question as text |
+
+Test the connection in the agent's page (**Testar conexão**) or with `POST /api/agents/<slug>/remote/test
+{"env": "stage"}`. The test checks the address, the vault and one full run.
+
+What stays with the agent: its model, tools, memory and prompts run where the agent runs. The hangar governs what goes
+in and out, not the inside.
+
 ```bash
 curl -N http://localhost:8090/gw/ticket-triage/agui \
   -H "Authorization: Bearer <invoke key>" -H "Content-Type: application/json" -H "Accept: text/event-stream" \

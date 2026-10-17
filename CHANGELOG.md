@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-10-17
+
+### Added
+- **AG-UI, phase 3: remote agents.** An agent built with LangGraph, Google ADK, Mastra, Microsoft Agent Framework, AWS Strands or any framework that speaks AG-UI is governed by the hangar without moving its code (spec `remote`). See [docs/clients.md](docs/clients.md#agents-from-other-frameworks-remote-ag-ui-agents).
+  - **Lifecycle:** versioned spec, owner and team; stage tests through the bridge (an AG-UI smoke check and the spec's cases) before promotion.
+  - **Every protocol:** OpenAI-compatible (the whole conversation, with `stream`), A2A, ACP and MCP become an AG-UI run on the agent; AG-UI goes straight through, event by event.
+  - **Credentials and network:** headers take `secret://` from the vault, and a credential written in the spec is refused; the address follows the plugins' internal-network rule.
+  - **Budget, metering and audit:** the gateway applies the budget stop, and each call is metered by the protocol the client used.
+  - **Connection test** in the agent's page and at `POST /api/agents/<slug>/remote/test`.
+
 ## [0.39.0] — 2026-10-17
 
 ### Added

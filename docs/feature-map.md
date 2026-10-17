@@ -95,6 +95,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Team packages: export, preview, install; ready-made teams | Portal → Team packages | [work.md](work.md#team-packages) |
 | Remote MCP gateway | Agent → Connect | [remote-mcp.md](remote-mcp.md) |
 | AG-UI: the agent inside your app (CopilotKit and other clients), with the app's tools and a Digital employee's approvals as interrupts | Agent → Connect | [clients.md](clients.md#ag-ui-the-agent-inside-your-app) |
+| Remote agents: an agent from LangGraph, Google ADK, Mastra or another AG-UI framework, governed by the hangar and exposed over every protocol | Agent spec `remote`; Agent → Overview → Testar conexão | [clients.md](clients.md#agents-from-other-frameworks-remote-ag-ui-agents) |
 
 ## Administration (console)
 

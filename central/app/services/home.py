@@ -71,7 +71,7 @@ def home(db: Session, acc: Access) -> dict:
         if "edit" in perms and lt and lt.status == "failed":
             attention.append({"level": "bad", "text": f"{a.name}: teste reprovado na v{a.current_version}",
                               "link": link + "/tests"})
-        if a.status == "production" and not prod and not spec.get("harness"):
+        if a.status == "production" and not prod and not spec.get("harness") and not spec.get("remote"):
             attention.append({"level": "bad", "text": f"{a.name}: está em produção, mas o container não está no ar",
                               "link": link + "/deployments"})
         if errors:

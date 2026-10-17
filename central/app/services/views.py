@@ -38,8 +38,11 @@ def agent_dict(db: Session, a: Agent, detail=False, acc=None) -> dict:
         .where(UsageEvent.agent_id == a.id, UsageEvent.created_at >= since, UsageEvent.channel != "test")
     ).one()
     spec = spec_of(a)
-    llm, harness = spec.get("llm") or {}, spec.get("harness")
-    if harness:
+    llm, harness, remote = spec.get("llm") or {}, spec.get("harness"), spec.get("remote")
+    if remote:  # o modelo é escolha do agente remoto; aqui só o protocolo e o host
+        from urllib.parse import urlparse
+        model_display = f"remoto (AG-UI) · {urlparse(remote.get('url', '')).hostname or '?'}"
+    elif harness:
         model_display = f"harness:{harness.get('id')} · {harness.get('connection') or 'mock'}"
     else:
         model_display = llm.get("model") or (f"{llm['connection']} (padrão)" if llm.get("connection")
@@ -47,6 +50,7 @@ def agent_dict(db: Session, a: Agent, detail=False, acc=None) -> dict:
     out = {"slug": a.slug, "name": a.name, "objective": a.objective, "final_output": a.final_output,
            "kind": a.kind, "owner": a.owner, "status": a.status, "version": a.current_version,
            "created_at": iso(a.created_at), "updated_at": iso(a.updated_at), "harness": harness,
+           "remote": {"protocol": remote.get("protocol", "agui")} if remote else None,
            "model": model_display, "sub_agents": spec.get("sub_agents", []),
            "stage": next((dep_dict(d) for d in a.deployments if d.env == "stage" and d.status == "running"), None),
            "prod": next((dep_dict(d) for d in a.deployments if d.env == "prod" and d.status == "running"), None),

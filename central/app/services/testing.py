@@ -54,6 +54,8 @@ def judge(db: Session, spec: dict, case: dict, output: str) -> tuple[bool, str]:
 
 def is_mock(spec: dict, env="stage") -> bool:
     """Sem conexão de LLM o agente responde com eco (mock): conferir o conteúdo não diz nada."""
+    if spec.get("remote"):  # o agente remoto responde de verdade, com o modelo dele
+        return False
     h = spec.get("harness")
     if h:
         return not ((h.get(env) or {}).get("connection") or h.get("connection"))
@@ -120,6 +122,40 @@ def _run_harness_tests(db: Session, a: Agent, spec: dict, actor="admin") -> Test
     return _record(db, a, results, t0, actor, " (harness)")
 
 
+def _run_remote_tests(db: Session, a: Agent, spec: dict, actor="admin") -> TestRun:
+    """Agente remoto: os testes passam pela mesma ponte que o produto usa (AG-UI até o agente, no endereço de stage).
+    Primeiro a rodada completa (RUN_STARTED … RUN_FINISHED); depois os casos da spec."""
+    from . import remote_agui
+
+    t0, results = time.time(), []
+
+    def check(name, fn):
+        s = time.time()
+        try:
+            passed, detail = fn()
+        except Exception as e:
+            passed, detail = False, str(e)
+        results.append({"name": name, "passed": passed, "detail": str(detail)[:400],
+                        "latency_ms": int((time.time() - s) * 1000)})
+
+    def smoke():
+        out = remote_agui.ask(db, a, spec, "stage", [{"role": "user", "content": "ping"}])
+        ok = out["status"] == "passed" and bool(out["reply"].strip())
+        return ok, out["reply"][:120] if ok else (out["error"] or out["reply"] or "sem resposta")
+
+    check("smoke: rodada AG-UI no agente remoto", smoke)
+    for i, case in enumerate(spec.get("tests", [])):
+        def run_case(case=case):
+            if case.get("workspace"):
+                return False, "avaliação de código (workspace) é para agentes de chat do hangar"
+            out = remote_agui.ask(db, a, spec, "stage", [{"role": "user", "content": case["input"]}])
+            if out["status"] == "failed":
+                return False, out["error"] or out["reply"]
+            return evaluate(db, spec, case, out["reply"])
+        check(f"caso: {case.get('name') or i + 1}", run_case)
+    return _record(db, a, results, t0, actor, " (remoto)")
+
+
 def _code_case(db: Session, a: Agent, spec: dict, case: dict) -> tuple[bool, str]:
     """Caso com workspace: o agente trabalha num mini-projeto real (sandbox) e o `check` decide."""
     from . import code_eval
@@ -140,6 +176,12 @@ def run_tests(db: Session, slug: str, actor="admin") -> TestRun:
     spec = spec_of(a)
     if spec.get("harness"):
         return _run_harness_tests(db, a, spec, actor)
+    if spec.get("remote"):
+        refresh_deployments(db, [a])
+        dep = active_deployment(a, "stage")
+        if not dep or dep.version != a.current_version:
+            deploy_env(db, slug, "stage", actor)
+        return _run_remote_tests(db, a, spec, actor)
     refresh_deployments(db, [a])
     dep = active_deployment(a, "stage")
     if not dep or dep.version != a.current_version:

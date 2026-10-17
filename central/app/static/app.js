@@ -377,7 +377,17 @@ function overview(t, a) {
   if (!a.spec) return overviewLimited(t, a);
   const s = a.spec;
   const list = (arr, f = x => x) => arr.length ? arr.map(x => `<span class="chip">${esc(f(x))}</span>`).join('') : '<span class="mute">nenhum</span>';
-  const compositionCard = a.harness ? `
+  const remoteCard = s.remote ? `
+    <div class="card"><h2>Composição</h2><dl class="kv">
+      <dt>Tipo</dt><dd><span class="pill info">agente remoto (AG-UI)</span></dd>
+      <dt>Endereço</dt><dd><code class="inline" data-noi18n>${esc(s.remote.url)}</code></dd>
+      ${s.remote.stage && s.remote.stage.url ? `<dt>Endereço em stage</dt><dd><code class="inline" data-noi18n>${esc(s.remote.stage.url)}</code></dd>` : ''}
+      <dt>Cabeçalhos</dt><dd>${Object.keys(s.remote.headers || {}).length ? Object.entries(s.remote.headers).map(([k, v]) => `<span class="chip" data-noi18n>${esc(k)}: ${String(v).startsWith('secret://') ? esc(v) : '••••'}</span>`).join('') : '<span class="mute">nenhum</span>'}</dd>
+      <dt>Tempo máximo</dt><dd>${s.remote.timeout_s || 120} s</dd><dt>Casos de teste</dt><dd>${s.tests.length}</dd></dl>
+      <div class="mute small mt">O agente roda fora do hangar e fala AG-UI. O hangar cuida da versão, dos testes em stage, da promoção, do orçamento, da medição e da auditoria, e o expõe em OpenAI, MCP, A2A, ACP e AG-UI.</div>
+      ${can(a, 'edit') ? `<div class="row mt"><select id="rm-env" style="width:auto"><option value="stage">stage</option><option value="prod">prod</option></select>
+        <button id="rm-test" class="ghost">Testar conexão</button></div><div id="rm-res"></div>` : ''}</div>` : '';
+  const compositionCard = s.remote ? remoteCard : a.harness ? `
     <div class="card"><h2>Composição</h2><dl class="kv">
       <dt>Tipo</dt><dd><span class="pill info">agente com harness</span></dd>
       <dt>Harness</dt><dd><span class="chip">${esc(s.harness.id)}</span></dd>
@@ -405,11 +415,16 @@ function overview(t, a) {
     ${compositionCard}
     <div class="card"><h2>Instruções</h2><pre>${esc(s.instructions) || '(sem instruções)'}</pre></div>
     <div class="card"><h2>Endpoints (produção)</h2><div class="mute small">Header <code>Authorization: Bearer &lt;chave invoke&gt;</code> (gere em <a href="#/keys">Chaves de API</a>); opcional <code>X-Channel: slack</code> para métricas por canal.
-      ${a.harness ? ' Agente com harness: cada chamada (OpenAI, A2A, ACP ou MCP) vira um job num container efêmero.' : ''}</div>
+      ${a.harness ? ' Agente com harness: cada chamada (OpenAI, A2A, ACP ou MCP) vira um job num container efêmero.' : ''}${s.remote ? ' Agente remoto: cada chamada (OpenAI, A2A, ACP ou MCP) vira uma rodada AG-UI no agente; o AG-UI vai direto, evento por evento.' : ''}</div>
       ${Object.entries(a.endpoints).map(([k, v]) => `<h3>${k}</h3>${copyable(v)}`).join('')}
       <h3>Stage</h3>${copyable(a.endpoints.openai.replace('/gw/', '/gw-stage/'))}</div></div><div id="model-rec"></div><div id="exec-prof"></div><div id="lineage"></div>`;
-  if (!a.harness) modelRecCard($('#model-rec'), a, can(a, 'edit'));
-  execCard($('#exec-prof'), a, can(a, 'edit'));
+  if (!a.harness && !s.remote) modelRecCard($('#model-rec'), a, can(a, 'edit'));
+  if (!s.remote) execCard($('#exec-prof'), a, can(a, 'edit'));  // o agente remoto escolhe o modelo e o esforço dele
+  if ($('#rm-test')) $('#rm-test').onclick = e => act(e.target, async () => {
+    const r = await api(`/agents/${a.slug}/remote/test`, { method: 'POST', body: { env: $('#rm-env').value } });
+    $('#rm-res').innerHTML = `<div class="mt">${r.ok ? '<span class="pill ok">conexão funcionando</span>' : '<span class="pill bad">falhou</span>'}
+      <ul class="list mt">${r.steps.map(x => `<li><span>${x.ok ? '✓' : '✗'} ${esc(x.name)}<div class="mute small" data-noi18n>${esc(x.detail)}</div></span><span class="mute small">${x.ms != null ? x.ms + ' ms' : ''}</span></li>`).join('')}</ul></div>`;
+  });
   lineageCard(a.slug);
 }
 
