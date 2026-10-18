@@ -88,6 +88,14 @@ CORS_HEADERS = [(b"access-control-allow-origin", b"*"), (b"access-control-allow-
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
+def _adding_headers(send, extra: list[tuple[bytes, bytes]]):
+    async def wrapped(msg):
+        if msg["type"] == "http.response.start":
+            msg["headers"] = list(msg.get("headers", [])) + extra
+        await send(msg)
+    return wrapped
+
+
 def _may_consume(principal, slug: str) -> bool:
     with db.SessionLocal() as s:
         a = svc.find_agent(s, slug)
@@ -118,6 +126,19 @@ class AuthMiddleware:
                     msg["headers"] = list(msg.get("headers", [])) + CORS_HEADERS
                 await send(msg)
             return await self.app(scope, receive, send_cors)
+        gw = svc.cors.target(path)
+        origin = next((v.decode() for k, v in scope["headers"] if k == b"origin"), "") if gw else ""
+        if origin:
+            # CORS por agente (spec.cors.origins da versão rodando naquele ambiente); o preflight vem sem credencial
+            allowed = origin.lower() in await run_in_threadpool(svc.cors.origins, *gw)
+            if scope["method"] == "OPTIONS":
+                if not allowed:
+                    return await JSONResponse({"error": f"a origem {origin} não está liberada para o agente '{gw[0]}' "
+                                                        f"em {gw[1]} (spec.cors.origins)"}, 403)(scope, receive, send)
+                return await Response(status_code=204, headers={k.decode(): v.decode() for k, v in
+                                                                svc.cors.headers(origin, True)})(scope, receive, send)
+            if allowed:  # inclusive nos erros: a página consegue ler o 401, o 429…
+                send = _adding_headers(send, svc.cors.headers(origin, False))
         if path == "/" or path.startswith(OPEN_PREFIXES):
             return await self.app(scope, receive, send)
         headers = {k.decode().lower(): v.decode() for k, v in scope["headers"]}

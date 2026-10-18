@@ -15,6 +15,7 @@ from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.
                       connect,
                       connectors,
                       correspondence,
+                      cors,
                       decision_kinds,
                       decision_memos,
                       desktop,

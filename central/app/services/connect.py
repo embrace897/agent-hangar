@@ -157,7 +157,9 @@ def snippet(client: str, mode: str, slug: str, agent_name: str, key: str = KEY_P
                            "tools": [], "context": [], "state": {}, "forwardedProps": {}}, ensure_ascii=False)
         return {"language": "bash", "file": None,
                 "steps": ["POST de um RunAgentInput; a resposta é um stream SSE de eventos AG-UI.",
-                          "Com @ag-ui/client: new HttpAgent({ url, headers }) e agent.runAgent()."],
+                          "Com @ag-ui/client: new HttpAgent({ url, headers }) e agent.runAgent().",
+                          "Direto do navegador, sem um servidor do app no meio? Libere o site do app em Chamadas direto "
+                          "do navegador (CORS), mais acima nesta aba."],
                 "content": (f'curl -N {agui_url} \\\n  -H "Authorization: Bearer {key}" -H "X-Channel: agui" \\\n'
                             f'  -H "Content-Type: application/json" -H "Accept: text/event-stream" \\\n'
                             f"  -d '{body}'\n")}

@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.42.0] — 2026-10-18
+
+### Added
+- **Per-agent CORS.** A web page on a site listed in the agent's spec (`cors.origins`) can call the agent straight from the browser, over any of its protocols (AG-UI, OpenAI-compatible, MCP, A2A, ACP). See [docs/clients.md](docs/clients.md#calling-the-agent-straight-from-the-browser-cors).
+  - **Per environment:** `/gw-stage` uses the origins of the version running in stage, and `/gw` those of the version in production. A change is a new version that goes through stage and the ship.
+  - **Strict by default:** exact origins only (no wildcard), `http://` only for localhost, and never credentials (cookies). A preflight from an origin that isn't listed gets a 403. Error responses are readable by the allowed page.
+  - **Only the spec decides:** CORS headers coming from an agent container are dropped.
+  - **Connect tab:** a "Calls straight from the browser (CORS)" card shows the origins in effect in each environment and saves a new version (`GET /api/agents/<slug>/cors`).
+- **Tests:** unit tests for the rules, and the CopilotKit browser test now also calls the gateway cross-origin from a real page. The allowed site gets the answer after the browser's preflight, and another origin gets nothing.
+
+### Fixed
+- **English interface:** the steps for a generic AG-UI client in the Connect tab are translated. The English-interface check now also covers the agent's Connect tab.
+
 ## [0.41.1] — 2026-10-18
 
 ### Fixed

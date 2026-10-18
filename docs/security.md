@@ -161,6 +161,11 @@ proxy, so the Docker-socket caveat above applies to it too. See `mcp-servers/dat
 - Put the hangar behind TLS (a reverse proxy) before exposing it. ChatGPT connectors require HTTPS anyway.
 - `/internal/*` is reachable from the published port, but every route there checks its own credential (a job
   token or a per-agent HMAC).
+- **Browser calls (CORS).** The agent gateway sends CORS headers only for the origins listed in that agent's spec
+  (`cors.origins`, taken from the version running in each environment). Wildcards are refused, `http://` is accepted
+  only for localhost, and credentials (cookies) are never allowed cross-origin. A page that calls the agent directly
+  exposes its key to its users: give it a key scoped to that agent, with a budget. CORS headers from an agent container
+  are dropped, so only the spec decides. See [clients.md](clients.md#calling-the-agent-straight-from-the-browser-cors).
 - Job containers can reach the internet, because they must call your LLM and MCPs. An egress allowlist is on the
   roadmap.
 

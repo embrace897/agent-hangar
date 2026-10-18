@@ -302,6 +302,27 @@ async function agentDetail(slug, tab = 'overview') {
   ({ overview, connect: agentConnect, guide: agentGuide, spec: specEditor, versions, tests, jobs, deployments, usage, playground, schedules: agentSchedules, memory: agentMemory, access: agentAccess })[key](t, a);
 }
 
+async function corsCard(el, a) {
+  const c = await api(`/agents/${a.slug}/cors`);
+  const chips = list => list.length ? list.map(o => `<span class="chip" data-noi18n>${esc(o)}</span>`).join('') : '<span class="mute">nenhum</span>';
+  const envRow = (label, e) => `<dt>${label}</dt><dd>${e.version ? `${chips(e.origins)} <span class="mute small">v${e.version}</span>` : '<span class="mute">não está rodando</span>'}</dd>`;
+  const pending = c.draft.join() !== (c.prod.origins || []).join();
+  el.innerHTML = `<div class="card mt"><h2>Chamadas direto do navegador (CORS)</h2>
+    <div class="mute small">Os sites que podem chamar este agente pelo gateway direto da página (AG-UI, OpenAI, MCP). Cada ambiente usa a versão que está rodando nele.
+      A chave fica visível para quem abre a página: use uma chave só deste agente, com orçamento. O mais seguro é o servidor do app guardar a chave
+      (como no exemplo <code>integrations/copilotkit</code>), e aí não precisa de CORS.</div>
+    <dl class="kv mt">${envRow('Produção', c.prod)}${envRow('Stage', c.stage)}
+      <dt>Versão atual</dt><dd>${chips(c.draft)} <span class="mute small">v${c.version}${pending ? ' · vale em stage depois do deploy e em produção depois do ship' : ''}</span></dd></dl>
+    ${can(a, 'edit') ? `<div class="mt"><textarea id="cors-in" rows="3" placeholder="https://app.acme.com&#10;http://localhost:3000" data-noi18n>${esc(c.draft.join('\n'))}</textarea>
+      <div class="row mt"><button id="cors-save" class="ghost">Salvar (versão nova)</button><span class="mute small">uma origem por linha: esquema + domínio (+ porta), sem caminho e sem curinga; http:// só para localhost</span></div></div>` : ''}</div>`;
+  const save = el.querySelector('#cors-save');
+  if (save) save.onclick = e => act(e.target, async () => {
+    const origins = $('#cors-in').value.split(/\s+/).map(s => s.trim()).filter(Boolean);
+    await api('/agents/' + a.slug, { method: 'PATCH', body: { cors: origins.length ? { origins } : null } });
+    await corsCard(el, a);
+  }, 'Versão nova criada: faça o deploy em stage e o ship para valer');
+}
+
 async function agentConnect(t, a) {
   const [clients, conns] = await Promise.all([api('/connect/clients'), api(`/agents/${a.slug}/connections`)]);
   const modeLabel = { mcp: 'Como ferramenta (MCP)', model: 'Como modelo', agui: 'No seu app (AG-UI)' };
@@ -319,6 +340,7 @@ async function agentConnect(t, a) {
         (stream com <code>tool_calls</code>) e que usa o resultado para responder. Custa uma chamada curta ao LLM.</div></div>
     <div class="row" style="flex-wrap:nowrap"><select id="cn-tenv" style="width:auto"><option value="prod">prod</option>${can(a, 'edit') ? '<option value="stage">stage</option>' : ''}</select>
       <button id="cn-test" class="ghost">Testar</button></div></div><div id="cn-tres"></div></div>
+  <div id="cn-cors"></div>
   <div id="cn-list"></div>
   <div id="cn-out"></div>
   <div class="grid g3 mt">${clients.map(c => `<div class="card"><h2>${esc(c.label)}</h2><div class="mute small">${esc(c.note)}</div>
@@ -334,6 +356,7 @@ async function agentConnect(t, a) {
       act(e.target, async () => drawList(await api('/keys/' + b.dataset.id, { method: 'DELETE' }).then(() => api(`/agents/${a.slug}/connections`))), 'Desconectado'));
   };
   drawList(conns);
+  corsCard($('#cn-cors'), a);
   $('#cn-test').onclick = e => act(e.target, async () => {
     const r = await api(`/agents/${a.slug}/connections/test`, { method: 'POST', body: { env: $('#cn-tenv').value } });
     $('#cn-tres').innerHTML = `<div class="mt">${r.ok ? '<span class="pill ok">conexão funcionando</span>' : '<span class="pill bad">falhou</span>'}

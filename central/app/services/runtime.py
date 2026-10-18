@@ -104,6 +104,11 @@ def refresh_deployments(db: Session, agents=None):
         db.commit()
 
 
+def _forget_cors(slug: str):
+    from . import cors  # as origens da versão nova (ou nenhuma, parado) valem já, sem esperar o cache
+    cors.forget(slug)
+
+
 def _deploy_harness_marker(db: Session, a: Agent, env: str, actor="admin") -> Deployment:
     for d in a.deployments:
         if d.env == env and d.status == "running":
@@ -113,6 +118,7 @@ def _deploy_harness_marker(db: Session, a: Agent, env: str, actor="admin") -> De
     db.add(dep)
     a.status = "production" if env == "prod" else (a.status if a.status == "production" else "stage")
     db.commit()
+    _forget_cors(a.slug)
     kind = "agente remoto, AG-UI" if spec_of(a).get("remote") else "harness, sem container fixo"
     audit(db, actor, f"deploy.{env}", a.slug, f"v{a.current_version} ({kind})")
     return dep
@@ -180,6 +186,7 @@ def deploy_env(db: Session, slug: str, env: str, actor="admin", _stack=()) -> De
     dep.status = "running"
     a.status = "production" if env == "prod" else (a.status if a.status == "production" else "stage")
     db.commit()
+    _forget_cors(slug)
     audit(db, actor, f"deploy.{env}", slug, f"v{a.current_version} -> {dep.container_name}")
     return dep
 
@@ -193,6 +200,7 @@ def stop(db: Session, slug: str, env: str, actor="admin"):
     if env == "prod" and a.status == "production":
         a.status = "stage" if active_deployment(a, "stage") else "tested"
     db.commit()
+    _forget_cors(slug)
     audit(db, actor, f"stop.{env}", slug)
 
 

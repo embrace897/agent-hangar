@@ -11,6 +11,7 @@ navegador: a resposta do agente chega no chat; o agente pede uma ferramenta do a
 agente usa o resultado; o agente muda o estado do app (JSON Patch) e a tela mostra o estado novo; a chave fica no
 servidor do app (não aparece em nenhuma requisição do navegador); o uso entra na medição pelo canal copilotkit.
 """
+import json
 import os
 import sys
 import uuid
@@ -51,7 +52,8 @@ def setup():
     a = ok(admin.post("/api/agents", json={"name": f"Pedidos CopilotKit {run}", "objective": "ajuda com pedidos na tela",
                                            "final_output": "resposta"}))
     slug = a["slug"]
-    ok(admin.patch(f"/api/agents/{slug}", json={"llm": {"connection": conn, "model": "e2e/plain"}}))
+    # o site do app também pode chamar o agente direto do navegador (CORS por agente), para o passo browser conferir
+    ok(admin.patch(f"/api/agents/{slug}", json={"llm": {"connection": conn, "model": "e2e/plain"}, "cors": {"origins": [APP]}}))
     ok(admin.post(f"/api/agents/{slug}/deploy", json={"env": "stage"}))
     key = ok(admin.post("/api/keys", json={"name": f"e2e-ck-{run}", "scopes": ["invoke"], "agents": [slug]}))
     # o app lê HANGAR_*; E2E_* é só para o passo cleanup
@@ -99,9 +101,40 @@ def browser(env: dict):
         b.close()
     check("a chave invoke fica no servidor do app (nada no navegador)", not any(env["HANGAR_KEY"] in s for s in sent),
           len(sent))
+    cors_direct(env)
     rows = [u for u in ok(admin.get("/api/usage")) if u["agent"] == env["HANGAR_AGENT"]]
     check("o uso fica medido pelo canal copilotkit, protocolo AG-UI",
           any(u["channel"] == "copilotkit" and u["protocol"] == "agui" for u in rows), rows[:3])
+
+
+def cors_direct(env: dict):
+    """CORS por agente, num navegador de verdade: a página do app (outra origem) chama o gateway com fetch; o navegador
+    faz o preflight e só entrega a resposta porque a origem está em spec.cors.origins."""
+    from playwright.sync_api import sync_playwright
+
+    gw = f"{env['HANGAR_URL']}{env['HANGAR_GATEWAY']}/{env['HANGAR_AGENT']}"
+    js = """async ([url, key]) => {
+      try {
+        const r = await fetch(url, {method: 'POST', headers: {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'}, body: JSON.stringify({threadId: 't', runId: 'r', messages: [{id: '1', role: 'user',
+          content: 'direto do navegador'}], tools: [], context: [], state: {}, forwardedProps: {}})});
+        return {status: r.status, text: await r.text()};
+      } catch (e) { return {error: String(e)}; }
+    }"""
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.goto(APP)
+        r = page.evaluate(js, [f"{gw}/agui", env["HANGAR_KEY"]])
+        evs = [json.loads(line[6:]) for line in r.get("text", "").splitlines() if line.startswith("data: {")]
+        text = "".join(e.get("delta", "") for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
+        check("CORS por agente: a página do site liberado chama o gateway direto (preflight no navegador)",
+              r.get("status") == 200 and "eco: direto do navegador" in text, (r.get("status"), r.get("error"), text))
+        page.goto("about:blank")  # origem que não está na spec: o navegador bloqueia a resposta
+        page.set_content("<p>outra origem</p>")
+        r = page.evaluate(js, [f"{gw}/agui", env["HANGAR_KEY"]])
+        check("CORS por agente: uma origem fora da lista não lê a resposta", "error" in r, r)
+        b.close()
 
 
 def cleanup(env: dict):

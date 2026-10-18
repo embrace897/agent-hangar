@@ -153,7 +153,8 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     errors: list[str] = []
     pages = [("/app/#/" + p) for p in PAGES_APP] + [("/ui/#/" + p) for p in PAGES_UI] + [
-        f"/app/#/agents/{made['agent']}", f"/ui/#/agents/{made['agent']}", f"/app/#/employees/{made['employee']}/overview",
+        f"/app/#/agents/{made['agent']}", f"/ui/#/agents/{made['agent']}", f"/ui/#/agents/{made['agent']}/connect",
+        f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
         f"/app/#/employees/{made['employee']}/routines",
         f"/ui/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}"]

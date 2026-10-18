@@ -90,6 +90,33 @@ class RemoteSpec(_Strict):
         return v
 
 
+ORIGIN_RE = re.compile(r"^(https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*"
+                       r"|http://(localhost|127\.0\.0\.1|\[::1\]))(:\d{1,5})?$")
+
+
+class CorsSpec(_Strict):
+    """Chamadas direto do navegador (CORS): os sites (origens) que podem chamar o agente pelo gateway, em qualquer
+    protocolo. Vale por ambiente: a versão em stage e a versão em produção trazem cada uma as suas origens. Sem
+    curinga e sem cookies: a página chama com uma chave (o ideal é um servidor do app guardar a chave)."""
+    origins: list[str] = Field(default_factory=list, max_length=20,
+                               description="origens exatas, como https://app.acme.com ou http://localhost:3000")
+
+    @field_validator("origins")
+    @classmethod
+    def _exact_origins(cls, v):
+        out = []
+        for o in v or []:
+            o = str(o).strip().lower().rstrip("/")
+            if "*" in o:
+                raise ValueError("origem com curinga (*) não é aceita: liste cada site, como https://app.acme.com")
+            if not ORIGIN_RE.match(o):
+                raise ValueError(f"origem inválida: '{o}'. Use esquema + domínio (+ porta), sem caminho: https://app.acme.com; "
+                                 "http:// só para localhost")
+            if o not in out:
+                out.append(o)
+        return out
+
+
 class ExecutionSpec(_Strict):
     """Como o modelo trabalha em cada chamada. Ausente = automático: o esforço vem do papel do agente e só vai ao
     modelo que tem modo de raciocínio. A central traduz para o runtime de chat e para cada harness."""
@@ -180,6 +207,7 @@ class AgentSpec(_Strict):
     llm: LlmSpec = Field(default_factory=LlmSpec)
     harness: HarnessSpec | None = None
     remote: RemoteSpec | None = None
+    cors: CorsSpec | None = None
     execution: ExecutionSpec | None = None
     judge: JudgeSpec | None = None
     instructions: str = ""

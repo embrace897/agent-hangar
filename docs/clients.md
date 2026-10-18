@@ -285,6 +285,32 @@ What the hangar adds to the protocol:
 - **Harness agents** (Claude Code, Codex…) run a job per run: `STEP_STARTED` and `STEP_FINISHED` around it, the
   answer, and a `CUSTOM` event `hangar.job` with the job id and the diff.
 
+### Calling the agent straight from the browser (CORS)
+
+By default the gateway sends no CORS headers, so a page on another site cannot read the agent's answers. To let a
+web page call the agent directly, list its sites in the agent's spec:
+
+```yaml
+cors:
+  origins:
+    - https://app.acme.com
+    - http://localhost:3000
+```
+
+- **Exact origins only.** Each entry is a scheme, a domain and an optional port, with no path. Wildcards (`*`) are
+  refused, and `http://` is accepted only for `localhost`, `127.0.0.1` and `[::1]`.
+- **Per environment.** `/gw-stage/<slug>` uses the origins of the version running in stage, and `/gw/<slug>` those of
+  the version in production. A change is a new version: it applies in stage after the deploy and in production after
+  the ship, like any other change.
+- **Every protocol.** It covers AG-UI, OpenAI-compatible, MCP, A2A and ACP on that agent. Errors (401, 429…) also come
+  back readable to the page. A preflight from an origin that isn't listed gets a 403.
+- **No cookies.** `Access-Control-Allow-Credentials` is never sent, so the page calls with a key in the
+  `Authorization` header. Anyone who opens the page can see that key: use a key for this agent only, with a budget.
+  When the app has a server, keeping the key there (as in the CopilotKit example) is safer and needs no CORS.
+
+Edit it in the agent's spec, or in **Connect → Calls straight from the browser (CORS)**, which also shows the origins
+in effect in each environment (`GET /api/agents/<slug>/cors`).
+
 ### Agents from other frameworks (remote AG-UI agents)
 
 An agent built with LangGraph, Google ADK, Mastra, Microsoft Agent Framework, AWS Strands or any framework that

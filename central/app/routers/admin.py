@@ -676,6 +676,20 @@ def remote_test(slug: str, body: EnvBody, request: Request, db=Depends(db_dep)):
     return guard(lambda: remote_agui.probe(db, a, spec, body.env))
 
 
+@router.get("/agents/{slug}/cors")
+def agent_cors(slug: str, request: Request, db=Depends(db_dep)):
+    """Os sites que podem chamar o agente direto do navegador: os da versão rodando em cada ambiente e os da versão
+    atual (que valem depois do deploy em stage e do ship)."""
+    a = _agent(request, db, slug)
+    svc.refresh_deployments(db, [a])
+    out = {"version": a.current_version, "draft": (svc.spec_of(a).get("cors") or {}).get("origins", [])}
+    for env in ("stage", "prod"):
+        d = svc.active_deployment(a, env)
+        out[env] = {"version": d.version if d else None,
+                    "origins": sorted(svc.cors.origins(slug, env)) if d else []}
+    return out
+
+
 @router.get("/agents/{slug}/connections/snippet")
 def connection_snippet(slug: str, client: str, request: Request, mode: str = "mcp", db=Depends(db_dep)):
     """Prévia do trecho com <SUA_CHAVE> no lugar da chave (não cria nada)."""

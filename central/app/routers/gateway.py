@@ -353,7 +353,8 @@ async def _proxy(request: Request, slug: str, path: str, env: str):
         if proto != "other":
             _record(info["id"], env, channel, proto, t0, False, user_id=uid)
         return JSONResponse({"error": f"agente indisponível: {e}"}, 502)
-    headers = {k: v for k, v in upstream.headers.items() if k.lower() not in HOP_BY_HOP}
+    # CORS é só do gateway (spec.cors): um container não libera origem por conta própria
+    headers = {k: v for k, v in upstream.headers.items() if k.lower() not in HOP_BY_HOP and not k.lower().startswith("access-control-")}
     ok = upstream.status_code < 400
 
     if upstream.headers.get("content-type", "").startswith("text/event-stream"):
