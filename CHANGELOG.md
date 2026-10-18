@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.1] — 2026-10-18
+
+### Fixed
+- **Installer with `--no-start`:** when the Docker daemon isn't running, `hangar setup --no-start` (and `install.ps1` / `install.sh` with it) now warns and still writes the `.env`. Before, it stopped with an error, even though `--no-start` doesn't use the daemon. This broke the Windows fresh-install check, whose runner no longer runs a Docker daemon. A normal install still requires the daemon.
+
 ## [0.41.0] — 2026-10-18
 
 ### Added
