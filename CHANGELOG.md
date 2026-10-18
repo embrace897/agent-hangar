@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.0] — 2026-10-18
+
+### Added
+- **CopilotKit example app** in [integrations/copilotkit](integrations/copilotkit). It's a Next.js app on the CopilotKit v2 API with an Agent Hangar agent inside it, over AG-UI:
+  - a streamed chat with the model's reasoning;
+  - an app tool (`useFrontendTool`) that the agent calls and the browser runs;
+  - state shared with the screen (`useAgent`) that the agent changes with JSON Patch.
+
+  The invoke key stays on the app's server, so the hangar needs no CORS setting. It runs with `npm run dev` or as a container.
+- **Browser test in CI.** `tests/e2e/copilotkit.py` builds the example and runs it against a running hangar in a real browser (Playwright). It checks:
+  - the streamed answer;
+  - the app tool round trip;
+  - the state change on screen;
+  - that the key never appears in a browser request;
+  - that usage is metered under the `copilotkit` channel.
+
+### Changed
+- **Connect tab, CopilotKit:** the code to paste uses the CopilotKit v2 API (`@copilotkit/runtime/v2`, `createCopilotRuntimeHandler`, `useFrontendTool`). The v1 API is deprecated. The steps are now translated in the English interface.
+
 ## [0.40.0] — 2026-10-17
 
 ### Added

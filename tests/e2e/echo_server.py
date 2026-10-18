@@ -119,7 +119,10 @@ class Echo(BaseHTTPRequestHandler):
                 names = {(t.get("function") or {}).get("name") for t in req.get("tools") or []}
                 want = text.split("use-tool ", 1)[1].split()[0] if "use-tool " in (text or "") else ""
                 if want in names:
-                    args = ({"patch": [{"op": "replace", "path": "/pedido/status", "value": "pago"}]}
+                    # "use-tool app_state_update /caminho=valor" troca esse campo (sem nada: /pedido/status=pago)
+                    target = text.split("use-tool app_state_update", 1)[1].split()[:1] if want == "app_state_update" else []
+                    path, _, value = (target[0] if target and "=" in target[0] else "/pedido/status=pago").partition("=")
+                    args = ({"patch": [{"op": "replace", "path": path, "value": value}]}
                             if want == "app_state_update" else {"id": "4471"})
                     message = {"role": "assistant", "content": None, "tool_calls": [{
                         "id": f"call_{len(LLM['requests'])}", "type": "function",

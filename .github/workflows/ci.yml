@@ -166,6 +166,14 @@ jobs:
           pip install httpx playwright==1.63.0
           python -m playwright install --with-deps chromium
           HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) python tests/e2e/i18n_crawl.py
+      - name: CopilotKit example app in a real browser (AG-UI)
+        run: |
+          export HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) ECHO_URL=http://e2e-echo:8080
+          docker build -q --build-arg NODE_ALPINE_IMAGE="${NODE_ALPINE_IMAGE:-node:22-alpine}" -t agent-hangar/copilotkit-example integrations/copilotkit
+          python tests/e2e/copilotkit.py setup > /tmp/ck.env
+          trap 'python tests/e2e/copilotkit.py cleanup /tmp/ck.env' EXIT
+          docker run -d --name e2e-copilotkit --network host --env-file /tmp/ck.env agent-hangar/copilotkit-example
+          python tests/e2e/copilotkit.py browser /tmp/ck.env || { docker logs --tail 80 e2e-copilotkit; exit 1; }
       - name: Harness job with a workspace owned by another user (Kubernetes emptyDir)
         run: sh harness/tests/workspace_owner_check.sh agent-hangar/harness-base:latest
       - name: Logs on failure

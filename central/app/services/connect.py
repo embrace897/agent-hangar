@@ -127,9 +127,9 @@ def snippet(client: str, mode: str, slug: str, agent_name: str, key: str = KEY_P
     if mode == "agui":
         if client == "copilotkit":
             content = "\n".join([
-                "// app/api/copilotkit/route.ts (Next.js, App Router): a chave fica no servidor, nunca no navegador",
-                'import { CopilotRuntime, ExperimentalEmptyAdapter, copilotRuntimeNextJSAppRouterEndpoint } from "@copilotkit/runtime";',
+                "// app/api/copilotkit/[...path]/route.ts (Next.js, App Router): a chave fica no servidor, nunca no navegador",
                 'import { HttpAgent } from "@ag-ui/client";',
+                'import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";',
                 "",
                 "const runtime = new CopilotRuntime({",
                 "  agents: {",
@@ -140,21 +140,18 @@ def snippet(client: str, mode: str, slug: str, agent_name: str, key: str = KEY_P
                 "  },",
                 "});",
                 "",
-                "export const POST = async (req: Request) => {",
-                "  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({",
-                '    runtime, serviceAdapter: new ExperimentalEmptyAdapter(), endpoint: "/api/copilotkit",',
-                "  });",
-                "  return handleRequest(req);",
-                "};",
+                'const handler = createCopilotRuntimeHandler({ runtime, basePath: "/api/copilotkit" });',
+                "export { handler as GET, handler as POST, handler as PATCH, handler as DELETE };",
                 "",
-                "// no layout ou na página:",
-                f'// <CopilotKit runtimeUrl="/api/copilotkit" agent="{slug}"> <CopilotChat /> </CopilotKit>',
+                '// na página ("use client"), com import { CopilotKit, CopilotChat } from "@copilotkit/react-core/v2":',
+                f'// <CopilotKit runtimeUrl="/api/copilotkit"> <CopilotChat agentId="{slug}" /> </CopilotKit>',
                 ""])
-            return {"language": "typescript", "file": "app/api/copilotkit/route.ts",
-                    "steps": ["npm install @copilotkit/react-core @copilotkit/react-ui @copilotkit/runtime @ag-ui/client",
+            return {"language": "typescript", "file": "app/api/copilotkit/[...path]/route.ts",
+                    "steps": ["npm install @copilotkit/react-core @copilotkit/runtime @ag-ui/client zod",
                               "Crie a rota abaixo (a chave fica no servidor) e envolva a página com <CopilotKit>.",
-                              "Ferramentas do app (useCopilotAction) chegam ao agente; num Digital employee, a conversa "
-                              "vira tarefa e as aprovações aparecem como interrupt (quem decide é quem a alçada indica)."],
+                              "Ferramentas do app (useFrontendTool) chegam ao agente e o estado do app (useAgent) é "
+                              "compartilhado; num Digital employee, a conversa vira tarefa e as aprovações aparecem como "
+                              "interrupt (quem decide é quem a alçada indica). Exemplo completo: integrations/copilotkit."],
                     "content": content}
         body = json.dumps({"threadId": "t1", "runId": "r1", "messages": [{"id": "m1", "role": "user", "content": "Olá!"}],
                            "tools": [], "context": [], "state": {}, "forwardedProps": {}}, ensure_ascii=False)

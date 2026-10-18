@@ -235,6 +235,10 @@ Native, Slack, Teams, and the SDKs for TypeScript, Python, Kotlin, Go and others
 `POST /gw/<slug>/agui`, with the same invoke key, usage metering and audit as the other protocols. In the agent's
 **Connect** tab, pick **CopilotKit** or **Outro cliente AG-UI** to get the key and the code to paste.
 
+For a working app to start from, see [integrations/copilotkit](../integrations/copilotkit). It is a Next.js app on the
+CopilotKit v2 API with a streamed chat, an app tool (`useFrontendTool`) and state shared with the screen (`useAgent`).
+The key stays on the app's server. CI tests it in a real browser against a running hangar.
+
 The app sends a `RunAgentInput` (`threadId`, `runId`, `messages`, `tools`, `context`) and receives SSE events:
 
 | What happens | Events |

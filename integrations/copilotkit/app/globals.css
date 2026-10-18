@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #f5f6f8; color: #1d2330; }
+.layout { display: grid; grid-template-columns: 1fr 420px; height: 100vh; }
+.orders { padding: 32px; overflow: auto; }
+.orders h1 { margin: 0 0 4px; font-size: 24px; }
+.orders .hint { color: #5d6575; margin: 0 0 24px; }
+.card { background: #fff; border: 2px solid #e3e6eb; border-radius: 14px; padding: 20px; max-width: 520px; }
+.card.open { border-color: #f5a623; box-shadow: 0 0 0 4px #f5a62333; }
+.label { font-size: 12px; font-weight: 700; color: #5d6575; letter-spacing: .04em; }
+.title { font-size: 20px; font-weight: 700; margin: 6px 0 12px; }
+.pill { display: inline-block; padding: 3px 12px; border-radius: 999px; font-weight: 600; background: #fff3d6; color: #8a5a00; }
+.pill.paid { background: #dcf5e7; color: #156a3c; }
+.log { margin-top: 24px; font: 13px ui-monospace, monospace; color: #5d6575; }
+.chat { border-left: 1px solid #e3e6eb; background: #fff; height: 100vh; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; height: auto; } .chat { height: 70vh; } }
