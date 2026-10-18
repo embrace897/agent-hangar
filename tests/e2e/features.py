@@ -196,7 +196,8 @@ def phase_remote():
     slug = a["slug"]
     made["agents"].append(slug)
     ok(admin.patch(f"/api/agents/{slug}", json={
-        "remote": {"url": f"{ECHO}/agui-agent", "headers": {"Authorization": f"secret://{sec}"}},
+        "remote": {"url": f"{ECHO}/agui-agent", "headers": {"Authorization": f"secret://{sec}"},
+                   "prices": {"input_per_mtok": 2, "output_per_mtok": 10}},
         "tests": [{"name": "eco", "input": f"sku-{RUN}", "expect_contains": f"sku-{RUN}"}]}))
     bad = admin.patch(f"/api/agents/{slug}", json={"remote": {"headers": {"Authorization": "Bearer exposto"}}})
     check("agente remoto: credencial na spec é recusada (só pelo cofre)", bad.status_code == 400, bad.text[:200])
@@ -221,8 +222,30 @@ def phase_remote():
     kinds = [e["type"] for e in evs]
     check("agente remoto: AG-UI direto, evento por evento", kinds[0] == "RUN_STARTED" and "TOOL_CALL_RESULT" in kinds
           and kinds[-1] == "RUN_FINISHED", kinds)
-    rows = {u["protocol"] for u in ok(admin.get("/api/usage")) if u["agent"] == slug}
+    usage = [u for u in ok(admin.get("/api/usage")) if u["agent"] == slug]
+    rows = {u["protocol"] for u in usage}
     check("agente remoto: cada protocolo entra na medição", {"openai", "a2a", "mcp", "agui"} <= rows, rows)
+    check("agente remoto: os tokens que o agente informa entram na medição, com o custo pelo preço da spec",
+          all(u["tokens"] == 150 and abs(u["cost_usd"] - (120 * 2 + 30 * 10) / 1e6) < 1e-9 for u in usage), usage[:3])
+    # DLP da empresa na ponte: o agente remoto vê [CPF_…]; o app recebe o CPF de volta
+    before = ok(admin.get("/api/governance"))
+    made["governance"] = before
+    cpf = "529.982.247-25"
+    ok(admin.put("/api/governance", json={"dlp": {"mask": ["cpf"]}}))
+    try:
+        evs = _agui(slug, [{"id": "1", "role": "user", "content": f"cliente {cpf}"}])
+    finally:
+        restore_governance()
+    seen = next((e["value"] for e in evs if e["type"] == "CUSTOM" and e.get("name") == "e2e.seen"), "")
+    text = "".join(e.get("delta", "") for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
+    check("agente remoto: DLP da empresa, o agente vê a marca e não o CPF", cpf not in seen and "(CPF_" in seen, seen)
+    check("agente remoto: DLP da empresa, o app recebe o CPF real", text == f"remoto: cliente {cpf}", text)
+
+
+def restore_governance():
+    b = made.get("governance")
+    if b is not None:
+        admin.put("/api/governance", json={"dlp": b["dlp"]})
 
 
 def phase_harness():
@@ -285,6 +308,7 @@ def phase_skills():
 # ------------------------------------------------------------------ limpeza
 def cleanup():
     restore_company()
+    restore_governance()
     for slug in made["agents"]:
         for env in ("stage", "prod"):
             admin.post(f"/api/agents/{slug}/stop", json={"env": env})

@@ -217,29 +217,37 @@ async def _proxy_harness(info: dict, path: str, request: Request, env: str):
 
 
 # ------------------------------------------------------------------ agente remoto (spec `remote`, AG-UI)
-def _remote_target(info: dict, env: str) -> tuple[str, dict, int]:
-    """URL (conferida contra rede interna), cabeçalhos (com os segredos do cofre) e tempo máximo."""
+def _remote_target(info: dict, env: str, body: dict):
+    """URL (conferida contra rede interna), cabeçalhos (com os segredos do cofre), tempo máximo, o RunAgentInput com o
+    DLP da empresa aplicado e o leitor dos eventos (valores reais de volta, uso somado)."""
     from ..services import remote_agui
-    url, timeout = remote_agui.target({"remote": info["remote"]}, env)
+    spec = {"remote": info["remote"]}
+    url, timeout = remote_agui.target(spec, env)
     remote_agui.check_url(url)
     with SessionLocal() as db:
-        hdr = remote_agui.headers_for({"remote": info["remote"]}, info["team_id"], info["slug"], db)
-    return url, hdr, timeout
+        hdr = remote_agui.headers_for(spec, info["team_id"], info["slug"], db)
+        masker, st = remote_agui.bridge(db, spec)
+    return url, hdr, timeout, masker.run_input(body), st
+
+
+def _record_remote(info: dict, env: str, channel: str, t0: float, uid, st):
+    """Depois do stream: os tokens e o custo que o agente informou (zero se não informou) entram na medição."""
+    u = st.result()
+    _record(info["id"], env, channel, "agui", t0, not st.failed, {"usage": u} if u else None, uid)
 
 
 async def _remote_agui(info: dict, body: dict, request: Request, env: str, channel: str):
-    """AG-UI de ponta a ponta: o RunAgentInput vai ao agente e os eventos voltam como chegam. A chamada entra na
-    medição (o agente remoto não informa tokens: conta a chamada e o tempo)."""
+    """AG-UI de ponta a ponta: o RunAgentInput vai ao agente (com o DLP da empresa) e os eventos voltam como chegam,
+    com os valores reais. A chamada entra na medição com os tokens e o custo que o agente informar."""
     from ..services import remote_agui
     try:
-        url, hdr, timeout = await run_in_threadpool(_remote_target, info, env)
+        url, hdr, timeout, sent, st = await run_in_threadpool(_remote_target, info, env, body)
     except svc.PlatformError as e:
         return JSONResponse({"error": str(e)}, 400)
     uid, t0 = user_of(request), time.time()
-    return StreamingResponse(remote_agui.relay(url, hdr, body, timeout), media_type="text/event-stream",
+    return StreamingResponse(remote_agui.relay(url, hdr, sent, timeout, st), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-                             background=BackgroundTask(_record, info["id"], env, channel, "agui", t0,
-                                                       True, None, uid))
+                             background=BackgroundTask(_record_remote, info, env, channel, t0, uid, st))
 
 
 async def _remote_openai(info: dict, body: dict, request: Request, env: str, channel: str):
@@ -259,7 +267,8 @@ async def _remote_openai(info: dict, body: dict, request: Request, env: str, cha
         await run_in_threadpool(_record, info["id"], env, channel, "openai", t0, False, None, uid)
         return JSONResponse({"error": {"message": str(e), "type": "remote_error"}}, 502)
     ok = out["status"] != "failed"
-    await run_in_threadpool(_record, info["id"], env, channel, "openai", t0, ok, None, uid)
+    await run_in_threadpool(_record, info["id"], env, channel, "openai", t0, ok,
+                            {"usage": out["usage"]} if out.get("usage") else None, uid)
     cid, created = f"chatcmpl-{uuid.uuid4().hex[:12]}", int(time.time())
     if body.get("stream"):
         def chunk(delta, finish=None):
@@ -275,7 +284,7 @@ async def _remote_openai(info: dict, body: dict, request: Request, env: str, cha
         return StreamingResponse(sse(), media_type="text/event-stream")
     return {"id": cid, "object": "chat.completion", "created": created, "model": info["slug"],
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": out["reply"]}}],
-            "usage": {}, "x_trace": out["trace"], "x_status": out["status"]}
+            "usage": out.get("usage") or {}, "x_trace": out["trace"], "x_status": out["status"]}
 
 
 # ------------------------------------------------------------------ proxy

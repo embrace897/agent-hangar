@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.43.0] — 2026-10-18
+
+### Added
+- **Remote agents: the company's DLP on the bridge.** The data the company's policy masks (CPF, CNPJ, card, e-mail, phone, CID) reach a remote agent as marks such as `[CPF_3f9a1c2b]`, and the app gets the real values back. This works on every protocol. See [docs/clients.md](docs/clients.md#agents-from-other-frameworks-remote-ag-ui-agents).
+  - **What is masked:** the messages, the app's state, the context and the forwarded props.
+  - **Stable marks:** a mark is an HMAC of the value with the installation's key. It's the same in every run, so the agent can refer to an earlier value, and nothing is stored.
+  - **Real values back:** the app gets the real value even when a mark is split across two streamed pieces.
+  - **`remote.dlp: off`** sends the real values, for agents whose own tools need them.
+- **Remote agents: tokens and cost.** The agent reports usage in a `CUSTOM` event (`hangar.usage` or `usage`), one per model call or one per run; the values add up.
+  - **Cost:** the event's `cost_usd` when present, otherwise the spec's `remote.prices` (US$ per million tokens).
+  - **Where it counts:** usage, dashboards and budgets, so a budget stops the agent at its real cost. A run that ends in `RUN_ERROR` is metered as an error.
+- **Agent page:** the remote agent's card shows the DLP mode and the prices.
+
+### Changed
+- **Remote agents with company DLP:** in a company that masks data, existing remote agents now receive masked values by default. Set `remote.dlp: off` for an agent whose tools need the real values.
+
+### Fixed
+- **CopilotKit example README:** removed DLP from the diagram. A direct gateway call is not masked; DLP covers Digital employee tasks and remote agents ([docs/analyst.md](docs/analyst.md#data-governance)).
+
 ## [0.42.0] — 2026-10-18
 
 ### Added

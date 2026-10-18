@@ -288,6 +288,10 @@ dialog, opening a CSV and reading it, and two payments in one task without dupli
   gate hands the **real values** to whatever executes the action, and the stored result shows them to people. What an
   agent fetches directly from its own tools isn't masked (authority and plugin policies cover that).
   **Block outbound** stops those data from leaving in a message to someone outside.
+  The same masking applies on the way to a **remote agent** (an agent from another framework, over AG-UI), on every
+  protocol. The agent sees `[CPF_3f9a1c2b]` and the app gets the real value back, unless the agent's spec says
+  `remote.dlp: off` ([clients.md](clients.md#agents-from-other-frameworks-remote-ag-ui-agents)). A direct call to a
+  chat agent through the gateway is not masked: the masking covers Digital employee tasks and remote agents.
 - **Retention** per classification: the content of tasks closed more than N days ago is erased (the record and the
   audit log stay), unless the task or its project is under **legal hold** (admins).
 - **Data subject requests (LGPD):** locate a person's data (CPF with or without punctuation, e-mail or name) across

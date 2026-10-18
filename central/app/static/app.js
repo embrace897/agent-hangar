@@ -406,7 +406,9 @@ function overview(t, a) {
       <dt>Endereço</dt><dd><code class="inline" data-noi18n>${esc(s.remote.url)}</code></dd>
       ${s.remote.stage && s.remote.stage.url ? `<dt>Endereço em stage</dt><dd><code class="inline" data-noi18n>${esc(s.remote.stage.url)}</code></dd>` : ''}
       <dt>Cabeçalhos</dt><dd>${Object.keys(s.remote.headers || {}).length ? Object.entries(s.remote.headers).map(([k, v]) => `<span class="chip" data-noi18n>${esc(k)}: ${String(v).startsWith('secret://') ? esc(v) : '••••'}</span>`).join('') : '<span class="mute">nenhum</span>'}</dd>
-      <dt>Tempo máximo</dt><dd>${s.remote.timeout_s || 120} s</dd><dt>Casos de teste</dt><dd>${s.tests.length}</dd></dl>
+      <dt>Tempo máximo</dt><dd>${s.remote.timeout_s || 120} s</dd><dt>Casos de teste</dt><dd>${s.tests.length}</dd>
+      <dt>Dados sensíveis (DLP)</dt><dd>${s.remote.dlp === 'off' ? '<span class="pill warn">valores reais</span> <span class="mute small">dlp: off</span>' : '<span class="pill ok">política da empresa</span> <span class="mute small">o agente vê [CPF_…]; o app recebe o valor real</span>'}</dd>
+      <dt>Preço</dt><dd>${s.remote.prices ? `US$ ${s.remote.prices.input_per_mtok || 0} / US$ ${s.remote.prices.output_per_mtok || 0} <span class="mute small">por milhão de tokens (entrada / saída)</span>` : '<span class="mute">o custo vem do agente (cost_usd no evento hangar.usage)</span>'}</dd></dl>
       <div class="mute small mt">O agente roda fora do hangar e fala AG-UI. O hangar cuida da versão, dos testes em stage, da promoção, do orçamento, da medição e da auditoria, e o expõe em OpenAI, MCP, A2A, ACP e AG-UI.</div>
       ${can(a, 'edit') ? `<div class="row mt"><select id="rm-env" style="width:auto"><option value="stage">stage</option><option value="prod">prod</option></select>
         <button id="rm-test" class="ghost">Testar conexão</button></div><div id="rm-res"></div>` : ''}</div>` : '';

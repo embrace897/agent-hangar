@@ -61,6 +61,11 @@ class RemoteEnvOverride(_Strict):
     url: str | None = None
 
 
+class RemotePrices(_Strict):
+    input_per_mtok: float = Field(default=0, ge=0, description="US$ por milhão de tokens de entrada")
+    output_per_mtok: float = Field(default=0, ge=0, description="US$ por milhão de tokens de saída")
+
+
 class RemoteSpec(_Strict):
     """Agente remoto: o agente roda fora do hangar (LangGraph, Google ADK, Mastra, Microsoft Agent Framework, AWS
     Strands…) e fala AG-UI. O hangar governa o ciclo de vida (versão, testes em stage, promoção, orçamento, medição,
@@ -70,6 +75,11 @@ class RemoteSpec(_Strict):
     headers: dict[str, str] = Field(default_factory=dict,
                                     description="cabeçalhos enviados ao agente; um valor pode ser secret://nome do cofre")
     timeout_s: int = Field(default=120, ge=5, le=900, description="tempo máximo de uma rodada")
+    dlp: Literal["company", "off"] = Field(
+        default="company", description="company: os dados que a política da empresa mascara vão ao agente como "
+        "[CPF_…] e voltam reais para o app; off: o agente recebe os valores reais (as ferramentas dele precisam)")
+    prices: RemotePrices | None = Field(default=None, description="custo por milhão de tokens, quando o agente informa "
+                                        "os tokens (evento CUSTOM hangar.usage) e não o custo")
     stage: RemoteEnvOverride | None = None
     prod: RemoteEnvOverride | None = None
 

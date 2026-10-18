@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from . import secrets_vault
+from . import remote_dlp, secrets_vault
 from .common import PlatformError
 
 HTTP = lambda timeout: httpx.Client(timeout=httpx.Timeout(timeout, connect=10))  # noqa: E731  (os testes trocam)
@@ -106,45 +106,60 @@ def collect(evs) -> dict:
             "trace": trace, "interrupts": interrupts, "events": len(kinds)}
 
 
+def bridge(db, spec: dict) -> tuple[remote_dlp.Masker, remote_dlp.Stream]:
+    """O DLP (o que mascarar, pela política da empresa) e o leitor dos eventos (valores reais de volta, uso somado)."""
+    masker = remote_dlp.Masker(remote_dlp.kinds_for(db, spec["remote"]))
+    return masker, remote_dlp.Stream(masker, spec["remote"].get("prices"))
+
+
 def ask(db, agent, spec: dict, env: str, messages: list[dict], session: str | None = None) -> dict:
     """Uma rodada no agente remoto, de forma síncrona (playground, agendamentos, testes, ponte de protocolos)."""
     url, timeout = target(spec, env)
     check_url(url)
     hdr = headers_for(spec, agent.team_id, agent.slug, db)
+    masker, st = bridge(db, spec)
+    body = masker.run_input(run_input(messages, session))
     t0 = time.time()
     try:
-        with HTTP(timeout) as http, http.stream("POST", url, headers=hdr, json=run_input(messages, session)) as r:
+        with HTTP(timeout) as http, http.stream("POST", url, headers=hdr, json=body) as r:
             if r.status_code >= 400:
                 r.read()
                 raise PlatformError(f"o agente remoto respondeu HTTP {r.status_code}: {r.text[:200]}")
             if not r.headers.get("content-type", "").startswith("text/event-stream"):
                 r.read()
                 raise PlatformError(f"o agente remoto não respondeu em AG-UI (SSE): {r.headers.get('content-type')}")
-            out = collect(events(r))
+            out = collect(e for ev in events(r) for e in st.events(ev))
     except httpx.HTTPError as e:
         raise PlatformError(f"agente remoto indisponível: {e}") from None
     out["latency_ms"] = int((time.time() - t0) * 1000)
+    out["usage"] = st.result() or {}
     return out
 
 
-async def relay(url: str, hdr: dict, body: dict, timeout: int):
-    """AG-UI de ponta a ponta: repassa o RunAgentInput e devolve os eventos do agente como chegam. Erro de rede ou HTTP
-    vira RUN_ERROR, para o app não ficar sem resposta."""
+async def relay(url: str, hdr: dict, body: dict, timeout: int, st: "remote_dlp.Stream | None" = None):
+    """AG-UI de ponta a ponta: repassa o RunAgentInput (já mascarado) e devolve os eventos do agente como chegam, com
+    os valores reais no lugar das marcas do DLP e o uso somado em `st`. Erro de rede ou HTTP vira RUN_ERROR, para o app
+    não ficar sem resposta."""
     def sse(ev):
         return "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
     try:
         async with AHTTP(timeout) as http, http.stream("POST", url, headers=hdr, json=body) as r:
             if r.status_code >= 400:
                 await r.aread()
+                if st:
+                    st.failed = True
                 yield sse({"type": "RUN_ERROR", "message": f"o agente remoto respondeu HTTP {r.status_code}",
                            "code": "remote_http"})
                 return
             async for line in r.aiter_lines():
                 if line.startswith("data:"):
-                    yield line + "\n\n"
+                    for out in (st.line(line) if st else [line]):
+                        yield out + "\n\n"
                 elif line.startswith(":"):
                     yield ": keepalive\n\n"
     except httpx.HTTPError as e:
+        if st:
+            st.failed = True
         yield sse({"type": "RUN_ERROR", "message": f"agente remoto indisponível: {e}", "code": "remote_unavailable"})
 
 

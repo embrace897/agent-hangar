@@ -22,7 +22,11 @@ remote:                   # remote agents only: the agent runs elsewhere and spe
   url: https://agents.example.com/support/agui
   headers: {Authorization: "secret://support-agent-key"}   # credentials only from the vault
   timeout_s: 120          # time limit of one run (5–900)
+  dlp: company            # company: the company's DLP masks reach the agent as [CPF_…] | off: real values
+  prices: {input_per_mtok: 3, output_per_mtok: 15}  # optional: US$ per million tokens it reports
   stage: {url: https://staging.example.com/support/agui}    # optional: another address in stage
+cors:                     # optional: sites that may call the agent straight from the browser (see clients.md)
+  origins: [https://app.acme.com]
 execution:                # optional; absent = automatic (see execution.md)
   effort: auto            # auto | minimal | low | medium | high | max (reasoning effort)
   max_output_tokens: 8000 # output limit (256–128000); absent = the provider's default

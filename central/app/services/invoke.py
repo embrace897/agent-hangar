@@ -31,14 +31,15 @@ def chat(db: Session, slug: str, message: str, env="prod", channel="api", actor=
                 "latency_ms": int((time.time() - t0) * 1000)}
     if spec_of(a).get("remote"):  # agente remoto: a rodada vai pelo AG-UI até ele (services/remote_agui.py)
         from . import remote_agui
-        t0, ok = time.time(), False
+        t0, ok, usage = time.time(), False, {}
         try:
             out = remote_agui.ask(db, a, spec_of(a), env, [{"role": "user", "content": message}], session)
-            ok = out["status"] != "failed"
-            return {"reply": out["reply"], "status": out["status"], "usage": {}, "trace": out["trace"],
+            ok, usage = out["status"] != "failed", out["usage"]
+            return {"reply": out["reply"], "status": out["status"], "usage": usage, "trace": out["trace"],
                     "latency_ms": out["latency_ms"], "interrupts": out["interrupts"]}
-        finally:
-            record_usage(db, a.id, env, channel, protocol, int((time.time() - t0) * 1000), ok, None)
+        finally:  # os tokens e o custo que o agente informou (services/remote_dlp.py)
+            record_usage(db, a.id, env, channel, protocol, int((time.time() - t0) * 1000), ok,
+                         {"usage": usage} if usage else None)
     t0, ok, data = time.time(), True, None
     try:
         headers = {"X-Channel": channel, **({"X-Session-Id": session} if session else {})}

@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>"""
 JIRA = {"issues": {}, "comments": [], "transitions": [], "attachments": []}
-AGUI_AGENT = {"calls": 0, "authorization": "", "roles": [], "thread": None}
+AGUI_AGENT = {"calls": 0, "authorization": "", "roles": [], "thread": None, "last": ""}
 LLM = {"requests": []}
 LLM_MODELS = [
     {"id": "e2e/thinker", "name": "E2E Thinker", "context_length": 128000, "supported_parameters": ["tools", "reasoning"],
@@ -171,6 +171,7 @@ class Echo(BaseHTTPRequestHandler):
         AGUI_AGENT.update(calls=AGUI_AGENT["calls"] + 1, authorization=self.headers.get("authorization", ""),
                           roles=[m.get("role") for m in inp.get("messages", [])], thread=inp.get("threadId"))
         last = next((m.get("content") for m in reversed(inp.get("messages", [])) if m.get("role") == "user"), "")
+        AGUI_AGENT["last"] = last  # o que o agente viu (com o DLP da empresa, [CPF_…] no lugar do CPF)
         t, r = inp.get("threadId", "t"), inp.get("runId", "r")
         evs = [{"type": "RUN_STARTED", "threadId": t, "runId": r},
                {"type": "TOOL_CALL_START", "toolCallId": "c1", "toolCallName": "consultar_estoque"},
@@ -179,7 +180,12 @@ class Echo(BaseHTTPRequestHandler):
                {"type": "TOOL_CALL_RESULT", "messageId": "r1", "toolCallId": "c1", "content": "12 unidades"},
                {"type": "TEXT_MESSAGE_START", "messageId": "m1", "role": "assistant"}]
         evs += [{"type": "TEXT_MESSAGE_CONTENT", "messageId": "m1", "delta": w} for w in ["remoto: ", str(last)]]
-        evs += [{"type": "TEXT_MESSAGE_END", "messageId": "m1"}, {"type": "RUN_FINISHED", "threadId": t, "runId": r}]
+        evs += [{"type": "TEXT_MESSAGE_END", "messageId": "m1"},
+                # o uso do modelo do agente remoto, para a medição e o orçamento do hangar
+                {"type": "CUSTOM", "name": "hangar.usage", "value": {"prompt_tokens": 120, "completion_tokens": 30}},
+                # o que chegou aqui, com os colchetes trocados (a ponte devolve o valor real só no formato [CPF_…])
+                {"type": "CUSTOM", "name": "e2e.seen", "value": str(last).replace("[", "(").replace("]", ")")},
+                {"type": "RUN_FINISHED", "threadId": t, "runId": r}]
         raw = "".join(f"data: {json.dumps(e, ensure_ascii=False)}\n\n" for e in evs).encode()
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")

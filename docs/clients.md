@@ -333,7 +333,8 @@ tests:
 | Network | The address follows the plugins' rule: internal networks only with `PLUGIN_ALLOW_PRIVATE=1` |
 | Tests before production | `run_tests` sends a run to the stage address (an AG-UI smoke check) and the spec's test cases; promotion needs them to pass |
 | Every protocol | OpenAI-compatible (the whole conversation, `stream` supported), A2A, ACP and MCP become an AG-UI run on the agent; AG-UI goes straight through, event by event |
-| Budget, metering and audit | The gateway applies the budget stop; each call is metered by protocol and channel (the agent doesn't report tokens: calls and time); deploys and tests go to the audit log |
+| Sensitive data (DLP) | The data the company's policy masks (CPF, CNPJ, card, e-mail, phone, CID) reach the agent as `[CPF_3f9a1c2b]`, and the app gets the real value back. `dlp: off` sends the real values |
+| Budget, metering and audit | The gateway applies the budget stop; each call is metered by protocol and channel, with the tokens and cost the agent reports (see below); deploys and tests go to the audit log |
 | Decisions | When the agent ends a run with an interrupt, AG-UI clients get it as is; the other protocols get the question as text |
 
 Test the connection in the agent's page (**Testar conexão**) or with `POST /api/agents/<slug>/remote/test
@@ -341,6 +342,33 @@ Test the connection in the agent's page (**Testar conexão**) or with `POST /api
 
 What stays with the agent: its model, tools, memory and prompts run where the agent runs. The hangar governs what goes
 in and out, not the inside.
+
+**Sensitive data (DLP).** When the company masks data under Organization → Data governance, the same policy applies on
+the way to a remote agent, on every protocol:
+
+- **What is masked:** the messages, the app's state, the context and the forwarded props. Each value becomes a mark
+  such as `[CPF_3f9a1c2b]`.
+- **Stable marks:** a mark comes from an HMAC of the value with the installation's key. The same value gets the same
+  mark in every run, so the agent can refer to a value from an earlier message, and nothing is stored.
+- **Real values back:** on the way back, the app gets the real value wherever the agent wrote the mark. This includes
+  a mark split across two streamed pieces.
+- **When the agent needs the real values:** its own tools can't use the marks. For example, a tool that looks the
+  customer up by CPF needs the real CPF. In that case set `remote.dlp: off`. It's visible in the versioned spec and in
+  the agent's page.
+
+**Tokens and cost.** The agent's model runs outside the hangar, so the agent reports its usage in a `CUSTOM` event:
+
+```json
+{"type": "CUSTOM", "name": "hangar.usage", "value": {"prompt_tokens": 1200, "completion_tokens": 300}}
+```
+
+- **Event shape:** the name can be `hangar.usage` or `usage`, and the keys can be `input_tokens` / `output_tokens`.
+  Send one event per model call or one per run; the values add up.
+- **Cost:** with `cost_usd` in the event, that cost is used. Otherwise the cost comes from the spec,
+  `remote.prices: {input_per_mtok: 3, output_per_mtok: 15}` (US$ per million tokens).
+- **Where it shows:** the tokens and cost appear in the agent's usage, the dashboards and the budgets, so a budget
+  stops the agent at its real cost. An agent that reports nothing is still metered by calls and time, with zero
+  tokens.
 
 ```bash
 curl -N http://localhost:8090/gw/ticket-triage/agui \

@@ -15,7 +15,7 @@ browser (CopilotChat, useFrontendTool, useAgent)
    │  /api/copilotkit  (same origin; no key in the browser)
    ▼
 Next.js server: CopilotRuntime + HttpAgent ──AG-UI, invoke key──▶ Agent Hangar /gw/<agent>/agui
-                                                                     │ budget, DLP, audit, usage per channel
+                                                                     │ budget, audit, usage per channel
                                                                      ▼
                                                      the agent (chat agent, Digital employee, harness or remote)
 ```
