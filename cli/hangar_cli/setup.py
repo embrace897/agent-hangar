@@ -558,7 +558,11 @@ def compose_ok(version: str) -> bool:
     return bool(m) and (int(m.group(1)), int(m.group(2))) >= (2, 20)
 
 
-def preflight(root: Path, port: int) -> list[str]:
+DAEMON_DOWN = "O daemon do Docker não está respondendo (abra o Docker Desktop ou `sudo systemctl start docker`)."
+
+
+def preflight(root: Path, port: int, start: bool = True) -> list[str]:
+    """O que impede a instalação. Com --no-start (start=False) o daemon parado não impede: só o .env é gerado."""
     problems = []
     if not shutil.which("docker"):
         return ["Docker não encontrado. Instale o Docker Desktop (Windows/macOS) ou Docker Engine (Linux)."]
@@ -567,8 +571,8 @@ def preflight(root: Path, port: int) -> list[str]:
         problems.append("Docker Compose v2 não encontrado (`docker compose`).")
     elif not compose_ok(r.stdout):
         problems.append(f"Docker Compose {r.stdout.strip()} — use a versão 2.20 ou mais nova.")
-    if subprocess.run(["docker", "info"], capture_output=True, text=True).returncode != 0:
-        problems.append("O daemon do Docker não está respondendo (abra o Docker Desktop ou `sudo systemctl start docker`).")
+    if start and subprocess.run(["docker", "info"], capture_output=True, text=True).returncode != 0:
+        problems.append(DAEMON_DOWN)
     if not (root / "docker-compose.yml").exists():
         problems.append(f"docker-compose.yml não encontrado em {root} — rode na pasta do repositório (ou use --dir).")
     running = subprocess.run(["docker", "ps", "--filter", "name=central", "--format", "{{.Ports}}"], capture_output=True, text=True).stdout
@@ -700,11 +704,13 @@ def setup(root: Path, answers_file: str | None = None, start: bool = True, assum
     if a["target"] == "kubernetes":
         return setup_kubernetes(root, state, a, start, configure_only)
     title("Pré-requisitos")
-    problems = preflight(root, a["port"])
+    problems = preflight(root, a["port"], start)
     for p in problems:
         fail(p)
     if problems:
         return 2
+    if not start and subprocess.run(["docker", "info"], capture_output=True, text=True).returncode != 0:
+        warn(DAEMON_DOWN + " Com --no-start, só o .env é gerado agora.")
     ok("Docker, Docker Compose e porta livre")
 
     title("Configuração (.env)")

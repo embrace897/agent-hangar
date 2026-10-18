@@ -275,3 +275,16 @@ def test_doctor_ignores_build_only_services(monkeypatch, tmp_path):
     assert [c.status for c in checks if c.name == "Containers"] == [dr.OK]
     rows.append({"Service": "postgres", "State": "exited"})
     assert "postgres" in next(c.detail for c in dr.check_docker(tmp_path) if c.name == "Containers")
+
+
+def test_preflight_daemon_down_only_blocks_when_starting(monkeypatch, tmp_path):
+    """--no-start só gera o .env: o daemon do Docker parado (runner Windows, Docker Desktop fechado) não impede."""
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+
+    def fake_run(cmd, **kw):
+        out = "2.29.1" if cmd[:3] == ["docker", "compose", "version"] else ""
+        return st.subprocess.CompletedProcess(cmd, 1 if cmd[:2] == ["docker", "info"] else 0, stdout=out, stderr="")
+    monkeypatch.setattr(st.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(st.subprocess, "run", fake_run)
+    assert st.DAEMON_DOWN in st.preflight(tmp_path, 1)
+    assert st.preflight(tmp_path, 1, start=False) == []
