@@ -31,23 +31,23 @@ https://github.com/user-attachments/assets/62836990-f66c-4c94-950b-4632cf9fc160
 
 <sub>2 min 45 s, with captions: what Agent Hangar is, how to install it, build, test and ship agents, use them over every protocol (inside your app too), put Digital employees to work, and keep cost and governance under control. [MP4 version](docs/assets/agent-hangar-end-to-end.mp4)</sub>
 
-<details><summary><b>Step-by-step tutorial: from zero to an agent at work, in 9 steps</b> (8 min 41 s, in Portuguese, with captions)</summary>
+<details><summary><b>Step-by-step tutorial: from zero to an agent at work, in 9 steps</b> (8 min 34 s, with captions)</summary>
 
-**Part 1 (0:00–3:56):** install in one command, register the company and the model, create the agent from the tool you
+**Part 1 (0:00–3:53):** install in one command, register the company and the model, create the agent from the tool you
 already use: chat agents, harness agents (Claude Code, Codex) for complex problems, and agents from other frameworks
 over AG-UI.
 
-https://github.com/user-attachments/assets/da63a2dc-1831-4a00-abfe-29b8174cb5e5
+https://github.com/user-attachments/assets/7bf76ac8-2302-4822-9dc3-ddc10a5e0348
 
-**Part 2 (3:56–6:30):** test in stage and ship with approval, put the agent inside your app over AG-UI, hire a Digital
+**Part 2 (3:53–6:25):** test in stage and ship with approval, put the agent inside your app over AG-UI, hire a Digital
 employee, and work through the issues board, with the approval showing up in Slack, Teams or on your app's screen.
 
-https://github.com/user-attachments/assets/95097335-cbbc-40bd-8fc1-72e9e460a4af
+https://github.com/user-attachments/assets/c6ea0048-01c6-45df-a612-62af4e4a2851
 
-**Part 3 (6:30–8:41):** connect tools and skills, pick the right model and effort, and keep cost and audit under
+**Part 3 (6:25–8:34):** connect tools and skills, pick the right model and effort, and keep cost and audit under
 control.
 
-https://github.com/user-attachments/assets/e249551f-f706-4936-be19-4251564139c1
+https://github.com/user-attachments/assets/28cfa80f-33b1-49c5-be48-13cc33ada18d
 
 </details>
 
