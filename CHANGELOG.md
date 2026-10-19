@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.45.0] — 2026-10-19
+
+### Added
+- **Digital employees: review by a model from another vendor** (issue #56, part B). See [docs/digital-employee.md](docs/digital-employee.md#review-by-a-model-from-another-vendor).
+  - **Setup:** an authority rule in `auto` or `notify` mode can carry a `review` block: `{connection, model?, on_disagree?, shadow?, timeout_s?}`. A model from another vendor then checks each action before it runs.
+  - **Agrees:** the rule's mode applies, and the exact action runs once.
+  - **Fails closed:** when the reviewer disagrees, times out, errors or gives an unreadable answer, `on_disagree` applies: `approve` (default) or `approve_2` sends a normal approval request with the reviewer's reason, and `never` refuses the action.
+  - **Vendor:** comes from the model id (`anthropic/`, `google/`… or the name), not from the connection. A reviewer from the employee's own vendor is refused when the rule is saved, and when the review runs if the employee's model changed.
+  - **Data:** DLP masks what the reviewer gets, and the reviewer's connection must accept the task's classification. The reviewer has no tools.
+  - **Async:** it uses the approval flow. The task waits on a `cross_review` request, and the reviewer runs after the round ends. A review with no answer by its deadline escalates.
+  - **The company floor and plugin policy still win;** when they raise the mode, the review is skipped.
+  - **Shadow first (the default):** a person decides and the reviewer's verdict is recorded beside it. The person sees it only after deciding. Their agreement becomes the goal metric `cross_review_agreement_rate`. Set `"shadow": false` to let the reviewer decide.
+  - **Cost:** reviews are metered on the `review` channel. The daily report shows reviews, agreement and cost.
+
 ## [0.44.0] — 2026-10-19
 
 ### Added

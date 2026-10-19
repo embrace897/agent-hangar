@@ -42,7 +42,7 @@ def announced_only(content: str, used_tools: bool) -> bool:
     return used_tools and 0 < len(text) <= 600 and bool(ANNOUNCED.search(text[-260:]))  # passos da rodada esgotados: segue numa nova
 JOB_MARK = re.compile(r"\[job #(\d+)")  # resultado de um job de código (runtime: _a2a_call)
 TERMINAL = ("done", "failed", "cancelled", "expired")
-BLOCKING = ("approval", "question", "capability", "plan", "review_fields", "doc_change", "message")  # pausam a tarefa até alguém decidir
+BLOCKING = ("approval", "question", "capability", "plan", "review_fields", "doc_change", "message", "cross_review")  # pausam a tarefa até alguém decidir
 SHADOW_REAL = ("read", "delegate")  # no modo sombra estas rodam de verdade; o resto é simulado
 QUIET = ("notice", "shadow")  # registros que não esperam decisão na caixa de Decisões
 WORKER = f"{os.environ.get('REPLICA_ID') or os.environ.get('HOSTNAME') or 'central'}-{os.getpid()}"
@@ -349,12 +349,20 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
         mode, ev = "never", {**ev, "source": "plugin: ação desligada"}
     elif pol == "ask" and mode in ("auto", "notify"):
         mode, ev = "approve", {**ev, "source": "plugin: pede aprovação a cada uso"}
-    info = {"action_type": cat.action_type, "mode": mode, "source": ev["source"]}
+    # revisão por um modelo de outro fornecedor: só se o modo da regra valeu (o piso e o plugin não subiram)
+    review = ev.get("review") if mode == ev["mode"] and mode in ("auto", "notify") and not (
+        e.shadow and cat.action_type not in SHADOW_REAL) else None
+    live = review is not None and not review["shadow"] and task is not None
+    if review is not None and not live:  # em observação (ou fora de tarefa): decide o on_disagree; o revisor só opina
+        mode, ev = review["on_disagree"], {**ev, "source": f"{ev['source']} · revisor em observação"}
+    info = {"action_type": cat.action_type, "mode": "cross_review" if live else mode, "source": ev["source"]}
     if task is not None:
         event(db, task, "gate", {"tool": tool, "ref": ref, **info})
     if mode == "never":
         db.commit()
         return {"status": "denied", **info, "message": f"A alçada não permite '{cat.action_type}' ({tool}): não execute."}
+    if live:
+        return _gate_review(db, e, task, tool, ref, args, rationale, cat, mode, ev, info)
     if e.shadow and cat.action_type not in SHADOW_REAL:
         assigned, _ = _route(db, e, "manager")
         r = HumanRequest(employee_id=e.id, task_id=task.id if task else None, kind="shadow", action_type=cat.action_type,
@@ -385,13 +393,9 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
         return {"status": "denied", **info,
                 "message": f"'{cat.action_type}' exige aprovação: peça como tarefa (assign_task) para o gestor decidir."}
     h = gatemod.payload_hash(ref, args)
-    granted = db.scalar(select(HumanRequest).where(HumanRequest.task_id == task.id, HumanRequest.grant_hash == h,
-                                                   HumanRequest.grant_used.is_(False), HumanRequest.status == "decided"))
+    granted = _granted(db, task, tool, h, info)
     if granted is not None:
-        granted.grant_used = True
-        event(db, task, "tool", {"tool": tool, "approved_by": granted.decided_by, "request": granted.id})
-        db.commit()
-        return {"status": "allowed", **info, "request_id": granted.id}
+        return granted
     pending = db.scalar(select(HumanRequest).where(HumanRequest.task_id == task.id, HumanRequest.payload_hash == h,
                                                    HumanRequest.status == "open"))
     if pending is None:
@@ -407,12 +411,54 @@ def _gate(db: Session, agent: Agent, task_id: int | None, tool: str, ref: str, a
         db.flush()
         event(db, task, "human_request", {"id": pending.id, "kind": "approval", "tool": tool, **info})
         db.commit()
+        if review is not None:  # observação: o revisor dá o veredito ao lado da pessoa (vira a métrica de concordância)
+            from . import cross_review
+            cross_review.watch(db, pending, ev)
         _notify_request(db, e, pending)
     task.status = "waiting_human"
     db.commit()
     who = "duas pessoas" if mode == "approve_2" else "uma pessoa"
     return {"status": "waiting", "request_id": pending.id, **info,
             "message": f"'{tool}' ({cat.action_type}) precisa da aprovação de {who}: pedido #{pending.id}."}
+
+
+def _granted(db: Session, task: EmployeeTask, tool: str, h: str, info: dict) -> dict | None:
+    """A ação exata já liberada (por uma pessoa ou pelo revisor) e ainda não usada: libera uma vez."""
+    granted = db.scalar(select(HumanRequest).where(HumanRequest.task_id == task.id, HumanRequest.grant_hash == h,
+                                                   HumanRequest.grant_used.is_(False), HumanRequest.status == "decided"))
+    if granted is None:
+        return None
+    granted.grant_used = True
+    event(db, task, "tool", {"tool": tool, "approved_by": granted.decided_by, "request": granted.id})
+    db.commit()
+    return {"status": "allowed", **info, "request_id": granted.id}
+
+
+def _gate_review(db: Session, e: Employee, task: EmployeeTask, tool: str, ref: str, args: dict, rationale: str, cat,
+                 mode: str, ev: dict, info: dict) -> dict:
+    """Regra com revisor de outro fornecedor (de verdade): a ação espera o veredito, como numa aprovação."""
+    from . import cross_review
+    h = gatemod.payload_hash(ref, args)
+    granted = _granted(db, task, tool, h, info)
+    if granted is not None:
+        return granted
+    refused = db.scalar(select(HumanRequest).where(HumanRequest.task_id == task.id, HumanRequest.payload_hash == h,
+                                                   HumanRequest.kind == "cross_review", HumanRequest.decision == "reject"))
+    if refused is not None:  # o revisor já recusou esta ação exata (on_disagree=never): não pergunta de novo
+        db.commit()
+        return {"status": "denied", **info, "request_id": refused.id,
+                "message": f"'{tool}' foi recusada pelo revisor (pedido #{refused.id}): não execute."}
+    pending = db.scalar(select(HumanRequest).where(HumanRequest.task_id == task.id, HumanRequest.payload_hash == h,
+                                                   HumanRequest.status == "open"))
+    if pending is None:
+        pending = cross_review.open_request(db, e, task, tool, ref, args, h, cat, mode, ev, rationale)
+        event(db, task, "human_request", {"id": pending.id, "kind": "cross_review", "tool": tool, **info})
+    task.status = "waiting_human"
+    db.commit()
+    model = (pending.review or {}).get("model") or (pending.review or {}).get("connection") or ""
+    return {"status": "waiting", "request_id": pending.id, **info,
+            "message": f"'{tool}' ({cat.action_type}) está sendo conferida por um revisor de outro fornecedor ({model}): "
+                       f"pedido #{pending.id}. A tarefa continua quando ele responder."}
 
 
 # ------------------------------------------------------------------ decisões
@@ -430,7 +476,19 @@ def request_dict(db: Session, r: HumanRequest, e: Employee | None = None) -> dic
             "escalated": r.escalated, "expires_at": iso(_aware(r.expires_at)) if r.expires_at else None, "status": r.status,
             "approvals": r.approvals or [], "decision": r.decision, "edited_payload": r.edited_payload, "reason": r.reason,
             "decided_by": r.decided_by, "decided_at": iso(_aware(r.decided_at)) if r.decided_at else None,
-            "created_at": iso(_aware(r.created_at))}
+            "created_at": iso(_aware(r.created_at)), "review": _review_view(r)}
+
+
+def _review_view(r: HumanRequest) -> dict | None:
+    """O veredito do revisor de outro fornecedor. Em observação, a pessoa só o vê depois de decidir (a concordância
+    medida é a de duas opiniões independentes)."""
+    v = r.review
+    if not v:
+        return None
+    out = {k: v.get(k) for k in ("connection", "model", "on_disagree", "shadow", "verdict", "reason", "at")}
+    if v.get("shadow") and r.status == "open":
+        out.update(verdict=None, reason="", hidden=bool(v.get("verdict")))
+    return out
 
 
 def _decide_capability(db: Session, acc: Access, r: HumanRequest, e: Employee, task, decision: str, edit: dict,
@@ -493,8 +551,8 @@ def pending_for(db: Session, acc: Access) -> list[dict]:
     rows = db.scalars(select(HumanRequest).where(HumanRequest.status == "open").order_by(HumanRequest.created_at)).all()
     out = []
     for r in rows:
-        if r.kind == "shadow":
-            continue  # revisados na aba Sombra do funcionário
+        if r.kind in ("shadow", "cross_review"):
+            continue  # sombra: revisados na aba Sombra do funcionário; cross_review: quem decide é o modelo revisor
         e = db.get(Employee, r.employee_id)
         if e and can_decide(db, acc, r, e):
             d = request_dict(db, r, e)
@@ -539,6 +597,9 @@ def _decide(db: Session, acc: Access, request_id: int, decision: str, edit: dict
     task = db.get(EmployeeTask, r.task_id) if r.task_id else None
     who = acc.p.name
     reason = (reason or "").strip()[:4000]
+
+    if r.kind == "cross_review":  # quem decide é o revisor; se ele discordar ou falhar, vira um pedido para uma pessoa
+        raise PlatformError(f"pedido #{r.id}: o revisor de outro fornecedor está conferindo esta ação; aguarde o veredito")
 
     if r.kind == "notice":
         r.status, r.decision, r.decided_by, r.decided_at = "decided", "ack", who, now()
@@ -669,10 +730,12 @@ def sweep(db: Session) -> dict:
     """Decisões vencidas: escala para o substituto uma vez; depois expira em "não fazer". Tarefas presas: voltam."""
     out = {"escalated": 0, "expired": 0, "requeued": 0, "failed": 0}
     t = now()
+    from . import cross_review
+    cross_review.sweep(db)  # revisões de outro fornecedor: começam depois da rodada; sem resposta no prazo, escalam
     for r in db.scalars(select(HumanRequest).where(HumanRequest.status == "open",
                                                    HumanRequest.kind.in_(BLOCKING),
                                                    HumanRequest.expires_at.is_not(None))).all():
-        if _aware(r.expires_at) > t:
+        if _aware(r.expires_at) > t or r.kind == "cross_review":
             continue
         e = db.get(Employee, r.employee_id)
         task = db.get(EmployeeTask, r.task_id) if r.task_id else None
@@ -891,6 +954,9 @@ def _run_task(task_id: int) -> EmployeeTask | None:
                            "waiting_external" if correspondence.waiting(db, task) else
                            "new")  # decidido (ou a repassada terminou) enquanto a rodada terminava: segue
             db.commit()
+            if open_req:
+                from . import cross_review
+                cross_review.kick(db, task)  # o revisor confere agora, com o checkpoint da rodada já gravado
             return task
         from . import correspondence
         if correspondence.waiting(db, task) and not task_thread.pending(db, task):  # espera a resposta de fora

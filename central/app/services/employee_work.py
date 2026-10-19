@@ -253,6 +253,8 @@ KPI_METRICS = {
     # laços (rotinas, gatilhos): quantas execuções acharam algo, e quantos achados viraram ação aprovada
     "finding_rate": ("% das execuções com achado", True, "%"),
     "actioned_finding_rate": ("% dos achados que viraram ação aprovada", True, "%"),
+    # revisor de outro fornecedor: em quantas ações ele e a pessoa chegaram à mesma decisão
+    "cross_review_agreement_rate": ("% de concordância entre o revisor e as pessoas", True, "%"),
 }
 
 
@@ -307,7 +309,8 @@ def kpi_actuals(db: Session, e: Employee, days: int = 30) -> dict:
             "avg_decision_min": m["avg_decision_min"], "cost_per_task": m["cost_per_task"] or None,
             "expired_decisions": m["expired"],
             "finding_rate": round(100 * m["findings"] / runs, 1) if (runs := m["findings"] + m["no_findings"]) else None,
-            "actioned_finding_rate": round(100 * m["actioned_findings"] / m["findings"], 1) if m["findings"] else None}
+            "actioned_finding_rate": round(100 * m["actioned_findings"] / m["findings"], 1) if m["findings"] else None,
+            "cross_review_agreement_rate": round(100 * m["review_matches"] / m["review_pairs"], 1) if m["review_pairs"] else None}
 
 
 def kpi_status(db: Session, e: Employee) -> list[dict]:
@@ -432,7 +435,7 @@ def apply_suggestion(db: Session, acc: Access, slug: str, suggestion_id: str, te
             raise Forbidden("só o gestor (ou um admin) afrouxa a alçada")
         from ..models import AuthorityRule
         rules = [{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
-                  "expires_in_min": r.expires_in_min, "note": r.note}
+                  "expires_in_min": r.expires_in_min, "note": r.note, "review": r.review}
                  for r in db.scalars(select(AuthorityRule).where(AuthorityRule.employee_id == e.id))
                  if not (r.action_type == sug["action_type"] and not r.conditions)]
         rules.append({"action_type": sug["action_type"], "mode": sug["to"], "note": f"sugestão aplicada por {acc.p.name}"})

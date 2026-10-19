@@ -120,6 +120,52 @@ The effective mode comes from three layers, and the strictest one wins:
 - Other HTTP and MCP tools are classified by name (`pay_invoice` is `financial`, `send_email` is `send_external`,
   and so on) and marked for **admin review**.
 
+### Review by a model from another vendor
+
+A rule in `auto` or `notify` mode can carry a `review` block. A model from **another vendor** then checks each action
+before it runs, instead of a person:
+
+```json
+{"action_type": "write_internal", "mode": "auto",
+ "review": {"connection": "openrouter", "model": "google/gemini-2.5-pro", "on_disagree": "approve", "shadow": false}}
+```
+
+| Field | Meaning |
+|---|---|
+| `connection` | The reviewer's LLM connection (OpenAI-compatible) |
+| `model` | The reviewer's model. Default: the connection's default model |
+| `on_disagree` | What applies when the reviewer disagrees, doesn't answer or errors: `approve` (default), `approve_2` or `never` |
+| `shadow` | `true` (default) observes only; `false` lets the reviewer decide. See below |
+| `timeout_s` | How long to wait for the verdict: 10 to 300 seconds (default 60) |
+| `vendor` | Sets the reviewer's vendor when its model name doesn't show it |
+
+How it works:
+
+- **The rule's mode is the outcome when the reviewer agrees.** When it agrees, the exact action runs once, as with a
+  human approval. The `notify` mode also sends the notice.
+- **It fails closed.** When the reviewer disagrees, times out, errors or gives an answer that can't be read,
+  `on_disagree` applies:
+  - `approve` or `approve_2`: the approver gets a normal approval request, with the reviewer's reason;
+  - `never`: the action is refused, and the same action is not reviewed again in that task.
+- **Another vendor means another model vendor, not another connection.** The vendor comes from the model id: the
+  `anthropic/`, `google/`… prefix, or the name (`gpt`, `claude`, `gemini`…). One OpenRouter connection serves many
+  vendors. A reviewer from the employee's own vendor is refused when the rule is saved. If the employee's model changes
+  later, the review fails and escalates instead.
+- **The reviewer sees only what DLP lets through.** It gets the job, the request, the action, the arguments and the
+  rationale, with [DLP](analyst.md#data-governance) masking applied (`[CPF_1]`). It only gets them if its connection's
+  `max_classification` covers the task's classification; otherwise the review fails and escalates. The reviewer has no
+  tools.
+- **It doesn't hold up the run.** The gate opens a `cross_review` request and the task waits, as for an approval. The
+  reviewer runs after the round ends. Nobody decides a `cross_review` request by hand; if it escalates, the request a
+  person gets is a normal approval.
+- **The company floor still applies.** If the floor or the plugin policy raises the mode, the review is skipped and the
+  stricter mode applies.
+- **Shadow first.** With `shadow` (the default), a person decides as under `on_disagree`, and the reviewer gives its
+  verdict alongside. The person sees the verdict only after deciding, so the two opinions stay independent. Their
+  agreement becomes the `cross_review_agreement_rate` metric. Set `"shadow": false` once the numbers back it.
+- **Cost:** each review is metered for the employee on the `review` channel, with tokens and cost. The daily report
+  shows reviews, agreement and cost.
+
 ## Code work (harness)
 
 A Digital employee is always a **chat agent**: the authority can only be enforced when every tool call goes through
@@ -532,6 +578,7 @@ Each goal (`kpis`) can point to a metric the platform measures, with a target:
 | `expired_decisions` | Decisions that expired | lower |
 | `finding_rate` | % of loop runs with a finding | higher |
 | `actioned_finding_rate` | % of findings that led to an approved action | higher |
+| `cross_review_agreement_rate` | % of actions where the [reviewer from another vendor](#review-by-a-model-from-another-vendor) and the person reached the same decision | higher |
 
 Example: `{"name": "Finish what it starts", "metric": "done_rate", "target": 90}`. A goal without a metric is kept as
 text. The *Overview* tab shows each goal as *on target*, *off target* or *no data yet*, and the weekly report compares
@@ -543,7 +590,8 @@ them.
   - tasks done, failed and waiting;
   - open decisions;
   - cost;
-  - loop runs and findings, when there are any.
+  - loop runs and findings, when there are any;
+  - reviews by the reviewer from another vendor (how many agreed, agreement with people, cost), when there are any.
 - **A weekly report** on `report_weekday` (default Monday), covering 7 days, with each [goal](#goals) compared with
   its target. The *Reports* tab can also generate either one now.
 - Reports follow the language the job was written in.

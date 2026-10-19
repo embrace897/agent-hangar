@@ -70,7 +70,7 @@ def export(db: Session, acc: Access, team: str, name: str = "", description: str
             "llm": {k: v for k, v in (spec.get("llm") or {}).items() if k in ("model", "connection")},
             "tools": copy.deepcopy(spec.get("tools") or []), "skills": skills, "mcps": spec.get("mcps") or [],
             "plugins": spec.get("plugins") or [],
-            "authority": [{k: getattr(r, k) for k in ("action_type", "mode", "conditions", "approver", "expires_in_min", "note")}
+            "authority": [{k: getattr(r, k) for k in ("action_type", "mode", "conditions", "approver", "expires_in_min", "note", "review")}
                           for r in db.scalars(select(AuthorityRule).where(AuthorityRule.employee_id == e.id))],
             "probation_tasks": probation,
             "routines": [{"title": r.title, "body": r.body, "cron": r.cron, "timezone": r.timezone, "priority": r.priority}

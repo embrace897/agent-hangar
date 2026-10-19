@@ -687,8 +687,13 @@ async def start_probation(ctx: Context, slug: str) -> dict:
 
 @mcp.tool()
 async def set_authority(ctx: Context, slug: str, rules: list[dict]) -> dict:
-    """Troca a alçada do Digital employee: [{action_type, mode, conditions?, approver?, expires_in_min?}]. O piso da
-    empresa sempre vale (a resposta avisa quando uma regra fica abaixo dele)."""
+    """Troca a alçada do Digital employee: [{action_type, mode, conditions?, approver?, expires_in_min?, review?}]. O piso
+    da empresa sempre vale (a resposta avisa quando uma regra fica abaixo dele).
+
+    review (só em mode auto|notify): um modelo de OUTRO fornecedor confere a ação antes de ela rodar —
+    {connection, model? (fornecedor/modelo, ex. google/gemini-2.5-pro), on_disagree? (approve|approve_2|never; padrão
+    approve), shadow? (padrão true: observação, quem decide é uma pessoa e a concordância é medida; false liga de
+    verdade), timeout_s?}. Discordou, não respondeu ou deu erro: vale on_disagree."""
     return await _run(ctx, lambda db, acc: svc.employees.set_authority(db, acc, slug, rules))
 
 

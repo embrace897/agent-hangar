@@ -253,7 +253,10 @@ def hire(db: Session, acc: Access, request: str = "", **f) -> dict:
         e.report_webhook = check_webhook(f["report_webhook"])
     db.add(e)
     db.flush()
+    from .cross_review import check
     for r in rules:
+        if r["review"]:
+            check(db, e, r["review"])  # o revisor existe e é de outro fornecedor
         db.add(AuthorityRule(employee_id=e.id, **r))
     for t in f["probation_tasks"]:
         tasksmod.create_task(db, e, t.get("title") or (t.get("body") or "")[:80], t.get("body") or "", "probation",
@@ -395,7 +398,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
                  external=externalmod.info(e),
                  inbox=teamwork.inbox_view(e),
                  rules=[{"action_type": r.action_type, "mode": r.mode, "conditions": r.conditions, "approver": r.approver,
-                         "expires_in_min": r.expires_in_min, "note": r.note}
+                         "expires_in_min": r.expires_in_min, "note": r.note, "review": r.review}
                         for r in db.scalars(select(AuthorityRule).where(AuthorityRule.employee_id == e.id))],
                  authority=gatemod.summary(db, e),
                  probation=[task_dict(db, t) for t in db.scalars(select(EmployeeTask).where(
@@ -610,6 +613,10 @@ def set_authority(db: Session, acc: Access, slug: str, rules: list[dict]) -> dic
     """Troca a alçada do cargo. Regras mais frouxas que o piso da empresa são aceitas, mas o piso continua valendo."""
     e, a = find(db, acc, slug, "manage")
     parsed = [gatemod.validate_rule(r) for r in rules or []]
+    from .cross_review import check
+    for r in parsed:
+        if r["review"]:
+            check(db, e, r["review"])  # o revisor existe e é de outro fornecedor
     for old in db.scalars(select(AuthorityRule).where(AuthorityRule.employee_id == e.id)):
         db.delete(old)
     for r in parsed:
@@ -738,7 +745,18 @@ def metrics(db: Session, e: Employee, days: int = 30) -> dict:
             "approvals": len(reqs), "approved": sum(r.decision in ("approve", "approve_edited") for r in decided),
             "approved_unedited": sum(r.decision == "approve" for r in decided), "rejected": sum(r.decision == "reject" for r in decided),
             "expired": sum(r.status == "expired" for r in reqs),
-            "avg_decision_min": round(sum(secs) / len(secs) / 60, 1) if secs else None}
+            "avg_decision_min": round(sum(secs) / len(secs) / 60, 1) if secs else None,
+            **_review_metrics(db, e, since)}
+
+
+def _review_metrics(db: Session, e: Employee, since) -> dict:
+    """Revisor de outro fornecedor: quantas revisões, quantas concordaram, a concordância com as pessoas e o custo."""
+    from ..models import UsageEvent
+    from .cross_review import agreement
+    out = agreement(db, e, since)
+    out["review_cost_usd"] = round(float(db.scalar(select(func.coalesce(func.sum(UsageEvent.cost_usd), 0)).where(
+        UsageEvent.agent_id == e.agent_id, UsageEvent.channel == "review", UsageEvent.created_at >= since)) or 0), 4)
+    return out
 
 
 QUIET_WEEKS = 4
@@ -784,6 +802,12 @@ def make_report(db: Session, e: Employee, period: str = "daily") -> EmployeeRepo
     if runs:  # laços (rotinas, gatilhos): o que importa é quantos acharam algo
         summary += (f"\nLoops: {runs} run(s), {m['findings']} with findings" if en else
                     f"\nLaços: {runs} execução(ões), {m['findings']} com achado")
+    if m["reviews"]:  # revisor de outro fornecedor: o volume, a concordância com as pessoas e o custo
+        rate = f"{round(100 * m['review_matches'] / m['review_pairs'])}%" if m["review_pairs"] else "-"
+        summary += (f"\nReviewer: {m['reviews']} review(s), {m['review_agreed']} agreed, agreement with people {rate}, "
+                    f"US$ {m['review_cost_usd']:.4f}" if en else
+                    f"\nRevisor: {m['reviews']} revisão(ões), {m['review_agreed']} concordou, concordância com as pessoas "
+                    f"{rate}, US$ {m['review_cost_usd']:.4f}")
     if period == "weekly":
         for title in quiet_routines(db, e):
             summary += (f"\nRoutine '{title}': no findings in {QUIET_WEEKS} weeks; consider lowering its frequency." if en else

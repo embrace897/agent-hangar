@@ -708,6 +708,8 @@ class AuthorityRule(OrgScoped, Base):
     approver: Mapped[str] = mapped_column(String(254), default="manager")  # manager | team_maintainer | user:<email>
     expires_in_min: Mapped[int] = mapped_column(Integer, default=240)
     note: Mapped[str] = mapped_column(Text, default="")
+    # revisão por um modelo de outro fornecedor (services/cross_review.py): {connection, model, on_disagree, shadow…}
+    review: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class ActionCatalog(OrgScoped, Base):
@@ -843,6 +845,7 @@ class HumanRequest(OrgScoped, Base):
     grant_used: Mapped[bool] = mapped_column(Boolean, default=False)
     reminded: Mapped[bool] = mapped_column(Boolean, default=False)  # alerta de "vai expirar" já enviado
     chat_refs: Mapped[list | None] = mapped_column(JSON, nullable=True)  # mensagens no Slack: [{channel, ts}]
+    review: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # o veredito do modelo revisor (cross_review)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

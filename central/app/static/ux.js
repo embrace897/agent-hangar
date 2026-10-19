@@ -83,7 +83,7 @@ function uxAfterRoute(r) {
 
 /* ---------- ao vivo ---------- */
 const LV_KIND = { created: 'criada', run: 'rodada', tool: 'ferramenta', gate: 'alçada', human_request: 'pediu decisão', decision: 'decisão',
-  done: 'concluída', error: 'erro', note: 'nota', budget: 'orçamento', job: 'job', shadow: 'sombra', review: 'revisão' };
+  done: 'concluída', error: 'erro', note: 'nota', budget: 'orçamento', job: 'job', shadow: 'sombra', review: 'revisão', cross_review: 'revisor' };
 const LV_PILL = { done: 'ok', error: 'bad', human_request: 'warn', gate: 'info', budget: 'warn' };
 const LV_STATUS = { in_progress: 'trabalhando', waiting_human: 'esperando decisão', in_review: 'em revisão' };
 

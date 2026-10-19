@@ -15,13 +15,13 @@ const ACTION_LABEL = { read: 'Ler e consultar', delegate: 'Delegar a outro agent
 const MODE_LABEL = { auto: ['Sozinho', 'ok'], notify: ['Faz e avisa', 'info'], approve: ['Pede aprovação', 'warn'],
   approve_2: ['Duas aprovações', 'warn'], never: ['Nunca', 'bad'] };
 const LEVEL_LABEL = { intern: 'Estagiário', junior: 'Júnior', pleno: 'Pleno', senior: 'Sênior' };
-const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão',
+const KIND_LABEL = { approval: 'aprovação', cross_review: 'revisor de outro fornecedor', question: 'pergunta', admission: 'admissão', notice: 'aviso', capability: 'capacidade', plan: 'plano', review: 'revisão',
   review_fields: 'conferência de campos', doc_change: 'alteração de documento', message: 'mensagem para fora', regression: 'regressão', learning: 'aprendizado', org_change: 'mudança na organização', promote_personal: 'promover agente pessoal' };
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',
   expired_decisions: 'Decisões expiradas (30 dias)', finding_rate: '% das execuções com achado',
-  actioned_finding_rate: '% dos achados que viraram ação' };
+  actioned_finding_rate: '% dos achados que viraram ação', cross_review_agreement_rate: '% de concordância entre o revisor e as pessoas' };
 const EMP_WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const CRON_PRESETS = [['0 9 * * 1-5', 'Dias úteis às 9h'], ['0 9 * * 1', 'Toda segunda às 9h'], ['0 17 * * 5', 'Toda sexta às 17h'],
   ['0 8 1 * *', 'Dia 1 de cada mês às 8h'], ['0 */4 * * *', 'A cada 4 horas']];
@@ -437,6 +437,7 @@ async function empAuthority(t, e) {
     <td><input class="r-cond" data-noi18n value="${esc(JSON.stringify(r.conditions || []))}" placeholder='[{"field":"amount","op":">","value":1000}]'></td>
     <td><input class="r-appr" value="${esc(r.approver || 'manager')}" style="width:150px"></td>
     <td><input class="r-exp" type="number" value="${r.expires_in_min || 240}" style="width:90px"></td>
+    <td><input class="r-rev" data-noi18n value="${esc(r.review ? JSON.stringify(r.review) : '')}" placeholder='{"connection":"openrouter","model":"google/gemini-2.5-pro"}'></td>
     <td><button class="ghost r-del">×</button></td></tr>`;
   const draw = () => {
     t.innerHTML = `${sugs.length ? `<div class="card ok-card"><h2>O que as decisões ensinaram (${sugs.length})</h2>
@@ -444,16 +445,17 @@ async function empAuthority(t, e) {
       ${sugs.map(s => suggestionCard(s, e.can_manage)).join('')}</div>` : ''}
     <div class="grid g2 ${sugs.length ? 'mt' : ''}"><div class="card"><h2>Alçada efetiva</h2><div class="mute small">O que vale agora para cada tipo de ação — regras do cargo, padrão do nível e o piso da empresa (o mais restritivo ganha). Quem aplica é a plataforma, não o prompt.</div>
       <table class="mt"><tr><th>Tipo de ação</th><th>Modo</th><th>De onde vem</th></tr>${(e.authority || []).map(a => `<tr><td>${esc(ACTION_LABEL[a.action_type] || a.action_type)}</td>
-        <td>${modePill(a.mode)}${a.separation ? ' <span class="pill">separação de funções</span>' : ''}</td><td class="mute small">${esc(a.source)}</td></tr>`).join('')}</table></div>
+        <td>${modePill(a.mode)}${a.separation ? ' <span class="pill">separação de funções</span>' : ''}${a.review ? ` <span class="pill info">${a.review.shadow ? 'revisor em observação' : 'com revisor de outro fornecedor'}</span>` : ''}</td><td class="mute small">${esc(a.source)}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>Como ler</h2><ul class="small">
         <li><b>Sozinho</b>: faz sem perguntar. <b>Faz e avisa</b>: faz e manda um aviso.</li>
         <li><b>Pede aprovação</b>: a tarefa pausa até o gestor aprovar a ação exata (ou editar, recusar ou instruir).</li>
         <li><b>Duas aprovações</b>: duas pessoas diferentes. Com separação de funções, quem pediu a tarefa não aprova.</li>
         <li>Sem resposta no prazo: vai para o substituto; depois expira e ele <b>não faz</b> a ação.</li></ul></div></div>
     <div class="card mt"><h2>Regras do cargo</h2>
-      ${e.can_manage ? `<table><tr><th>Tipo de ação</th><th>Modo</th><th>Condições (JSON)</th><th>Quem aprova</th><th>Prazo (min)</th><th></th></tr>${rules.map(row).join('')}</table>
+      ${e.can_manage ? `<table><tr><th>Tipo de ação</th><th>Modo</th><th>Condições (JSON)</th><th>Quem aprova</th><th>Prazo (min)</th><th>Revisor de outro fornecedor (JSON)</th><th></th></tr>${rules.map(row).join('')}</table>
       <div class="row mt"><button class="ghost" id="r-add">+ regra</button><button id="r-save">Salvar alçada</button></div>
-      <div class="mute small mt">Quem aprova: manager, team_maintainer ou user:&lt;e-mail&gt;. Condições: field + op (&gt;, &gt;=, &lt;, &lt;=, ==, !=, contains, not_contains, domain_not) + value.</div><div id="r-warn"></div>`
+      <div class="mute small mt">Quem aprova: manager, team_maintainer ou user:&lt;e-mail&gt;. Condições: field + op (&gt;, &gt;=, &lt;, &lt;=, ==, !=, contains, not_contains, domain_not) + value.</div>
+      <div class="mute small">Revisor (só em regras Sozinho ou Faz e avisa): um modelo de outro fornecedor confere a ação antes. Se ele discordar ou não responder, vale on_disagree (approve, approve_2 ou never). Começa em observação (shadow): quem decide é uma pessoa e a concordância é medida; use "shadow": false para ligar de verdade.</div><div id="r-warn"></div>`
       : (rules.length ? `<table>${rules.map(r => `<tr><td>${esc(ACTION_LABEL[r.action_type])}</td><td>${modePill(r.mode)}</td><td data-noi18n class="small">${esc(JSON.stringify(r.conditions))}</td></tr>`).join('')}</table>` : '<div class="mute">Sem regras próprias: vale o padrão do nível.</div>')}</div>`;
     t.querySelectorAll('.sg').forEach(c => {
       const id = c.dataset.id, txt = $('.sg-text', c);
@@ -465,14 +467,15 @@ async function empAuthority(t, e) {
     });
     if (!e.can_manage) return;
     const read = () => [...t.querySelectorAll('tr[data-i]')].map(tr => ({ action_type: $('.r-type', tr).value, mode: $('.r-mode', tr).value,
-      conditions: JSON.parse($('.r-cond', tr).value || '[]'), approver: $('.r-appr', tr).value.trim(), expires_in_min: Number($('.r-exp', tr).value) || 240 }));
+      conditions: JSON.parse($('.r-cond', tr).value || '[]'), approver: $('.r-appr', tr).value.trim(), expires_in_min: Number($('.r-exp', tr).value) || 240,
+      review: $('.r-rev', tr).value.trim() ? JSON.parse($('.r-rev', tr).value) : null }));
     t.querySelectorAll('.r-del').forEach(b => b.onclick = () => {
       try { rules.splice(0, rules.length, ...read()); } catch (err) { /* condição em edição */ }
       rules.splice(Number(b.closest('tr').dataset.i), 1); draw();
     });
     $('#r-add').onclick = () => { try { rules.splice(0, rules.length, ...read()); } catch (err) { /* condição em edição */ } rules.push({ action_type: 'send_external', mode: 'approve' }); draw(); };
     $('#r-save').onclick = ev => act(ev.target, async () => {
-      let body; try { body = read(); } catch (err) { throw new Error('Condições: JSON inválido'); }
+      let body; try { body = read(); } catch (err) { throw new Error('Condições ou revisor: JSON inválido'); }
       const r = await api(`/employees/${e.slug}/authority`, { method: 'PUT', body: { rules: body } });
       e.authority = r.authority; e.rules = r.rules; rules.splice(0, rules.length, ...r.rules.map(x => ({ ...x }))); draw();
       if (r.warnings.length) $('#r-warn').innerHTML = `<div class="card warn-card mt">${r.warnings.map(esc).join('<br>')}</div>`;
@@ -607,7 +610,7 @@ async function empSettings(t, e) {
 const EVENT_LABEL = { created: 'Criada', run: 'Rodada', tool: 'Ferramenta', gate: 'Alçada', human_request: 'Pedido de decisão',
   decision: 'Decisão', job: 'Job de código', checkpoint: 'Checkpoint', done: 'Concluída', error: 'Erro', note: 'Nota', due: 'Prazo', shadow: 'Modo sombra',
   plan: 'Plano', handoff: 'Repasse', handoff_done: 'Repasse concluído', analysis: 'Análise', extraction: 'Extração', calc: 'Cálculo',
-  file: 'Arquivo', review: 'Revisão' };
+  file: 'Arquivo', review: 'Revisão', cross_review: 'Revisor de outro fornecedor' };
 async function taskPage(id) {
   const x = await api('/tasks/' + id);
   const open = (x.requests || []).filter(r => r.status === 'open');
@@ -702,6 +705,15 @@ function dur(min) {
 }
 
 /* ---------- decisões (humano no circuito) ---------- */
+function reviewNote(v) {
+  if (!v) return '';
+  const who = `<span data-noi18n>${esc(v.model || v.connection || '')}</span>`;
+  if (v.shadow && !v.verdict) return `<div class="small mt"><span class="pill info">revisor em observação</span> ${who}: o veredito aparece depois da sua decisão.</div>`;
+  if (!v.verdict) return '';
+  const pill = v.verdict === 'agree' ? '<span class="pill ok">revisor concordou</span>' : v.verdict === 'disagree' ? '<span class="pill bad">revisor discordou</span>' : '<span class="pill warn">revisor sem veredito</span>';
+  return `<div class="small mt">${pill} ${who}${v.reason ? `: <span data-noi18n>${esc(v.reason)}</span>` : ''}</div>`;
+}
+
 function decisionCard(d) {
   const head = `<div class="row between"><div><span class="pill ${d.kind === 'approval' ? 'warn' : d.kind === 'admission' ? 'info' : ''}">${esc(KIND_LABEL[d.kind] || d.kind)}</span>
       <a href="#/employees/${esc(d.employee)}"><b>${esc(d.employee_name)}</b></a> <span class="mute small" data-noi18n>${esc(d.employee_title)}</span>
@@ -714,7 +726,7 @@ function decisionCard(d) {
     body = `<div class="mt"><b>${esc(ACTION_LABEL[d.action_type] || d.action_type)}</b> com <code class="inline">${esc(d.tool)}</code> ${modePill(d.mode)}
       ${d.reversible ? '<span class="pill ok">reversível</span>' : '<span class="pill bad">irreversível</span>'}
       ${d.mode === 'approve_2' ? `<span class="pill">${(d.approvals || []).length}/2 aprovações</span>` : ''}</div>
-      ${d.rationale ? `<div class="small mt">Por quê: <span data-noi18n>${esc(d.rationale)}</span></div>` : ''}${payloadView(d.payload)}
+      ${d.rationale ? `<div class="small mt">Por quê: <span data-noi18n>${esc(d.rationale)}</span></div>` : ''}${reviewNote(d.review)}${payloadView(d.payload)}
       <textarea class="dc-edit code" rows="5" hidden data-noi18n>${esc(JSON.stringify(d.payload, null, 2))}</textarea>
       <input class="dc-reason mt" placeholder="Motivo ou instrução (para recusar ou instruir)">`;
     btns = `<button class="dc-go" data-d="approve">Aprovar</button><button class="ghost dc-edit-open">Editar e aprovar</button>
@@ -755,6 +767,9 @@ function decisionCard(d) {
       <input class="dc-reason mt" placeholder="Motivo ou instrução (para recusar ou instruir)">`;
     btns = `<button class="ghost dc-build">Construir com a sua ferramenta de IA</button>
       <button class="ghost dc-go" data-d="instruct">Instruir</button><button class="ghost danger dc-go" data-d="reject">Recusar</button>`;
+  } else if (d.kind === 'cross_review') {
+    body = `<div class="mt"><b>${esc(ACTION_LABEL[d.action_type] || d.action_type)}</b> com <code class="inline">${esc(d.tool)}</code></div>
+      <div class="small mt">Um modelo de outro fornecedor está conferindo esta ação (<span data-noi18n>${esc((d.review || {}).model || '')}</span>). Se ele discordar ou não responder, o pedido vem para uma pessoa.</div>${payloadView(d.payload)}`;
   } else if (DECISION_KINDS[d.kind]) {  // tipos trazidos pelas fases E–H (analyst.js)
     ({ body, btns } = DECISION_KINDS[d.kind].render(d));
   } else {

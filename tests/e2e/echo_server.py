@@ -111,6 +111,13 @@ class Echo(BaseHTTPRequestHandler):
             last = next((m for m in reversed(msgs) if m.get("role") == "user"), {})
             text = last.get("content") if isinstance(last.get("content"), str) else json.dumps(last.get("content"))
             usage = {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}
+            system = next((m.get("content") or "" for m in msgs if m.get("role") == "system"), "")
+            if "independent reviewer" in system or "revisor independente" in system:
+                # o revisor de outro fornecedor (services/cross_review.py): discorda quando a ação pede ("disagree-me")
+                verdict = "disagree" if "disagree-me" in (text or "") else "agree"
+                return self._json({"id": "e2e", "object": "chat.completion", "model": req.get("model"), "usage": usage,
+                                   "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant",
+                                                "content": json.dumps({"verdict": verdict, "reason": f"e2e: {verdict}"})}}]})
             # "use-tool <nome>" com essa ferramenta na lista: o modelo pede a ferramenta; com o resultado, ecoa o resultado
             message = {"role": "assistant", "content": f"eco: {text}"}
             if msgs and msgs[-1].get("role") == "tool":

@@ -29,7 +29,7 @@ ECHO = os.environ.get("ECHO_URL", "http://e2e-echo:8080").rstrip("/")
 RUN = uuid.uuid4().hex[:6]
 admin = httpx.Client(base_url=URL, timeout=300, headers={"Authorization": f"Bearer {os.environ['HANGAR_TOKEN']}"})
 passed = 0
-created = {"agents": [], "plugins": [], "users": [], "team": None}
+created = {"agents": [], "plugins": [], "users": [], "team": None, "llm": []}
 USERS: dict[str, str] = {}  # login de teste de cada pessoa criada ("usuario senha"), para o --keep do work.py
 
 SERVER = r'''
@@ -107,11 +107,11 @@ def approve_plugin(dev, name):
     check(f"{name}: aprovado por outra pessoa", d["status"] == "approved")
 
 
-def hire(dev, mgr_email, team, name, plugins=()):
+def hire(dev, mgr_email, team, name, plugins=(), tools=()):
     job = {"name": f"{name} {RUN}", "title": name, "mission": "Keep the work moving.",
            "responsibilities": ["handle requests", "update records", "flag risks"], "manager": mgr_email, "team": team,
            "systems": ["ERP"], "llm": {"model": "mock/echo"}, "channels": ["portal", "mcp"], "accept_default_authority": True,
-           "tools": [{"type": "http", "name": "send_email", "url": f"{ECHO}/send", "method": "POST"}],
+           "tools": [{"type": "http", "name": "send_email", "url": f"{ECHO}/send", "method": "POST"}, *tools],
            "probation_tasks": [{"title": f"Probation {i}", "body": f"answer {i}", "expected": f"answer {i}"} for i in range(3)]}
     d = ok(dev.post("/api/employees", json=job))
     slug = d["employee"]["slug"]
@@ -216,7 +216,8 @@ async def scenario_creator_mode(dev_pat, team):
 
 def scenario_employees(dev, mgr, mgr_email, team, erp, ledger):
     a = hire(dev, mgr_email, team, "Collections Desk", plugins=(erp, ledger))
-    b = hire(dev, mgr_email, team, "Billing Desk")
+    b = hire(dev, mgr_email, team, "Billing Desk",
+             tools=[{"type": "http", "name": "update_record", "url": f"{ECHO}/records", "method": "PATCH"}])
     for s in (a, b):
         activate(dev, mgr, s)
     ok(dev.patch(f"/api/employees/{a}", json={"colleagues": [b]}))
@@ -275,6 +276,31 @@ def scenario_employees(dev, mgr, mgr_email, team, erp, ledger):
     rep = ok(dev.post(f"/api/employees/{b}/reports", params={"period": "daily"}))
     check("laço: o relatório conta execuções e achados à parte", rep["metrics"]["no_findings"] >= 1 and rep["metrics"]["findings"] >= 1
           and ("Laços:" in rep["summary"] or "Loops:" in rep["summary"]), rep["summary"])
+    # 8) revisor de outro fornecedor: concordou, a ação roda; discordou, vai para uma pessoa com o motivo
+    rev = f"e2e-rev-{RUN}"
+    ok(admin.post("/api/catalog/llm", json={"name": rev, "base_url": f"{ECHO}/llm/v1", "model_name": "google/gemini-2.5-pro",
+                                           "api_key": "e2e", "protocol": "openai"}))
+    created["llm"].append(rev)
+    same = mgr.put(f"/api/employees/{b}/authority", json={"rules": [{"action_type": "write_internal", "mode": "approve",
+                                                                     "review": {"connection": rev}}]})
+    check("revisor: só em regra auto ou notify", same.status_code == 400, same.text)
+    ok(mgr.put(f"/api/employees/{b}/authority", json={"rules": [{"action_type": "write_internal", "mode": "auto",
+                                                                 "review": {"connection": rev, "shadow": False}}]}))
+    tid = ok(mgr.post(f"/api/employees/{b}/tasks", json={"title": "Update", "body": 'use update_record {"id": "9", "status": "paid"}'}))["id"]
+    t = until(mgr, tid, ("done", "failed"))
+    cr = next((q for q in t["requests"] if q["kind"] == "cross_review"), None)
+    check("revisor concordou: a ação exata rodou, sem passar por uma pessoa", t["status"] == "done" and cr and cr["decision"] == "approve"
+          and cr["decided_by"] == "revisor google/gemini-2.5-pro" and not [q for q in t["requests"] if q["kind"] == "approval"], t.get("requests"))
+    tid = ok(mgr.post(f"/api/employees/{b}/tasks", json={"title": "Update", "body": 'use update_record {"id": "9", "note": "disagree-me"}'}))["id"]
+    t = until(mgr, tid, ("waiting_human", "done", "failed"))
+    req = wait(lambda: next((q for q in task(mgr, tid)["requests"] if q["kind"] == "approval" and q["status"] == "open"), None), 60)
+    check("revisor discordou: vai para a pessoa, com o motivo", req and req["review"]["verdict"] == "disagree"
+          and "disagree" in req["review"]["reason"], req or t)
+    ok(mgr.post(f"/api/decisions/{req['id']}", json={"decision": "approve"}))
+    check("revisor discordou: a pessoa aprovou e a ação rodou", until(mgr, tid, ("done", "failed"))["status"] == "done")
+    rep = ok(dev.post(f"/api/employees/{b}/reports", params={"period": "daily"}))
+    check("revisor: revisões, concordância e custo no relatório", rep["metrics"]["reviews"] == 2 and rep["metrics"]["review_agreed"] == 1
+          and rep["metrics"]["review_pairs"] == 1 and ("Revisor:" in rep["summary"] or "Reviewer:" in rep["summary"]), rep["summary"])
 
 
 def cleanup():
@@ -286,6 +312,8 @@ def cleanup():
         admin.patch(f"/api/users/{u}", json={"active": False})
     if created["team"]:
         admin.delete(f"/api/teams/{created['team']}")
+    for name in created["llm"]:
+        admin.delete(f"/api/catalog/llm/{name}")
 
 
 def main():

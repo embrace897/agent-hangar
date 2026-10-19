@@ -10,6 +10,9 @@ notify    executa e avisa o gestor (fica na linha do tempo e no relatório)
 approve   para e pede a decisão de uma pessoa (a ação exata, com o porquê)
 approve_2 para e exige duas pessoas diferentes
 never     não executa nunca
+
+Uma regra auto/notify pode ter um bloco `review`: um modelo de outro fornecedor confere a ação antes; se ele não
+concordar, vale o `on_disagree` dela (services/cross_review.py).
 """
 import hashlib
 import json
@@ -153,12 +156,15 @@ def validate_rule(r: dict) -> dict:
     approver = r.get("approver") or "manager"
     if approver not in ("manager", "team_maintainer") and not approver.startswith("user:"):
         raise ValueError("approver: manager | team_maintainer | user:<e-mail>")
+    from .cross_review import normalize
     return {"action_type": t, "mode": m, "conditions": conds, "approver": approver,
-            "expires_in_min": int(r.get("expires_in_min") or 240), "note": r.get("note") or ""}
+            "expires_in_min": int(r.get("expires_in_min") or 240), "note": r.get("note") or "",
+            "review": normalize(r.get("review"), m)}
 
 
 def evaluate(db: Session, e: Employee, action_type: str, args: dict) -> dict:
-    """Decide o modo de uma ação. Devolve {mode, source, approver, expires_in_min, separation}."""
+    """Decide o modo de uma ação. Devolve {mode, source, approver, expires_in_min, separation, review}. review: o bloco
+    da regra (revisão por um modelo de outro fornecedor), só quando o piso não subiu o modo dela."""
     rules = list(db.scalars(select(AuthorityRule).where(AuthorityRule.employee_id == e.id,
                                                         AuthorityRule.action_type == action_type)))
     chosen = None
@@ -171,11 +177,13 @@ def evaluate(db: Session, e: Employee, action_type: str, args: dict) -> dict:
     else:
         mode = AUTONOMY_DEFAULTS.get(e.autonomy_level, AUTONOMY_DEFAULTS["intern"]).get(action_type, "approve")
         source, approver, expires = f"padrão ({e.autonomy_level})", "manager", None
+    review = chosen.review if chosen is not None and chosen.review else None
     fl = floor_of(db).get(action_type)
     separation = bool(fl and fl.separation)
     if fl and RANK[fl.min_mode] > RANK[mode]:
-        mode, source = fl.min_mode, "piso da empresa"
-    return {"mode": mode, "source": source, "approver": approver, "expires_in_min": expires, "separation": separation}
+        mode, source, review = fl.min_mode, "piso da empresa", None
+    return {"mode": mode, "source": source, "approver": approver, "expires_in_min": expires, "separation": separation,
+            "review": review}
 
 
 def payload_hash(ref: str, args: dict) -> str:

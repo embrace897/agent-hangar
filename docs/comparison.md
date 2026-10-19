@@ -18,7 +18,7 @@ The other platforms fall into three groups:
 - **Clouds:** AWS Bedrock AgentCore and Microsoft Foundry with Agent 365. They have a registry and A2A, but inside
   their own cloud.
 
-Watch out for maturity: Agent Hangar is in alpha (v0.44), and the repository does not cite compliance certifications.
+Watch out for maturity: Agent Hangar is in alpha (v0.45), and the repository does not cite compliance certifications.
 
 ## Comparison table
 
@@ -42,7 +42,7 @@ Watch out for maturity: Agent Hangar is in alpha (v0.44), and the repository doe
 | Governance and cost | SSO, SCIM, roles, corporate e-mail rule, audit, DLP and retention, budgets per company, team, agent or project with a hard stop, cost per agent | RBAC and security controls | Custom auth; ABAC when self-hosted | SSO/SAML, RBAC and audit (Enterprise) | IAM/JWT and Cedar policies in the Gateway | Entra ID and Agent 365 controls |
 | Data residency and compliance | Data on your infrastructure, encrypted secrets, signed images with SBOM; no certifications cited | On-premises or cloud deployment; certifications not found | Self-hosted for data residency and isolated (air-gapped) environments | Self-hosted keeps data in-house; Enterprise with SOC 2 Type II and ISO 27001 | Not verified | Not verified |
 | Observability | Prometheus, JSON logs, OpenTelemetry, metrics per channel | Real-time observability | Strong point: traces and evaluation | Built-in observability | AgentCore Observability and CloudWatch | Application Insights and Agent 365 telemetry |
-| Maturity | Alpha (v0.44), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
+| Maturity | Alpha (v0.45), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
 
 ## LLMs: what each platform allows
 
