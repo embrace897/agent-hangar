@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.44.0] — 2026-10-19
+
+### Added
+- **Digital employees: loops with a native "no findings" outcome** (issue #56, part A). Only what matters reaches a person. See [docs/digital-employee.md](docs/digital-employee.md#loops-only-what-matters-reaches-a-person).
+  - **How a run ends:** the employee calls the platform tool `finish_task(findings, summary)`, or an external worker sends `findings` and `summary` in its result.
+  - **No findings:** the task closes quietly. It stays out of the requester's inbox, and it's collapsed under *Runs with no findings* in the employee's task list.
+  - **A finding:** needs a summary of up to 400 characters, shown with a *finding* badge. The proposed action goes through the authority as usual.
+  - **The platform enforces coherence, not the prompt.** "No findings" is refused when the task ran an action that changes something, proposed one in shadow mode, involved a person or handed work off. It loses its effect if something changes later.
+  - **Reports:** count runs and findings apart (*Loops: N runs, M with findings*). The weekly report suggests lowering the frequency of a routine with no findings in 4 weeks; it's only a suggestion.
+  - **Goal metrics:** `finding_rate` and `actioned_finding_rate`.
+  - **Quality judge:** samples runs with no findings too, and sees the tools the employee used to check.
+  - **Prompt:** tasks from routines, triggers, webhooks and watchers explain when to use `finish_task`.
+
+### Changed
+- **Career plan:** runs with no findings don't count as *tasks done*, so a routine that never finds anything doesn't promote anyone.
+
 ## [0.43.0] — 2026-10-18
 
 ### Added

@@ -262,6 +262,19 @@ def scenario_employees(dev, mgr, mgr_email, team, erp, ledger):
     r = httpx.post(f"{URL}/hooks/{hook}", content=raw, headers={"X-Sig": sig}).json()
     check("gatilho: evento vira tarefa do funcionário", r["duplicate"] is False and until(mgr, r["id"], ("done", "failed"))["title"] == f"Follow up r-{RUN}")
     check("gatilho: o mesmo evento não duplica", httpx.post(f"{URL}/hooks/{hook}", content=raw, headers={"X-Sig": sig}).json()["duplicate"])
+    # 7) laço: "sem achados" fecha em silêncio; achado traz o resumo (finish_task, pelo runtime e pelo gate de verdade)
+    quiet = ok(mgr.post(f"/api/employees/{b}/tasks", json={"title": "Check", "body": 'use finish_task {"findings": false}'}))["id"]
+    t = until(mgr, quiet, ("done", "failed"))
+    check("laço sem achados: conclui em silêncio", t["status"] == "done" and t["finding"] is False and t["result"] in ("Sem achados.", "No findings."), t)
+    box = [i["task_id"] for i in ok(mgr.get("/api/inbox"))["items"] if i["kind"] == "task"]
+    check("laço sem achados: fora da caixa de entrada de quem pediu", quiet not in box, box[:5])
+    found = ok(mgr.post(f"/api/employees/{b}/tasks", json={"title": "Check", "body":
+        'use finish_task {"findings": true, "summary": "Fatura 88 cobrada em dobro; estornar a segunda."}'}))["id"]
+    t = until(mgr, found, ("done", "failed"))
+    check("laço com achado: o resumo chega à pessoa", t["finding"] is True and t["finding_summary"].startswith("Fatura 88"), t)
+    rep = ok(dev.post(f"/api/employees/{b}/reports", params={"period": "daily"}))
+    check("laço: o relatório conta execuções e achados à parte", rep["metrics"]["no_findings"] >= 1 and rep["metrics"]["findings"] >= 1
+          and ("Laços:" in rep["summary"] or "Loops:" in rep["summary"]), rep["summary"])
 
 
 def cleanup():

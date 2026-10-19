@@ -54,6 +54,22 @@ def _target(db, spec: dict):
     return conn.base_url, crypto.decrypt(conn.api_key), (spec.get("judge") or {}).get("model") or conn.model_name
 
 
+def _silence_note(db, task: EmployeeTask, lang: str) -> str:
+    """Laço "sem achados": o juiz vê o que foi conferido e avalia se bastava para concluir que não havia nada (o silêncio
+    também é auditado; services/task_findings.py)."""
+    if task.finding is not False:
+        return ""
+    from ..models import TaskEvent
+    tools = [str((ev.payload or {}).get("tool") or "") for ev in db.scalars(
+        select(TaskEvent).where(TaskEvent.task_id == task.id, TaskEvent.kind == "gate").order_by(TaskEvent.id))]
+    checked = ", ".join(dict.fromkeys(t for t in tools if t)) or ("nada" if lang == "pt" else "nothing")
+    if lang == "pt":
+        return (f"\n\nO agente concluiu SEM ACHADOS. Ferramentas que ele usou para conferir: {checked}. Avalie se essa "
+                "verificação bastava para concluir que não havia nada a reportar (nota baixa se ele não conferiu o que o pedido exige).")
+    return (f"\n\nThe agent finished with NO FINDINGS. Tools it used to check: {checked}. Judge whether that check was enough "
+            "to conclude there was nothing to report (low score if it did not check what the request requires).")
+
+
 def JUDGE(db, e: Employee, a: Agent, task: EmployeeTask) -> tuple[int, str] | None:  # noqa: N802  (os testes trocam)
     target = _target(db, spec_of(a))
     if target is None:
@@ -64,7 +80,8 @@ def JUDGE(db, e: Employee, a: Agent, task: EmployeeTask) -> tuple[int, str] | No
     user = (f"{head}: {e.title}\n{e.mission[:1500]}\n\n"
             f"{'Pedido' if lang == 'pt' else 'Request'}: {task.title}\n{task.body[:6000]}\n\n"
             + (f"{'Resultado esperado' if lang == 'pt' else 'Expected result'}: {task.expected[:3000]}\n\n" if task.expected else "")
-            + f"{'Resultado entregue' if lang == 'pt' else 'Delivered result'}:\n{task.result[:12000]}")
+            + f"{'Resultado entregue' if lang == 'pt' else 'Delivered result'}:\n{task.result[:12000]}"
+            + _silence_note(db, task, lang))
     r = httpx.post(f"{base}/chat/completions", timeout=120, headers={"Authorization": f"Bearer {key}"} if key else {},
                    json={"model": model, "temperature": 0,
                          "messages": [{"role": "system", "content": SYSTEM[lang]}, {"role": "user", "content": user}]})

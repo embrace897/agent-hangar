@@ -20,7 +20,8 @@ const KIND_LABEL = { approval: 'aprovação', question: 'pergunta', admission: '
 const CHANNELS = ['portal', 'mcp', 'schedule', 'webhook', 'email'];
 const KPI_METRIC = { tasks_done: 'Tarefas concluídas (30 dias)', done_rate: '% concluídas com sucesso', on_time_rate: '% dentro do prazo',
   approved_unedited_rate: '% aprovadas sem edição', avg_decision_min: 'Tempo médio de decisão (min)', cost_per_task: 'Custo por tarefa (US$)',
-  expired_decisions: 'Decisões expiradas (30 dias)' };
+  expired_decisions: 'Decisões expiradas (30 dias)', finding_rate: '% das execuções com achado',
+  actioned_finding_rate: '% dos achados que viraram ação' };
 const EMP_WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const CRON_PRESETS = [['0 9 * * 1-5', 'Dias úteis às 9h'], ['0 9 * * 1', 'Toda segunda às 9h'], ['0 17 * * 5', 'Toda sexta às 17h'],
   ['0 8 1 * *', 'Dia 1 de cada mês às 8h'], ['0 */4 * * *', 'A cada 4 horas']];
@@ -277,11 +278,17 @@ function empOverview(t, e) {
 }
 
 async function empTasks(t, e) {
-  const list = await api(`/employees/${e.slug}/tasks`);
-  t.innerHTML = `<div class="card">${list.length ? `<table><tr><th>#</th><th>Tarefa</th><th>Status</th><th>Pedida por</th><th>Custo</th><th>Quando</th></tr>
-    ${list.map(x => `<tr><td><a href="#/tasks/${x.id}">#${x.id}</a></td><td><a href="#/tasks/${x.id}" data-noi18n>${esc(x.title)}</a>${x.probation ? ' <span class="pill">experiência</span>' : SOURCE_LABEL[x.source] ? ` <span class="chip">${esc(SOURCE_LABEL[x.source])}</span>` : ''}</td>
-      <td>${taskPill(x.status)}${duePill(x)}${x.progress ? `<div class="mute small"><span>plano</span> ${x.progress.done}/${x.progress.total}</div>` : ''}</td><td class="small">${esc(x.requester)}</td><td class="small">${usd(x.cost_usd)}</td><td class="mute small">${ago(x.created_at)}</td></tr>`).join('')}</table>`
-    : '<div class="mute">Nenhuma tarefa ainda.</div>'}</div>`;
+  const all = await api(`/employees/${e.slug}/tasks`);
+  // laços sem achados fecham em silêncio: ficam recolhidos no fim da lista
+  const quiet = all.filter(x => x.finding === false && x.status === 'done');
+  const list = all.filter(x => !(x.finding === false && x.status === 'done'));
+  const row = x => `<tr><td><a href="#/tasks/${x.id}">#${x.id}</a></td><td><a href="#/tasks/${x.id}" data-noi18n>${esc(x.title)}</a>${x.probation ? ' <span class="pill">experiência</span>' : SOURCE_LABEL[x.source] ? ` <span class="chip">${esc(SOURCE_LABEL[x.source])}</span>` : ''}
+      ${x.finding === true ? `<div class="small"><span class="pill warn">achado</span> <span data-noi18n>${esc(x.finding_summary)}</span></div>` : ''}</td>
+      <td>${taskPill(x.status)}${duePill(x)}${x.progress ? `<div class="mute small"><span>plano</span> ${x.progress.done}/${x.progress.total}</div>` : ''}</td><td class="small">${esc(x.requester)}</td><td class="small">${usd(x.cost_usd)}</td><td class="mute small">${ago(x.created_at)}</td></tr>`;
+  const head = '<tr><th>#</th><th>Tarefa</th><th>Status</th><th>Pedida por</th><th>Custo</th><th>Quando</th></tr>';
+  t.innerHTML = `<div class="card">${list.length ? `<table>${head}${list.map(row).join('')}</table>` : '<div class="mute">Nenhuma tarefa ainda.</div>'}
+    ${quiet.length ? `<details class="mt"><summary class="mute small"><span>Execuções sem achados</span> (${quiet.length})</summary>
+      <table class="mt">${head}${quiet.map(row).join('')}</table></details>` : ''}</div>`;
 }
 
 function empRoutines(t, e) {
@@ -605,7 +612,7 @@ async function taskPage(id) {
   const x = await api('/tasks/' + id);
   const open = (x.requests || []).filter(r => r.status === 'open');
   main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
-  <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)} pedida por ${esc(x.requester)}${x.via ? ` <span>pelo</span> ${esc(VIA_LABEL[x.via] || x.via)}` : ''} · ${when(x.created_at)}
+  <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)}${x.finding === false ? ' <span class="pill">sem achados</span>' : x.finding === true ? ' <span class="pill warn">achado</span>' : ''} pedida por ${esc(x.requester)}${x.via ? ` <span>pelo</span> ${esc(VIA_LABEL[x.via] || x.via)}` : ''} · ${when(x.created_at)}
     · ${x.runs} rodada(s) · ${usd(x.cost_usd)}</div>${duePill(x)}</div>
     <span class="row" style="gap:6px">${['new', 'blocked', 'waiting_task', 'waiting_budget'].includes(x.status) ? '<button class="ghost" id="t-hold">Pausar</button>' : ''}
       ${x.status === 'on_hold' ? '<button id="t-resume">Retomar</button>' : ''}

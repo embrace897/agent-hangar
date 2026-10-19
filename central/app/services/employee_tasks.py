@@ -242,6 +242,13 @@ def _gate_any(db: Session, agent: Agent, task_id: int | None, tool: str, ref: st
         if e is None or task is None or task.employee_id != e.id:
             return {"status": "denied", "message": "arquivos só dentro de uma tarefa deste Digital employee"}
         return task_files.agent_tool(db, e, task, tool, args)
+    if kind == "finish":  # finish_task: o laço declara "sem achados" ou um achado (services/task_findings.py)
+        from . import task_findings
+        e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
+        task = db.get(EmployeeTask, task_id) if task_id else None
+        if e is None or task is None or task.employee_id != e.id:
+            return {"status": "denied", "message": "finish_task só dentro de uma tarefa deste Digital employee"}
+        return task_findings.declare(db, task, (args or {}).get("findings"), (args or {}).get("summary", ""), lang_of(e))
     if kind in ("plan", "handoff"):
         from . import employee_teamwork as teamwork
         e = db.scalar(select(Employee).where(Employee.agent_id == agent.id))
@@ -920,6 +927,10 @@ def _finish(db: Session, task: EmployeeTask, status: str, result: str = "", erro
         if maximizer.retry(db, task, error):  # projeto maximizador: falha técnica tenta de novo, com o erro na conversa
             return task
     from . import governance
+    if status == "done" and task.finding is not None:  # laço: "sem achados" fecha em silêncio (se nada mudou)
+        from . import task_findings
+        result = task_findings.on_finish(db, task, result, lang_of(db.get(Employee, task.employee_id)))
+        task.finding_summary = governance.unmask(db, task.id, task.finding_summary or "")
     result, error = governance.unmask(db, task.id, result), governance.unmask(db, task.id, error)  # as pessoas veem o real
     task.status, task.finished_at = status, now()
     if status == "done" and task.due_at and _aware(task.finished_at) > _aware(task.due_at):

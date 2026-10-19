@@ -169,7 +169,7 @@ them, like any other suggestion (*Authority* tab, or `employee_suggestions` / `a
 
 | Criterion | intern → junior | junior → pleno | pleno → senior |
 |---|---|---|---|
-| Tasks done | ≥ 15 | ≥ 30 | ≥ 60 |
+| Tasks done (runs with no findings don't count) | ≥ 15 | ≥ 30 | ≥ 60 |
 | Actions decided by the manager | ≥ 10 | ≥ 20 | ≥ 40 |
 | Approved without edits | ≥ 90 % | ≥ 95 % | ≥ 97 % |
 | Tasks failed | ≤ 10 % | ≤ 8 % | ≤ 5 % |
@@ -439,6 +439,39 @@ Recurring work: each run of a cron becomes a task.
   `delete_routine`) or in the portal (*Routines* tab, with presets and *Run now*). Creating a routine turns on the
   `schedule` channel.
 
+## Loops: only what matters reaches a person
+
+A routine, a trigger or a webhook usually checks something, and most runs find nothing. The platform keeps those runs
+out of people's way, and it doesn't rely on the prompt to do it.
+
+**How a run ends.** The employee calls the platform tool `finish_task`:
+- `finish_task(findings=false)`: nothing found. The task closes quietly.
+- `finish_task(findings=true, summary="…")`: something found. The summary has up to 400 characters (what was found
+  and the proposed fix). The proposed action then goes through the [authority](#authority) as usual.
+
+Tasks that come from a routine, trigger, webhook or watcher get this instruction in their prompt. An external worker
+sends the same thing in its result: `{"status": "done", "findings": false}`.
+
+**What the platform guarantees.**
+- **"No findings" only if nothing changed.** The platform refuses it when the task ran an action that changes
+  something, proposed one in shadow mode, involved a person (a decision or a question) or handed work to a
+  colleague. If something changes after the declaration, it loses its effect, and the task shows up like any other.
+- **A finding needs a short summary.** One without a summary, or with more than 400 characters, is refused.
+
+**Where it shows.**
+- A run with no findings stays out of the requester's inbox. In the employee's *Tasks* tab it is collapsed under
+  *Runs with no findings*.
+- A finding shows the *finding* badge and its summary.
+- Reports count the runs and the findings apart: *Loops: N runs, M with findings*.
+- The weekly report suggests lowering the frequency of a routine with no findings in 4 weeks (at least 4 runs). It's
+  only a suggestion: nothing changes on its own.
+- Runs with no findings don't count as *tasks done* in the [career plan](#career-plan).
+- The [quality judge](#result-quality) samples them too. It sees the tools the employee used to check, and gives a
+  low score when the check wasn't enough to conclude there was nothing to report.
+
+Goal metrics: `finding_rate` and `actioned_finding_rate` (see [Goals](#goals)). Together they show whether a loop is
+useful or just noise.
+
 ## Inbound webhook
 
 Other systems (CRM, forms, alerts) create tasks with a POST:
@@ -470,7 +503,7 @@ longer runs that employee's tasks: your worker asks for them.
 | `POST /hooks/worker/heartbeat` `{worker: {name, version}}` | "I'm alive"; returns the next task, already reserved for the worker: `id, title, body, messages` (the conversation so far, with what people wrote on the task), `decisions` taken on it, `budget_usd`, `time_limit_min`, `run` |
 | `POST /hooks/worker/tasks/{id}/gate` `{tool, args, rationale, kind}` | Before an action that changes something outside: the same authority as platform agents. `allowed` → do it; `waiting` → stop (the task leaves the worker and comes back through the heartbeat once someone decides; ask for the same action again and it comes back allowed, once); `denied` → don't; `simulated` → shadow mode, carry on as if done. `kind: ask_human` (`args.question`) asks the manager; `capability` (`args.need`) asks for a missing tool |
 | `POST /hooks/worker/tasks/{id}/progress` `{note, cost_usd, tokens}` | A note on the timeline and partial cost; resets the round's time limit; `stop: true` when the task budget is gone |
-| `POST /hooks/worker/tasks/{id}/result` `{status, result, error, cost_usd, tokens}` | `done` (review, if configured, still applies), `failed`, or `waiting` |
+| `POST /hooks/worker/tasks/{id}/result` `{status, result, error, cost_usd, tokens, findings, summary}` | `done` (review, if configured, still applies), `failed`, or `waiting`. For a loop, `findings: false` closes quietly and `findings: true` needs a `summary` ([Loops](#loops-only-what-matters-reaches-a-person)) |
 
 - Every call uses `Authorization: Bearer ewk_…`. The token only reaches that employee's tasks.
 - A task the worker takes and never answers goes back to the queue after the employee's time limit (the same sweep as
@@ -497,6 +530,8 @@ Each goal (`kpis`) can point to a metric the platform measures, with a target:
 | `avg_decision_min` | Average time people take to decide | lower |
 | `cost_per_task` | Cost per done task (US$) | lower |
 | `expired_decisions` | Decisions that expired | lower |
+| `finding_rate` | % of loop runs with a finding | higher |
+| `actioned_finding_rate` | % of findings that led to an approved action | higher |
 
 Example: `{"name": "Finish what it starts", "metric": "done_rate", "target": 90}`. A goal without a metric is kept as
 text. The *Overview* tab shows each goal as *on target*, *off target* or *no data yet*, and the weekly report compares
@@ -507,7 +542,8 @@ them.
 - **A daily report** at `report_hour`, in the company time zone, with:
   - tasks done, failed and waiting;
   - open decisions;
-  - cost.
+  - cost;
+  - loop runs and findings, when there are any.
 - **A weekly report** on `report_weekday` (default Monday), covering 7 days, with each [goal](#goals) compared with
   its target. The *Reports* tab can also generate either one now.
 - Reports follow the language the job was written in.

@@ -309,6 +309,16 @@ def prompt_extras(db, e: Employee, task: EmployeeTask, past: list[dict]) -> list
                    "status as you go: your manager follows the progress." if en else
                    "Se a tarefa tiver várias etapas, registre o plano com a ferramenta update_plan e atualize o status "
                    "de cada etapa conforme avança: o gestor acompanha o progresso.")
+    from .task_findings import LOOP_SOURCES, SUMMARY_MAX
+    if task.source in LOOP_SOURCES:  # laço: só o que importa chega a uma pessoa
+        out.append(("This is a check from a loop (routine, trigger or webhook). If you find nothing to report, call "
+                    "finish_task(findings=false) without taking any action: the task closes quietly. If you find something, "
+                    f"call finish_task(findings=true, summary=…) with what you found and the proposed fix (up to {SUMMARY_MAX} "
+                    "characters), then propose the action through its tool.") if en else
+                   ("Esta é uma verificação de um laço (rotina, gatilho ou webhook). Se não houver nada a reportar, chame "
+                    "finish_task(findings=false) sem executar nenhuma ação: a tarefa fecha em silêncio. Se encontrar algo, "
+                    f"chame finish_task(findings=true, summary=…) com o que achou e a correção proposta (até {SUMMARY_MAX} "
+                    "caracteres) e proponha a ação pela ferramenta dela."))
     cols = [c for c in colleagues_of(db, e) if c["status"] == "active"]
     if cols:
         who = "\n".join(f"- {c['slug']}: {c['title']}" for c in cols)

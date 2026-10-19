@@ -499,6 +499,13 @@ async def build_tools() -> tuple[list[Tool], bool]:
                                                             "details": {"type": "string", "description": "o que fazer e o contexto"},
                                                             "wait": {"type": "boolean"}},
                            "required": ["to", "title"]}, _ask, ref="hangar:handoff_task"))
+        tools.append(Tool("finish_task", "Encerra uma verificação (rotina, gatilho) declarando o resultado. findings=false: "
+                          "nada encontrado, a tarefa fecha em silêncio (só vale se você não mudou nada nem propôs ação). "
+                          "findings=true: achado, com um resumo de uma ou duas frases (o que foi encontrado e a correção); "
+                          "a ação proposta você chama em seguida, pela ferramenta dela.",
+                          {"type": "object", "properties": {"findings": {"type": "boolean"},
+                                                            "summary": {"type": "string", "description": "até 400 caracteres"}},
+                           "required": ["findings"]}, _ask, ref="hangar:finish_task"))
         tools.append(Tool("list_files", "Lista os arquivos da tarefa: os anexados por quem pediu e os que você já salvou.",
                           {"type": "object", "properties": {}}, _ask, ref="hangar:list_files"))
         tools.append(Tool("read_file", "Lê um arquivo de texto da tarefa (o mais novo, ou a versão pedida).",
@@ -1102,6 +1109,7 @@ async def _run_server_call(call: dict, by_name: dict, trace: list, msgs: list, r
         if EMPLOYEE and tool is not None and tool.ref:  # Digital employee: a alçada decide antes de executar
             g = await _gate(tool, args, rationale, {"ask_human": "ask_human", "request_capability": "capability",
                                                     "update_plan": "plan", "handoff_task": "handoff", "list_files": "files",
+                                                    "finish_task": "finish",
                                                     "read_file": "files", "save_file": "files"}.get(
                                                         name, "platform" if tool.ref.startswith("platform:") else "tool"))
             if g.get("status") == "waiting":

@@ -2472,6 +2472,8 @@
     '% concluídas com sucesso': '% done successfully',
     '% dentro do prazo': '% on time',
     '% aprovadas sem edição': '% approved without edits',
+    '% das execuções com achado': '% of runs with findings', '% dos achados que viraram ação': '% of findings that led to an action',
+    'Execuções sem achados': 'Runs with no findings', 'achado': 'finding', 'sem achados': 'no findings',
     'Tempo médio de decisão (min)': 'Average decision time (min)',
     'Custo por tarefa (US$)': 'Cost per task (US$)',
     'Decisões expiradas (30 dias)': 'Expired decisions (30 days)',

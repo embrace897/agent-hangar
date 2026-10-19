@@ -250,6 +250,9 @@ KPI_METRICS = {
     "avg_decision_min": ("tempo médio de decisão (min)", False, "min"),
     "cost_per_task": ("custo por tarefa (US$)", False, "US$"),
     "expired_decisions": ("decisões expiradas (30 dias)", False, ""),
+    # laços (rotinas, gatilhos): quantas execuções acharam algo, e quantos achados viraram ação aprovada
+    "finding_rate": ("% das execuções com achado", True, "%"),
+    "actioned_finding_rate": ("% dos achados que viraram ação aprovada", True, "%"),
 }
 
 
@@ -302,7 +305,9 @@ def kpi_actuals(db: Session, e: Employee, days: int = 30) -> dict:
             "on_time_rate": round(100 * on_time / timed, 1) if timed else None,
             "approved_unedited_rate": round(100 * m["approved_unedited"] / decided, 1) if decided else None,
             "avg_decision_min": m["avg_decision_min"], "cost_per_task": m["cost_per_task"] or None,
-            "expired_decisions": m["expired"]}
+            "expired_decisions": m["expired"],
+            "finding_rate": round(100 * m["findings"] / runs, 1) if (runs := m["findings"] + m["no_findings"]) else None,
+            "actioned_finding_rate": round(100 * m["actioned_findings"] / m["findings"], 1) if m["findings"] else None}
 
 
 def kpi_status(db: Session, e: Employee) -> list[dict]:
@@ -664,8 +669,9 @@ def career_status(db: Session, e: Employee) -> dict:
     if rule:
         clean = m14["rejected"] + m14["expired"]
         criteria = [
-            {"key": "tasks", "label": "tarefas concluídas", "value": m30["done"], "target": rule["tasks"],
-             "ok": m30["done"] >= rule["tasks"]},
+            # execuções sem achados não contam: uma rotina que nunca acha nada não promove ninguém
+            {"key": "tasks", "label": "tarefas concluídas", "value": m30["done"] - m30["no_findings"], "target": rule["tasks"],
+             "ok": m30["done"] - m30["no_findings"] >= rule["tasks"]},
             {"key": "approvals", "label": "ações decididas pelo gestor", "value": decided, "target": rule["approvals"],
              "ok": decided >= rule["approvals"]},
             {"key": "unedited", "label": "% aprovadas sem edição", "value": unedited, "target": rule["unedited"],

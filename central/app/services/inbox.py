@@ -77,6 +77,8 @@ def items(db: Session, acc: Access, view: str = "all") -> dict:
             employee=d.get("employee"), decision_kind=d["kind"], mine=d.get("mine"), task_id=(d.get("task") or {}).get("id"))
     mine = select(EmployeeTask).where(EmployeeTask.requester_user_id == acc.p.user_id).order_by(EmployeeTask.updated_at.desc()).limit(100)
     for t in db.scalars(mine):  # o que eu pedi
+        if t.finding is False and t.status == "done":  # laço sem achados: fecha em silêncio, não vira item
+            continue
         e = db.get(Employee, t.employee_id)
         a = db.get(Agent, e.agent_id) if e else None
         add(f"task:{t.id}", "task", t.title, t.updated_at, f"#/tasks/{t.id}", task_id=t.id, status=t.status,

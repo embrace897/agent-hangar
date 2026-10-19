@@ -87,6 +87,11 @@ class FakeRuntime:
                 return f"negado: {g['message']}" if g["status"] == "denied" else f"repassado: {g.get('result', '')}"
             if last.startswith(("TAREFA REPASSADA", "HANDED-OFF TASK")):
                 return f"recebi o resultado do colega: {last[:200]}"
+            fin = re.search(r"\bfinish:\s*(false|true)(?:\s*\|\s*(.+))?", last)
+            if fin and not reply:  # finish_task: o laço declara "sem achados" ou um achado
+                g = tasksmod.gate(db, agent, task_id, "finish_task", "hangar:finish_task",
+                                  {"findings": fin.group(1) == "true", "summary": (fin.group(2) or "").strip()}, "", "finish")
+                return f"negado: {g['message']}" if g["status"] == "denied" else "verificação encerrada"
             q = re.search(r"\bask:\s*(.+)", last)
             if q and "RESPOSTA de" not in last:
                 g = tasksmod.gate(db, agent, task_id, "ask_human", "hangar:ask_human", {"question": q.group(1)}, "", "ask_human")

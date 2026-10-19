@@ -335,7 +335,8 @@ def task_dict(db: Session, t: EmployeeTask, detail: bool = False) -> dict:
          "created_at": iso(tasksmod._aware(t.created_at)),
          "finished_at": iso(tasksmod._aware(t.finished_at)) if t.finished_at else None,
          "classification": t.classification or "internal", "legal_hold": bool(t.legal_hold),
-         "purged": bool(t.purged_at), "mode": t.mode or "work"}
+         "purged": bool(t.purged_at), "mode": t.mode or "work",
+         "finding": t.finding, "finding_summary": t.finding_summary or ""}
     if detail:
         from ..models import TaskEvent
         d["events"] = [{"kind": ev.kind, "payload": ev.payload, "at": iso(tasksmod._aware(ev.at))}
@@ -727,13 +728,35 @@ def metrics(db: Session, e: Employee, days: int = 30) -> dict:
     secs = [(tasksmod._aware(r.decided_at) - tasksmod._aware(r.created_at)).total_seconds() for r in decided
             if r.decided_at and r.created_at]
     done = [t for t in tasks if t.status == "done"]
+    found = [t for t in done if t.finding is True]
+    approved_tasks = {r.task_id for r in decided if r.decision in ("approve", "approve_edited") and r.task_id}
     return {"days": days, "tasks": len(tasks), "done": len(done), "failed": sum(t.status == "failed" for t in tasks),
+            "no_findings": sum(t.finding is False for t in done), "findings": len(found),
+            "actioned_findings": sum(t.id in approved_tasks for t in found),
             "waiting": sum(t.status == "waiting_human" for t in tasks), "cost_usd": round(sum(t.cost_usd for t in tasks), 4),
             "cost_per_task": round(sum(t.cost_usd for t in done) / len(done), 4) if done else 0,
             "approvals": len(reqs), "approved": sum(r.decision in ("approve", "approve_edited") for r in decided),
             "approved_unedited": sum(r.decision == "approve" for r in decided), "rejected": sum(r.decision == "reject" for r in decided),
             "expired": sum(r.status == "expired" for r in reqs),
             "avg_decision_min": round(sum(secs) / len(secs) / 60, 1) if secs else None}
+
+
+QUIET_WEEKS = 4
+QUIET_MIN_RUNS = 4
+
+
+def quiet_routines(db: Session, e: Employee) -> list[str]:
+    """Rotinas ativas que rodaram nas últimas QUIET_WEEKS semanas e nunca acharam nada: candidatas a rodar menos (só a
+    sugestão no relatório; nada muda sozinho)."""
+    from ..models import EmployeeRoutine
+    since = now() - timedelta(weeks=QUIET_WEEKS)
+    out = []
+    for r in db.scalars(select(EmployeeRoutine).where(EmployeeRoutine.employee_id == e.id, EmployeeRoutine.enabled.is_(True))):
+        ts = list(db.scalars(select(EmployeeTask).where(EmployeeTask.routine_id == r.id, EmployeeTask.created_at >= since,
+                                                        EmployeeTask.status == "done")))
+        if len(ts) >= QUIET_MIN_RUNS and all(t.finding is False for t in ts):
+            out.append(r.title)
+    return out
 
 
 def make_report(db: Session, e: Employee, period: str = "daily") -> EmployeeReport:
@@ -757,6 +780,14 @@ def make_report(db: Session, e: Employee, period: str = "daily") -> EmployeeRepo
                    f"custo US$ {m['cost_usd']:.4f}." + (f"\nAguardando você: {'; '.join(stuck)}" if stuck else ""))
     if late:
         summary += (f"\nOverdue: {'; '.join(late)}" if en else f"\nAtrasadas: {'; '.join(late)}")
+    runs = m["no_findings"] + m["findings"]
+    if runs:  # laços (rotinas, gatilhos): o que importa é quantos acharam algo
+        summary += (f"\nLoops: {runs} run(s), {m['findings']} with findings" if en else
+                    f"\nLaços: {runs} execução(ões), {m['findings']} com achado")
+    if period == "weekly":
+        for title in quiet_routines(db, e):
+            summary += (f"\nRoutine '{title}': no findings in {QUIET_WEEKS} weeks; consider lowering its frequency." if en else
+                        f"\nRotina '{title}': nenhum achado em {QUIET_WEEKS} semanas; considere reduzir a frequência.")
     kpis = workmod.kpi_status(db, e)
     if kpis and period == "weekly":
         lines = []

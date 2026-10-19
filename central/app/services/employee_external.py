@@ -181,11 +181,16 @@ def _spend(t: EmployeeTask, cost_usd, tokens):
 
 
 def result(db, token: str, task_id: int, status: str, text: str = "", error: str = "", cost_usd: float = 0,
-           tokens: int = 0) -> dict:
+           tokens: int = 0, findings: bool | None = None, summary: str = "") -> dict:
     e, a = _employee(db, token)
     t = _task(db, e, task_id)
     if status not in ("done", "failed", "waiting"):
         raise PlatformError("status: done | failed | waiting")
+    if findings is not None and status == "done":  # laço: "sem achados" ou achado, com a mesma checagem da plataforma
+        from . import task_findings
+        d = task_findings.declare(db, t, findings, summary, tasksmod.lang_of(e))
+        if d["status"] != "allowed":
+            raise PlatformError(d["message"])
     _spend(t, cost_usd, tokens)
     from . import task_thread
     if text:

@@ -454,6 +454,8 @@ class ResultBody(BaseModel):
     error: str = ""
     cost_usd: float = 0
     tokens: int = 0
+    findings: bool | None = None  # laço: false = sem achados (fecha em silêncio); true = achado, com summary
+    summary: str = ""
 
 
 def _worker(request: Request, fn):
@@ -487,4 +489,4 @@ def worker_progress(task_id: int, body: ProgressBody, request: Request, db=Depen
 @hooks.post("/worker/tasks/{task_id}/result")
 def worker_result(task_id: int, body: ResultBody, request: Request, db=Depends(db_dep)):
     return _worker(request, lambda t: svc.employee_external.result(db, t, task_id, body.status, body.result, body.error,
-                                                                   body.cost_usd, body.tokens))
+                                                                   body.cost_usd, body.tokens, body.findings, body.summary))

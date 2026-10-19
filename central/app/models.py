@@ -765,6 +765,10 @@ class EmployeeTask(OrgScoped, Base):
     parent_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # repassada por outra tarefa
     waiting_on: Mapped[int | None] = mapped_column(Integer, nullable=True)  # espera esta tarefa repassada terminar
     plan: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{title, status: todo|doing|done|skipped, note}]
+    # resultado de um laço (rotina, gatilho): False = sem achados (fecha em silêncio); True = achado, com resumo curto;
+    # None = tarefa comum, que não declarou nada (services/task_findings.py)
+    finding: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    finding_summary: Mapped[str] = mapped_column(Text, default="")
     plan_state: Mapped[str] = mapped_column(String(12), default="")  # "" | proposed | approved | rejected
     plan_approval: Mapped[bool] = mapped_column(Boolean, default=False)  # esta tarefa exige o plano aprovado
     origin: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # pedida pelo chat: {slack: {channel, ts}} | {teams: …}
