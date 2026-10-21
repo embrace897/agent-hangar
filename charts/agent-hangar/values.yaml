@@ -75,6 +75,9 @@ agents:
   memLimit: 512m                    # por agente (Deployment)
   cpus: "1.0"
   jobMemLimit: 1g                   # por job de harness / avaliação de código (Job)
+  # sandbox de kernel próprio para agentes, jobs e plugins com código: o RuntimeClass do cluster (GKE Sandbox: gvisor;
+  # Kata: kata); vazio = o runtime padrão. O RuntimeClass precisa existir no cluster.
+  runtimeClassName: ""
   jobCpus: "1.0"
   jobTimeoutS: 180
   defaultModel: mock/echo           # agentes sem conexão de LLM

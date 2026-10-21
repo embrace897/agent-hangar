@@ -15,6 +15,7 @@ data:
   HANGAR_VERSION: {{ include "hangar.tag" . | quote }}
   K8S_PULL_POLICY: {{ .Values.image.pullPolicy | quote }}
   K8S_IMAGE_PULL_SECRET: {{ join "," .Values.image.pullSecrets | quote }}
+  K8S_RUNTIME_CLASS: {{ .Values.agents.runtimeClassName | default "" | quote }}
   AGENT_MEM_LIMIT: {{ .Values.agents.memLimit | quote }}
   STAGE_IDLE_MIN: {{ .Values.agents.stageIdleMin | quote }}
   CONNECTOR_CHECK_MIN: {{ .Values.connectors.checkMin | quote }}

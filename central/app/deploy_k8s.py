@@ -84,6 +84,10 @@ SECURITY = {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001, "allo
             "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]}, "seccompProfile": {"type": "RuntimeDefault"}}
 
 
+def _sandbox() -> dict:
+    return {"runtimeClassName": config.K8S_RUNTIME_CLASS} if config.K8S_RUNTIME_CLASS else {}
+
+
 def _pull_secrets() -> list:
     return [{"name": s} for s in (config.K8S_IMAGE_PULL_SECRET or "").split(",") if s.strip()]
 
@@ -114,7 +118,7 @@ def run_agent(slug: str, env: str, resolved_spec: dict, llm_conf: dict):
              "PUBLIC_URL": f"{config.PUBLIC_BASE_URL}/{'gw' if env == 'prod' else 'gw-stage'}/{slug}",
              "INTERNAL_BASE_URL": config.INTERNAL_BASE_URL, "LLM_BASE_URL": llm_conf.get("base_url", "")}
     pod = {"metadata": {"labels": {**labels, f"{LBL}/version": str(resolved_spec.get("version", ""))}},
-           "spec": {"automountServiceAccountToken": False, "enableServiceLinks": False,
+           "spec": {"automountServiceAccountToken": False, "enableServiceLinks": False, **_sandbox(),
                     "imagePullSecrets": _pull_secrets(),
                     "containers": [{"name": "agent", "image": config.RUNTIME_IMAGE, "imagePullPolicy": config.K8S_PULL_POLICY,
                                     "ports": [{"containerPort": 8000, "name": "http"}],
@@ -311,7 +315,7 @@ def run_job_container(name: str, image: str, environment: dict, mem_limit: str, 
                     "activeDeadlineSeconds": config.JOB_MAX_TIMEOUT_S + 120,
                     "template": {"metadata": {"labels": lbls}, "spec": {
                         "restartPolicy": "Never", "automountServiceAccountToken": False, "enableServiceLinks": False,
-                        "imagePullSecrets": _pull_secrets(),
+                        **_sandbox(), "imagePullSecrets": _pull_secrets(),
                         "containers": [{"name": "job", "image": image, "imagePullPolicy": config.K8S_PULL_POLICY,
                                         **({"command": command} if command else {}),
                                         "envFrom": [{"secretRef": {"name": name}}],
@@ -379,7 +383,8 @@ def run_plugin(name: str, image: str, environment: dict, mem_limit: str, cpus: f
     lbls = {f"{LBL}/role": "plugin", f"{LBL}/name": name}
     _upsert_secret(name, environment, lbls)
     pod = {"metadata": {"labels": lbls},
-           "spec": {"automountServiceAccountToken": False, "enableServiceLinks": False, "imagePullSecrets": _pull_secrets(),
+           "spec": {"automountServiceAccountToken": False, "enableServiceLinks": False, **_sandbox(),
+                    "imagePullSecrets": _pull_secrets(),
                     "containers": [{"name": "plugin", "image": image, "imagePullPolicy": config.K8S_PULL_POLICY,
                                     **({"command": command} if command else {}),
                                     "ports": [{"containerPort": port, "name": "mcp"}],

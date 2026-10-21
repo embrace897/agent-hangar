@@ -207,3 +207,17 @@ def test_secrets_are_masked_in_what_the_system_returns(env, erp):
     text, err, _ = plugmod._execute(None, m, inst, m["tools"][-1], {})
     assert not err and "super-secret-key" not in text and "[segredo]" in text
 
+
+
+def test_gmail_oauth_example_manifest_is_valid():
+    """O exemplo examples/plugins/gmail.hangar-plugin.yaml continua passando na validação (e só lê)."""
+    import pathlib
+
+    import yaml
+
+    from app.services import plugins
+    doc = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] / "examples/plugins/gmail.hangar-plugin.yaml").read_text(encoding="utf-8"))
+    m = plugins.parse(doc)
+    assert m["auth"]["type"] == "oauth2" and m["auth"]["scopes"] == ["https://www.googleapis.com/auth/gmail.readonly"]
+    assert {t["name"]: t["action"] for t in m["tools"]} == {"search_messages": "read", "get_message": "read",
+                                                            "get_thread": "read", "list_labels": "read"}

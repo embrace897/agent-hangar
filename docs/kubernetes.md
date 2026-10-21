@@ -113,6 +113,19 @@ port-forward only.
 - **Secrets:** agent environment (LLM tokens, connection keys) lives in a per-agent `Secret`; job secrets have an
   `ownerReference` to the Job and are deleted with it.
 
+### Kernel sandbox (gVisor, Kata)
+
+Containers share the node's kernel. For untrusted code (harness jobs, code evaluations, plugins with code), give the
+pods their own kernel with a `RuntimeClass` that already exists in the cluster:
+
+```yaml
+agents:
+  runtimeClassName: gvisor   # GKE Sandbox: gvisor · Kata Containers: kata (the name in your cluster)
+```
+
+Agents, jobs and plugin pods then run with `runtimeClassName` set. It's empty by default, which keeps the cluster's
+default runtime. A RuntimeClass that doesn't exist leaves the pods `Pending`.
+
 ### NetworkPolicy
 
 Agents, jobs and evaluations can reach only the central (port 8080), DNS and the internet **minus private ranges**

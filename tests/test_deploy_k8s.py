@@ -167,3 +167,16 @@ def test_facade_switches_backend(monkeypatch):
     spec.loader.exec_module(mod)
     assert mod.run_agent is k8s.run_agent and mod.container_name is k8s.container_name
     assert mod.states is k8s.states and mod.run_job_container is k8s.run_job_container
+
+
+def test_runtime_class_sandboxes_agents_jobs_and_plugins(fk, monkeypatch):
+    """K8S_RUNTIME_CLASS (gVisor, Kata…): os pods que rodam código ganham kernel próprio; vazio, nada muda."""
+    k8s.run_agent("sem", "prod", {"version": 1}, {})
+    assert "runtimeClassName" not in fk.objs[("Deployment", "agent-sem-prod")]["spec"]["template"]["spec"]
+    monkeypatch.setattr(config, "K8S_RUNTIME_CLASS", "gvisor")
+    k8s.run_agent("com", "prod", {"version": 1}, {})
+    k8s.run_job_container("job-x", "img/harness-base:1", {}, "1g", 1.0)
+    k8s.run_plugin("plugin-x", "img/plugin:1", {}, "256m", 0.5)
+    assert fk.objs[("Deployment", "agent-com-prod")]["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
+    assert fk.objs[("Job", "job-x")]["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
+    assert fk.objs[("Deployment", "plugin-x")]["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"

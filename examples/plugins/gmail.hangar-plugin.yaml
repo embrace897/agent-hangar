@@ -1,0 +1,70 @@
+# Gmail pela API do Google, com OAuth: cada pessoa conecta a PRÓPRIA conta (sem senha de app).
+# Envie em Plugins → Novo plugin (ou POST /api/plugins), teste em stage e peça a revisão. Somente leitura: para enviar
+# e-mail, use o conector docker:gmail-mcp (a API do Gmail pede a mensagem MIME em base64, e um plugin HTTP não a monta).
+name: gmail-oauth
+title: Gmail (OAuth)
+version: 1.0.0
+description: Busca e lê e-mails da conta Gmail de quem pediu a tarefa, com o login do Google (OAuth), sem senha de app.
+publisher: Agent Hangar (exemplo)
+category: communication
+tags: [gmail, google, e-mail]
+base_url: https://gmail.googleapis.com/gmail/v1
+auth:
+  type: oauth2
+  authorize_url: https://accounts.google.com/o/oauth2/v2/auth
+  token_url: https://oauth2.googleapis.com/token
+  scopes: [https://www.googleapis.com/auth/gmail.readonly]
+  params: {access_type: offline, prompt: consent}   # o Google só devolve refresh token com os dois
+tools:
+  - name: search_messages
+    description: >-
+      Busca mensagens com a sintaxe da busca do Gmail (ex. "from:ana@empresa.com newer_than:7d", "is:unread",
+      "subject:fatura"). Devolve só os ids: leia cada uma com get_message.
+    method: GET
+    path: /users/me/messages
+    parameters:
+      type: object
+      properties:
+        q: {type: string, description: "a busca, como na caixa de pesquisa do Gmail"}
+        maxResults: {type: integer, description: "quantas (padrão 10, máximo 100)"}
+        pageToken: {type: string, description: "a próxima página (nextPageToken da resposta anterior)"}
+  - name: get_message
+    description: >-
+      Uma mensagem pelo id. format=metadata traz remetente, destinatários, assunto e data (leve); full traz o corpo.
+    method: GET
+    path: /users/me/messages/{id}
+    parameters:
+      type: object
+      properties:
+        id: {type: string}
+        format: {type: string, enum: [minimal, metadata, full], description: "padrão: metadata"}
+      required: [id]
+  - name: get_thread
+    description: Uma conversa inteira pelo id (threadId de uma mensagem).
+    method: GET
+    path: /users/me/threads/{id}
+    parameters:
+      type: object
+      properties:
+        id: {type: string}
+        format: {type: string, enum: [minimal, metadata, full]}
+      required: [id]
+  - name: list_labels
+    description: Os rótulos (pastas) da conta.
+    method: GET
+    path: /users/me/labels
+test: {tool: list_labels, args: {}}
+readme: |
+  ## Como usar
+
+  1. **App OAuth no Google Cloud** (uma vez, por quem administra): crie um projeto, ative a *Gmail API*, configure a
+     tela de consentimento e crie uma credencial *OAuth client ID* do tipo *Web application* com a URL de redirecionamento
+     que o formulário de instalação mostra (`<endereço público do Hangar>/api/plugins/oauth/callback`).
+  2. **Instale** o plugin no time com o client ID e o client secret, e escolha **identidade: requester** (cada tarefa usa
+     a conta de quem pediu).
+  3. **Cada pessoa** conecta a própria conta na página do plugin (*Minha conta*): login do Google e aprovação do escopo
+     de leitura.
+
+  O escopo `gmail.readonly` é restrito pelo Google: com o app em modo de teste, só os usuários de teste cadastrados
+  entram; para abrir a mais gente, o Google exige a verificação do app. Num Google Workspace, um app *interno* dispensa
+  a verificação para as contas da empresa.

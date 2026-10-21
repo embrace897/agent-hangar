@@ -228,6 +228,8 @@ The server reads the header from the request (FastMCP: `ctx.request_context.requ
 
 ## OAuth2 accounts
 
+A ready example: [`examples/plugins/gmail.hangar-plugin.yaml`](../examples/plugins/gmail.hangar-plugin.yaml) searches and reads Gmail with each person's own Google account (`identity_mode: requester`), without an app password. It's read-only, because sending through the Gmail API needs a base64 MIME message that an HTTP plugin doesn't build. Its `readme` explains the Google Cloud setup and the verification Google requires for `gmail.readonly` beyond test users.
+
 ```yaml
 auth:
   type: oauth2

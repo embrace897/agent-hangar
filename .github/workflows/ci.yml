@@ -182,6 +182,29 @@ jobs:
         if: failure()
         run: docker compose logs --tail 200 central
 
+  kubernetes:
+    needs: lint-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: docker/login-action@v3   # o espelho das imagens base no GHCR (forks sem acesso caem no Docker Hub)
+        continue-on-error: true
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Use the base images mirror
+        run: sh .github/scripts/use-mirror.sh
+      - name: Build the images the chart uses
+        run: sh scripts/setup.sh && docker compose build central agent-runtime harness-base mcp-stdio-runner
+      - name: Helm chart on k3s, smoke test and hangar test-drive (Kubernetes driver)
+        run: |
+          pip install httpx pyyaml ./cli
+          sh tests/e2e/k8s.sh
+
   data-studio:
     needs: lint-test
     runs-on: ubuntu-latest

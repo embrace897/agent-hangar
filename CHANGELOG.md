@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.48.0] — 2026-10-21
+
+### Added
+- **Kernel sandbox on Kubernetes:** `agents.runtimeClassName` in the Helm chart (`K8S_RUNTIME_CLASS`). Agents, harness jobs and plugins with code run with a `RuntimeClass` that already exists in the cluster, such as gVisor (GKE Sandbox) or Kata, so untrusted code gets its own kernel. It's empty by default. See [docs/kubernetes.md](docs/kubernetes.md#kernel-sandbox-gvisor-kata).
+- **Gmail with each person's Google account:** the example plugin [`examples/plugins/gmail.hangar-plugin.yaml`](examples/plugins/gmail.hangar-plugin.yaml). It uses OAuth2 and `identity_mode: requester` to search and read e-mail without an app password. It's read-only; sending stays with the `docker:gmail-mcp` connector.
+- **Kubernetes end-to-end test in CI:** [`tests/e2e/k8s.sh`](tests/e2e/k8s.sh) installs the chart on k3s, then runs the smoke test and `hangar test-drive` against the cluster. Until now this only ran by hand at release time.
+
 ## [0.47.0] — 2026-10-20
 
 ### Added

@@ -8,7 +8,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 APP_NAME = "Agent Hangar"
-VERSION = "0.47.0"
+VERSION = "0.48.0"
 
 DATABASE_URL = _env("DATABASE_URL", "sqlite:///./hangar.db")
 
@@ -82,6 +82,8 @@ MODEL_CATALOG_URL = _env("MODEL_CATALOG_URL",
 K8S_NAMESPACE = _env("K8S_NAMESPACE")  # vazio = o namespace da própria central (ServiceAccount)
 K8S_IMAGE_PULL_SECRET = _env("K8S_IMAGE_PULL_SECRET")  # registry privado: nome(s) do(s) Secret(s), separados por vírgula
 K8S_PULL_POLICY = _env("K8S_PULL_POLICY", "IfNotPresent")
+# sandbox de verdade (kernel próprio) para agentes, jobs e plugins: o RuntimeClass do cluster (gvisor, kata…); vazio = o padrão
+K8S_RUNTIME_CLASS = _env("K8S_RUNTIME_CLASS")
 
 AGENTS_NETWORK = _env("AGENTS_NETWORK", "hangar_agents")
 # Rede isolada dos jobs: alcançam a central (callback) e a internet (LLM/MCP), nunca os outros agentes.

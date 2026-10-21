@@ -137,7 +137,9 @@ plugins are denied.
 such as a privileged container or a host bind mount. With a Docker backend, that is equivalent to root on the
 host. The proxy reduces the attack surface, but it is not a sandbox boundary against a compromised hangar. For
 real multi-tenant isolation, use a rootless Docker/Podman host, a dedicated VM, or the Kubernetes driver
-([kubernetes.md](kubernetes.md)), with its NetworkPolicies, together with admission policies.
+([kubernetes.md](kubernetes.md)), with its NetworkPolicies, together with admission policies. On Kubernetes,
+`agents.runtimeClassName` (gVisor, Kata) gives agents, jobs and plugins their own kernel
+([kernel sandbox](kubernetes.md#kernel-sandbox-gvisor-kata)).
 
 ## Data Studio (code execution)
 

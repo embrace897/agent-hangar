@@ -51,7 +51,7 @@ https://github.com/user-attachments/assets/28cfa80f-33b1-49c5-be48-13cc33ada18d
 
 </details>
 
-> **Status: alpha (v0.47).** It works end to end and is covered by tests, but APIs may still change. Run it inside
+> **Status: alpha (v0.48).** It works end to end and is covered by tests, but APIs may still change. Run it inside
 > your network until you have read [docs/security.md](docs/security.md).
 
 ## Why Agent Hangar
@@ -112,7 +112,7 @@ it does not prove the feature is missing. Where each one is ahead, the model opt
 | Governance and cost | SSO, SCIM, roles, corporate e-mail rule, audit, DLP and retention, budgets per company, team, agent or project with a hard stop, cost per agent | RBAC and security controls | Custom auth; ABAC when self-hosted | SSO/SAML, RBAC and audit (Enterprise) | IAM/JWT and Cedar policies in the Gateway | Entra ID and Agent 365 controls |
 | Data residency and compliance | Data on your infrastructure, encrypted secrets, signed images with SBOM; no certifications cited | On-premises or cloud deployment; certifications not found | Self-hosted for data residency and isolated (air-gapped) environments | Self-hosted keeps data in-house; Enterprise with SOC 2 Type II and ISO 27001 | Not verified | Not verified |
 | Observability | Prometheus, JSON logs, OpenTelemetry, metrics per channel | Real-time observability | Strong point: traces and evaluation | Built-in observability | AgentCore Observability and CloudWatch | Application Insights and Agent 365 telemetry |
-| Maturity | Alpha (v0.47), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
+| Maturity | Alpha (v0.48), Apache-2.0 | OSS with a commercial layer | Commercial, partly Enterprise | 157,000+ GitHub stars | Registry in public preview | Agent 365 generally available; A2A 1.0 GA |
 
 ## From a request in Claude to a working agent
 
@@ -516,6 +516,7 @@ install, and APIs may still change. Recent releases:
 
 | Version | What it added |
 |---|---|
+| v0.48 | Kernel sandbox on Kubernetes (gVisor, Kata), a Gmail plugin with each person's Google account, and the Kubernetes end-to-end test in CI |
 | v0.47 | Personal subscriptions for harness jobs removed: every harness agent runs on its API connection again |
 | v0.46 | Harness jobs on a personal Claude or ChatGPT subscription, for the jobs a person starts, with plan limits handled and the API cost saved shown |
 | v0.45 | Digital employees: a model from another vendor reviews an action before it runs, and anything it doesn't approve goes to a person |
