@@ -2,7 +2,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import deploy
+from .. import deploy, tenancy
 from .. import spec as specmod
 from ..models import (
     AccessRequest,
@@ -45,7 +45,7 @@ def create_agent(db: Session, name: str, objective: str, final_output: str, kind
     a = Agent(slug=slug, name=name, objective=objective, final_output=final_output, kind=kind or "single",
               owner=owner or "", status="draft", current_version=1, team_id=team_id or 1,
               visibility=visibility or (org.default_visibility if org else "org"))
-    a.versions.append(AgentVersion(version=1, spec=specmod.default_spec(), created_by=actor))
+    a.versions.append(AgentVersion(version=1, spec=specmod.default_spec(), created_by=actor, created_user_id=tenancy.current_user()))
     db.add(a)
     db.commit()
     audit(db, actor, "agent.register", slug, f"{name} | time #{a.team_id} | objetivo: {objective}")
@@ -90,7 +90,7 @@ def _commit_version(db: Session, a: Agent, spec: dict, actor: str, action: str, 
         return a
     a.current_version += 1
     a.status = "draft"
-    a.versions.append(AgentVersion(version=a.current_version, spec=spec, created_by=actor))
+    a.versions.append(AgentVersion(version=a.current_version, spec=spec, created_by=actor, created_user_id=tenancy.current_user()))
     db.commit()
     audit(db, actor, action, a.slug, f"v{a.current_version}: {detail}")
     return a

@@ -625,10 +625,8 @@ function tests(t, a) {
 }
 
 function jobCard(j) {
-  const sub = j.billing === 'subscription';
-  return `<div class="card mt"><div class="row between"><div>${pill(j.status)} <b>#${j.id}</b> · v${j.version} · ${esc(j.env)} · ${esc(j.harness_id)}${sub ? ' · <span class="pill info">pela assinatura</span>' : j.connection ? ' · ' + esc(j.connection) : ' · mock'}</div>
-    <span class="mute small">${when(j.created_at)} · ${fmt(j.duration_ms)}ms · ${fmt((j.tokens_in || 0) + (j.tokens_out || 0))} tokens · ${usd(j.cost_usd)}${sub && j.api_equiv_cost_usd ? ` <span>(na API:</span> ${usd(j.api_equiv_cost_usd)})` : ''}</span></div>
-    ${j.billing_note ? `<div class="mute small mt">${esc(window.t('Quem pagou'))}: <span data-noi18n>${esc(j.billing_note)}</span></div>` : ''}
+  return `<div class="card mt"><div class="row between"><div>${pill(j.status)} <b>#${j.id}</b> · v${j.version} · ${esc(j.env)} · ${esc(j.harness_id)}${j.connection ? ' · ' + esc(j.connection) : ' · mock'}</div>
+    <span class="mute small">${when(j.created_at)} · ${fmt(j.duration_ms)}ms · ${fmt((j.tokens_in || 0) + (j.tokens_out || 0))} tokens · ${usd(j.cost_usd)}</span></div>
     <div class="mt"><b>Tarefa:</b> <span data-noi18n>${esc(j.task)}</span></div>
     <div class="mt"><b>Resultado:</b><pre>${esc(j.result) || '(vazio)'}</pre></div>
     ${j.diff ? `<details class="mt"><summary>Diff</summary><pre>${esc(j.diff)}</pre></details>` : ''}
@@ -1002,7 +1000,9 @@ async function route() {
     else if (r === 'connectors' && a === 'item' && b) await connectorItemPage(decodeURIComponent(b));
     else if (r === 'connectors' && a) await connectorDetail(decodeURIComponent(a));
     else if (r === 'connectors') await connectorsPage();
-    else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage, catalog: skillsHome, providers: providersPage, connect: connectPage, audit: auditPage,
+    else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage,
+      // skills.js e llm.js só carregam no console (/ui): no portal, citar as funções direto quebra todas as rotas
+      catalog: () => skillsHome(), providers: () => providersPage(), connect: connectPage, audit: auditPage,
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
     uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos

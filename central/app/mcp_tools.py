@@ -956,9 +956,8 @@ async def run_harness_job(ctx: Context, slug: str, task: str, env: str = "stage"
     def go(db, acc):
         _agent(db, acc, slug, "consume" if env == "prod" else "edit")
         if wait:
-            return svc.job_dict(svc.run_harness_job(db, slug, task, env, timeout_s, acc.p.name, "mcp",
-                                                    user_id=acc.p.user_id))
-        return svc.job_dict(svc.submit_job(db, slug, task, env, timeout_s, acc.p.name, "mcp", user_id=acc.p.user_id))
+            return svc.job_dict(svc.run_harness_job(db, slug, task, env, timeout_s, acc.p.name, "mcp"))
+        return svc.job_dict(svc.submit_job(db, slug, task, env, timeout_s, acc.p.name, "mcp"))
     return await _run(ctx, go)
 
 

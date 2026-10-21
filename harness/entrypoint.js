@@ -27,27 +27,7 @@ const LLM_MODEL = env.LLM_MODEL || '';
 const EXEC = (() => { try { return JSON.parse(env.LLM_EXEC_JSON || '{}') || {}; } catch { return {}; } })();
 // Sem chave associada -> a central já sabe que é mock (resolve_harness marca mock=True), mas o
 // entrypoint decide sozinho pela ausência de LLM_API_KEY, sem precisar de uma env var extra pra isso.
-// Pela assinatura de quem disparou o job (services/subscriptions.py): Claude Code com CLAUDE_CODE_OAUTH_TOKEN (do
-// `claude setup-token`), Codex com o auth.json do `codex login` (conta ChatGPT). Sem chave de API nesse modo.
-const SUB = env.LLM_AUTH === 'subscription';
-const CODEX_AUTH = env.CODEX_AUTH_JSON || '';
-delete env.CODEX_AUTH_JSON;  // vai para um arquivo, não para o ambiente dos processos filhos
-const HARNESS_ID = (LLM_API_KEY || SUB) ? REAL_HARNESS_ID : 'mock';
-// "limite do plano" e credencial recusada, nas mensagens de erro dos CLIs (só olhamos quando a execução falhou)
-const LIMIT = /usage limit|limit reached|hit your (usage )?limit|out of (extra )?usage|rate limit|too many requests|\b429\b/i;
-const AUTH_FAIL = /invalid (api key|bearer token|token|credentials)|authentication_error|unauthorized|\b401\b|token (has )?expired|refresh token|log ?in again|please (run )?\/?login/i;
-
-function subscriptionTrouble(failed, text) {
-  if (!SUB || !failed) return {};
-  const t = String(text || '');
-  const line = (re) => ((t.split('\n').find((l) => re.test(l)) || '').trim()).slice(0, 300);
-  if (LIMIT.test(t)) {
-    const m = t.match(/limit reached\|(\d{9,11})/i);  // Claude: "Claude AI usage limit reached|<epoch do reset>"
-    return { subscription_limit: { resets_at: m ? Number(m[1]) : null, message: line(LIMIT) } };
-  }
-  if (AUTH_FAIL.test(t)) return { auth_rejected: line(AUTH_FAIL) || 'credencial recusada' };
-  return {};
-}
+const HARNESS_ID = LLM_API_KEY ? REAL_HARNESS_ID : 'mock';
 
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { cwd: WORKDIR, encoding: 'utf8', maxBuffer: 1024 * 1024 * 20, ...opts });
@@ -64,10 +44,9 @@ function mcpServers() {
   }
 }
 
-async function callback(status, result, diff, logs, usage, extra) {
+async function callback(status, result, diff, logs, usage) {
   const body = JSON.stringify({ status, result: String(result || '').slice(0, 20000),
-    diff: String(diff || '').slice(0, 50000), logs: String(logs || '').slice(0, 20000), usage: usage || null,
-    ...(extra || {}) });
+    diff: String(diff || '').slice(0, 50000), logs: String(logs || '').slice(0, 20000), usage: usage || null });
   try {
     await fetch(CALLBACK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json',
       'Authorization': `Bearer ${JOB_TOKEN}` }, body });
@@ -109,13 +88,8 @@ function runClaudeCode() {
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
   if (EXEC.effort) args.push('--effort', EXEC.effort);
   if (EXEC.max_turns) args.push('--max-turns', String(EXEC.max_turns));
-  const childEnv = { ...env };
-  if (SUB) {  // a assinatura entra por CLAUDE_CODE_OAUTH_TOKEN (já no ambiente); nada de chave nem de base_url
-    delete childEnv.ANTHROPIC_API_KEY; delete childEnv.ANTHROPIC_BASE_URL; delete childEnv.LLM_API_KEY;
-  } else {
-    childEnv.ANTHROPIC_API_KEY = LLM_API_KEY;
-    if (LLM_BASE_URL) childEnv.ANTHROPIC_BASE_URL = LLM_BASE_URL;
-  }
+  const childEnv = { ...env, ANTHROPIC_API_KEY: LLM_API_KEY };
+  if (LLM_BASE_URL) childEnv.ANTHROPIC_BASE_URL = LLM_BASE_URL;
   if (EXEC.max_output_tokens) childEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(EXEC.max_output_tokens);
   if (EXEC.prompt_cache === false) childEnv.DISABLE_PROMPT_CACHING = '1';
   let stdout = '', stderr = '', failed = false;
@@ -135,9 +109,7 @@ function runClaudeCode() {
   const usage = u ? {
     input_tokens: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
     output_tokens: u.output_tokens || 0, reported_cost_usd: parsed.total_cost_usd } : null;
-  const extra = subscriptionTrouble(isError, `${result}\n${stderr}`);
-  return { status: extra.subscription_limit ? 'limited' : (isError ? 'failed' : 'passed'), result,
-    logs: stderr.slice(-8000), usage, extra };
+  return { status: isError ? 'failed' : 'passed', result, logs: stderr.slice(-8000), usage };
 }
 
 function runCodex() {
@@ -147,7 +119,6 @@ function runCodex() {
   }
   const fullPrompt = SYSTEM_PROMPT ? `${SYSTEM_PROMPT}\n\n---\nTarefa:\n${TASK}` : TASK;
   const outFile = '/tmp/codex-last-message.txt';
-  if (SUB) return runCodexSubscription(fullPrompt, outFile);
   // OPENAI_BASE_URL sozinho não funciona: o provedor "openai" embutido do Codex CLI fala com um
   // WebSocket fixo em api.openai.com. Testado manualmente contra a OpenRouter: um "model_provider"
   // customizado com wire_api="responses" (não "chat" — descontinuado nesta versão) funciona via REST.
@@ -173,37 +144,6 @@ function runCodex() {
   const result = lastMessage || stdout || stderr || '(sem saída)';
   return { status: failed ? 'failed' : 'passed', result, logs: (stderr + '\n' + stdout).slice(-8000),
     usage: codexUsage(stdout) };
-}
-
-// Codex pela assinatura ChatGPT: o auth.json do `codex login` em $CODEX_HOME, o provedor embutido (sem base_url) e,
-// se o Codex renovar o login durante o job, o auth.json novo volta para a central (o refresh token pode mudar).
-function runCodexSubscription(fullPrompt, outFile) {
-  const home = env.CODEX_HOME || path.join(env.HOME || '/home/harness', '.codex');
-  const authPath = path.join(home, 'auth.json');
-  fs.mkdirSync(home, { recursive: true });
-  fs.writeFileSync(authPath, CODEX_AUTH, { mode: 0o600 });
-  const args = ['exec', fullPrompt, '--skip-git-repo-check', '--sandbox', 'workspace-write',
-    '--dangerously-bypass-approvals-and-sandbox', '--json', '-o', outFile];
-  if (LLM_MODEL) args.push('--model', LLM_MODEL);
-  if (EXEC.effort) args.push('-c', `model_reasoning_effort="${EXEC.effort}"`);
-  const childEnv = { ...env };
-  delete childEnv.OPENAI_API_KEY; delete childEnv.LLM_API_KEY;
-  let stdout = '', stderr = '', failed = false;
-  try {
-    stdout = run('codex', args, { env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e) {
-    failed = true;
-    stdout = e.stdout ? e.stdout.toString() : '';
-    stderr = (e.stderr ? e.stderr.toString() : '') + '\n' + String(e.message || e);
-  }
-  const lastMessage = safe(() => fs.readFileSync(outFile, 'utf8'), '');
-  const result = lastMessage || stdout || stderr || '(sem saída)';
-  const extra = subscriptionTrouble(failed, `${result}\n${stderr}\n${stdout.slice(-4000)}`);
-  const after = safe(() => fs.readFileSync(authPath, 'utf8'), '');
-  if (after && after !== CODEX_AUTH) extra.codex_auth = after;
-  safe(() => fs.rmSync(authPath, { force: true }));
-  return { status: extra.subscription_limit ? 'limited' : (failed ? 'failed' : 'passed'), result,
-    logs: (stderr + '\n' + stdout).slice(-8000), usage: codexUsage(stdout), extra };
 }
 
 // --json do Codex é JSONL; cada turno fecha com {"type":"turn.completed","usage":{input_tokens,output_tokens}}
@@ -292,7 +232,7 @@ async function main() {
   const out = runner();
   const diff = gitDiff();
   // DSH não expõe contagem de tokens no modo headless: usage fica null (custo 0 na central)
-  await callback(out.status, out.result, diff, out.logs, out.usage, out.extra);
+  await callback(out.status, out.result, diff, out.logs, out.usage);
 }
 
 main().catch(async (e) => {

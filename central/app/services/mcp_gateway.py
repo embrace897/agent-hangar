@@ -116,7 +116,9 @@ def _secrets(g: GatewayServer) -> dict:
 
 
 def write_files(db: Session) -> str:
-    """Reescreve registry/config/secrets no volume do gateway (atômico: arquivo temporário + rename)."""
+    """Reescreve registry/config/secrets no volume do gateway. Escreve no MESMO arquivo (não troca por outro com
+    rename): o --watch do gateway segue o arquivo, e depois de um rename ele passa a vigiar um arquivo que não existe
+    mais — só a primeira mudança era percebida, e um servidor ativado depois só subia quando o gateway reiniciava."""
     d = config.MCP_GATEWAY_CONFIG_DIR
     if not d:
         return ""
@@ -129,12 +131,15 @@ def write_files(db: Session) -> str:
         "secrets.env": "".join(f"{k}={v}\n" for g in rows for k, v in sorted(_secrets(g).items())),
     }
     for name, content in files.items():
-        tmp = os.path.join(d, f".{name}.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
+        path = os.path.join(d, name)
+        if name == "secrets.env" and not os.path.exists(path):
+            os.close(os.open(path, os.O_WRONLY | os.O_CREAT, 0o640))  # nasce sem leitura para os outros
+        with open(path, "r+" if os.path.exists(path) else "w", encoding="utf-8") as f:
+            f.seek(0)
             f.write(content)
+            f.truncate()
         if name == "secrets.env":
-            os.chmod(tmp, 0o640)
-        os.replace(tmp, os.path.join(d, name))
+            os.chmod(path, 0o640)
     return d
 
 

@@ -19,7 +19,7 @@ The portal shows only what belongs to the person, even when that person is an ad
 | Page | What it does |
 |---|---|
 | **Início** | Shows decisions waiting for you, your agents working right now (and on what), the tasks you asked for, and this month's cost. |
-| **Meus agentes** | Lists your personal agents and the team agents you manage. Each one shows its model, harness, level and specialists. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
+| **Meus agentes** | Lists your personal Digital employees and the team ones you manage. Each one shows its model, harness, level and specialists. A third section, *Agents I created or maintain*, lists your regular agents (not Digital employees): your personal ones, those of teams you maintain, and those you created, in the portal or through your AI over MCP. Each shows its status, version, team, next scheduled run and cost over 30 days. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
 | **Organograma** | Your own structure: you at the top (CEO if you are the company admin, Staff otherwise) and, below, your agents: the personal ones and the ones you manage or own. Each card shows model, harness, level, status and the current task, and who reports to whom is kept. Drag an agent onto another to change who it reports to; drop it on your own card to have it report directly to you. The company-wide org chart, with every team, is in the console. |
 | **Decisões** | Unchanged. |
 | **Caixa de entrada** | Unchanged. |

@@ -48,10 +48,8 @@ CODE_HOURS = 24
 def policy(db, org_id: int | None = None) -> dict:
     o = db.get(Organization, org_id or tenancy.current_org())
     raw = (o.access_policy if o else None) or {}
-    from .subscriptions import DEFAULT as SUBS
     return {"login": {**DEFAULT["login"], **(raw.get("login") or {})},
-            "personal_agents": {**DEFAULT["personal_agents"], **(raw.get("personal_agents") or {})},
-            "subscriptions": {**SUBS, **(raw.get("subscriptions") or {})}}
+            "personal_agents": {**DEFAULT["personal_agents"], **(raw.get("personal_agents") or {})}}
 
 
 def set_policy(db, acc: Access, changes: dict) -> dict:
@@ -75,9 +73,6 @@ def set_policy(db, acc: Access, changes: dict) -> dict:
             pa[k] = max(0.0, float(v))
         elif k == "llm_connections":
             pa[k] = sorted({str(x).strip() for x in v or [] if str(x).strip()})
-    if changes.get("subscriptions") is not None:  # assinaturas pessoais nos jobs de harness (services/subscriptions.py)
-        from .subscriptions import set_policy as subs_policy
-        subs_policy(db, changes["subscriptions"] or {})
     o = db.get(Organization, tenancy.current_org())
     o.access_policy = {**(o.access_policy or {}), "login": login, "personal_agents": pa}  # o resto (e-mail…) fica
     db.commit()
@@ -509,6 +504,48 @@ _register_handler()
 
 
 # ------------------------------------------------------------------ o painel do membro
+def built_agents(db, acc: Access) -> list[dict]:
+    """Os agentes comuns (não Digital employees) da pessoa: os pessoais dela, os dos times que ela mantém e os que ela
+    criou. Sem isto, quem monta um agente (pelo portal ou pela IA dela, via MCP) não o encontrava em Meus agentes."""
+    from ..models import AgentVersion, Schedule, Team
+    uid = acc.p.user_id
+    maintained = {m.team_id for m in db.scalars(select(TeamMember).where(TeamMember.user_id == uid,
+                                                                         TeamMember.role == "maintainer"))}
+    employees = set(db.scalars(select(Employee.agent_id)))
+    # quem criou: pelo id; versões gravadas antes do id existir (created_user_id vazio) caem no nome
+    first_by = {aid: (cuid, by) for aid, cuid, by in db.execute(select(
+        AgentVersion.agent_id, AgentVersion.created_user_id, AgentVersion.created_by).where(AgentVersion.version == 1)).all()}
+    u = db.get(User, uid)
+    # quem a pessoa já foi no "created_by" antigo: o nome (portal), o e-mail ou o usuário, e pelo MCP "<e-mail> (app:Claude)"
+    me = {x.strip().lower() for x in (acc.p.name, u.name if u else "", u.email if u else "",
+                                      getattr(u, "username", "") if u else "") if x and x.strip()}
+
+    def created(aid: int) -> bool:
+        cuid, by = first_by.get(aid, (None, ""))
+        if cuid is not None:
+            return cuid == uid
+        return (by or "").split(" (app:")[0].strip().lower() in me
+    teams = {t.id: t.name for t in db.scalars(select(Team))}
+    since = now() - timedelta(days=30)
+    out = []
+    for a in db.scalars(select(Agent).order_by(Agent.name)):
+        if a.id in employees:
+            continue
+        why = ("personal" if a.personal_owner_id == uid else "maintainer" if a.team_id in maintained
+               else "creator" if created(a.id) and not a.personal_owner_id else "")
+        if not why:
+            continue
+        sch = list(db.scalars(select(Schedule).where(Schedule.agent_id == a.id, Schedule.enabled.is_(True))))
+        nxt = min((s.next_run_at for s in sch if s.next_run_at), default=None)
+        cost = float(db.scalar(select(func.coalesce(func.sum(UsageEvent.cost_usd), 0.0)).where(
+            UsageEvent.agent_id == a.id, UsageEvent.created_at >= since)) or 0)
+        out.append({"slug": a.slug, "name": a.name, "objective": (a.objective or "")[:200], "status": a.status,
+                    "version": a.current_version, "kind": a.kind, "team": teams.get(a.team_id, ""), "why": why,
+                    "personal": bool(a.personal_owner_id), "schedules": len(sch),
+                    "next_run_at": iso(nxt) if nxt else None, "cost_30d_usd": round(cost, 4)})
+    return out
+
+
 def home(db, acc: Access) -> dict:
     """A página inicial do membro: decisões dele, tarefas pedidas por ele, os agentes dele trabalhando, custo do mês."""
     from ..models import EmployeeTask
@@ -534,7 +571,7 @@ def home(db, acc: Access) -> dict:
     pa = policy(db)["personal_agents"]
     from ..models import LlmConnection
     return {"llm_ready": bool(db.scalar(select(func.count()).select_from(LlmConnection))), "workspace": (db.get(Organization, tenancy.current_org()).name if db.get(Organization, tenancy.current_org()) else ""),
-            "to_decide": decide, "agents": mine,
+            "to_decide": decide, "agents": mine, "built_agents": built_agents(db, acc),
             "my_tasks": [{"id": t.id, "title": t.title, "status": t.status, "created_at": iso(t.created_at)} for t in tasks],
             "month_cost_usd": round(cost, 4), "personal_spent_usd": round(personal_spent(db, uid), 4),
             "personal_cap_usd": pa["monthly_budget_usd"], "personal_allowed": pa["enabled"],

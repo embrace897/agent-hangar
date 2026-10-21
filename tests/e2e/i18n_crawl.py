@@ -173,6 +173,11 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
                 pass
             pg.wait_for_load_state("networkidle")  # a tela terminou de carregar: sem corrida com a próxima
             pg.wait_for_timeout(600)
+            # a rota pega a exceção e mostra o cartão "Erro" (sem pageerror): uma página quebrada também é falha
+            broken = pg.evaluate("[...document.querySelectorAll('main .card > h2')].filter(h => ['Erro', 'Error']"
+                                 ".includes(h.textContent.trim())).map(h => h.parentElement.textContent.trim().slice(0, 200))")
+            if broken:
+                errors.extend(f"{path}: página com erro: {x}" for x in broken)
             bad = sorted(t for t in pg.evaluate(LEFTOVERS_JS)
                          if PT.search(t) and not ALLOW.match(t) and not is_data(t, values))
             if bad:

@@ -229,3 +229,59 @@ def test_portal_org_chart_is_mine_with_me_on_top(client, env):
     assert all(n["slug"] not in (chief, sub) for n in client.get("/api/org-chart", headers=env["h"]["req"], params={"mine": 1}).json()["nodes"])
     assert client.get("/api/org-chart", headers=ADMIN, params={"mine": 1}).json()["me"]["role"] == "CEO"
     assert "me" not in client.get("/api/org-chart", headers=env["h"]["mgr"]).json()  # o console segue com o da empresa
+
+
+def test_my_agents_also_lists_regular_agents_i_created_or_maintain(client, env, uniq):
+    """Meus agentes: além dos Digital employees, os agentes comuns que a pessoa criou ou cujo time ela mantém (quem
+    montava um agente pela IA dele não o encontrava no portal)."""
+    mk = lambda h, team: client.post("/api/agents", headers=h, json={  # noqa: E731
+        "name": uniq("Radar"), "objective": "boletim diário", "final_output": "e-mail", "team": team}).json()["slug"]
+    by_mgr = mk(env["h"]["mgr"], env["team"])
+    by_dev = mk(env["h"]["own"], env["team"])
+    other = client.post("/api/teams", headers=ADMIN, json={"name": uniq("Outro")}).json()["slug"]
+    elsewhere = mk(ADMIN, other)
+    employee = hire(client, env)
+    mgr = {a["slug"]: a for a in client.get("/api/me/workspace", headers=env["h"]["mgr"]).json()["built_agents"]}
+    assert {by_mgr, by_dev} <= set(mgr) and elsewhere not in mgr and employee not in mgr  # o Digital employee fica na outra lista
+    assert mgr[by_dev]["why"] == "maintainer" and mgr[by_dev]["team"] and mgr[by_dev]["version"] >= 1
+    dev = {a["slug"]: a for a in client.get("/api/me/workspace", headers=env["h"]["own"]).json()["built_agents"]}
+    assert by_dev in dev and dev[by_dev]["why"] == "creator" and by_mgr not in dev
+
+
+def test_created_by_is_the_person_not_the_name(client, env, uniq):
+    """Dois membros com o mesmo nome não veem os agentes um do outro, e trocar o nome não esconde os que a pessoa criou."""
+    other = client.post("/api/teams", headers=ADMIN, json={"name": uniq("Outro")}).json()["slug"]
+    a_email, a_user, a_pw, a_id = _member(client, other)
+    b_email, b_user, b_pw, b_id = _member(client, other)
+    for uid in (a_id, b_id):
+        client.patch(f"/api/users/{uid}", headers=ADMIN, json={"name": "Ana Souza"})
+    ca, cb = _browser(CHROME_WIN), _browser(FIREFOX_MAC)
+    assert _login(ca, a_user, a_pw).status_code == 200 and _login(cb, b_user, b_pw).status_code == 200
+    slug = ca.post("/api/agents", json={"name": uniq("Radar"), "objective": "o", "final_output": "f", "team": other}).json()["slug"]
+    mine = lambda c: {a["slug"]: a["why"] for a in c.get("/api/me/workspace").json()["built_agents"]}  # noqa: E731
+    assert mine(ca).get(slug) == "creator" and slug not in mine(cb)  # o mesmo nome, outra pessoa
+    client.patch(f"/api/users/{a_id}", headers=ADMIN, json={"name": "Ana S. Lima"})
+    assert mine(ca).get(slug) == "creator"  # trocou o nome e continua vendo
+
+
+def test_agent_made_by_my_ai_over_mcp_shows_up(client, env, uniq):
+    """O agente que a IA da pessoa criou pelo MCP aparece em Meus agentes: o novo pelo id, o antigo (gravado como
+    "<e-mail> (app:Claude)", antes do id existir) pelo e-mail."""
+    from app.models import AgentVersion
+
+    from .test_access import _mcp
+    other = client.post("/api/teams", headers=ADMIN, json={"name": uniq("Outro")}).json()["slug"]
+    email, user, pw, uid = _member(client, other)
+    c = _browser(CHROME_WIN)
+    assert _login(c, user, pw).status_code == 200
+    pat = {"Authorization": "Bearer " + c.post("/api/keys", json={"name": "ia", "scopes": ["user"]}).json()["key"]}
+    made = _mcp(client, pat, "register_agent", {"name": uniq("Radar"), "objective": "o", "final_output": "f", "team": other})
+    assert not made.get("isError"), made
+    slug = made["structuredContent"]["slug"] if "structuredContent" in made else __import__("json").loads(made["content"][0]["text"])["slug"]
+    with SessionLocal() as db:
+        v1 = db.query(AgentVersion).join(Agent, Agent.id == AgentVersion.agent_id).filter(Agent.slug == slug, AgentVersion.version == 1).one()
+        assert v1.created_user_id == uid  # o id chega pelo caminho do MCP
+        v1.created_user_id, v1.created_by = None, f"{email} (app:Claude)"  # como era antes do id existir
+        db.commit()
+    built = {a["slug"]: a["why"] for a in c.get("/api/me/workspace").json()["built_agents"]}
+    assert built.get(slug) == "creator"

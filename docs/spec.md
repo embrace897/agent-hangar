@@ -17,8 +17,6 @@ harness:                  # harness agents only
   id: claude-code         # claude-code | codex | hermes | deepseek-harness
   connection: anthropic   # protocol must match the harness; empty = mock
   model: ""               # empty = the connection's default model
-  billing: api            # api | subscription | subscription_then_api (claude-code, codex; see harnesses.md)
-  subscription_model: ""  # the model by the CLI's own name on a subscription; empty = the plan's default
   stage: {connection: ...}
 remote:                   # remote agents only: the agent runs elsewhere and speaks AG-UI (see clients.md)
   url: https://agents.example.com/support/agui

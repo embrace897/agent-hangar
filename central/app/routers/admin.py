@@ -379,12 +379,11 @@ def run_job(slug: str, body: JobBody, request: Request, db=Depends(db_dep)):
     """wait=true (padrão): bloqueia até terminar. wait=false: devolve o job em fila na hora — acompanhe por
     GET /api/jobs/{id} ou pelo stream GET /api/jobs/{id}/events."""
     _agent(request, db, slug, "consume" if body.env == "prod" else "edit")
-    uid = acc(request, db).p.user_id  # a pessoa que disparou: só ela pode pagar com a própria assinatura
     if body.wait:
         return guard(lambda: svc.job_dict(svc.run_harness_job(db, slug, body.task, body.env, body.timeout_s,
-                                                              actor(request), "admin-ui", user_id=uid)))
+                                                              actor(request), "admin-ui")))
     return guard(lambda: svc.job_dict(svc.submit_job(db, slug, body.task, body.env, body.timeout_s,
-                                                     actor(request), "admin-ui", user_id=uid)))
+                                                     actor(request), "admin-ui")))
 
 
 def _job(request: Request, db, job_id: int) -> Job:

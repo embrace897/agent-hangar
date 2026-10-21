@@ -35,6 +35,11 @@ def current() -> int | None:
     return _org.get()
 
 
+def current_user() -> int | None:
+    """A pessoa da requisição (sessão, token pessoal, OAuth do MCP); None fora de uma requisição ou com o token do admin."""
+    return _me.get()
+
+
 def current_org() -> int:
     """A empresa do contexto, ou a principal (1) fora de uma requisição."""
     return _org.get() or 1

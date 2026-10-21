@@ -5,6 +5,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.47.0] — 2026-10-20
+
+### Added
+- **Portal → *Meus agentes*: a new section, *Agents I created or maintain*.**
+  - **Before:** the page only listed Digital employees, so an agent someone built (in the portal or by asking their AI over MCP) didn't show up there.
+  - **What it lists:** your regular agents (not Digital employees): your personal ones, those of the teams you maintain, and those whose first version you created.
+  - **Each one shows:** its status, version, team, next scheduled run and cost over 30 days, with a link to the agent's page.
+  - **Matched by person, not by name:** each agent version now records who created it by user id (migration 0050). Two members with the same name don't see each other's agents, and a name change doesn't hide them. Versions saved earlier fall back to the person's name, e-mail or username, including the `<e-mail> (app:Claude)` that agents created through MCP were recorded with.
+
+### Removed
+- **Harness jobs on a personal Claude or ChatGPT subscription** (added in 0.46.0). Every harness agent (Claude Code, Codex, Hermes, DeepSeek Harness) runs on its LLM API connection again, as before 0.46.0.
+  - **Removed with it:** the subscription screens (*My sign-ins* and *Members → How they sign in*), the `/api/me/subscriptions` and `/api/admin/subscriptions` endpoints, `harness.billing` and `harness.subscription_model` in the spec, and the subscription mode of the harness entrypoint.
+  - **Migration 0049 cleans up what 0.46.0 left behind:** it deletes stored subscriptions and the jobs' billing columns, and removes `billing` and `subscription_model` from saved specs and the `subscriptions` key from each company's access policy.
+
+### Fixed
+- **Portal (`/app`) pages broke on functions from scripts it didn't load.** This also broke the MCP sign-in for Claude and other clients, since their consent screen lives in the portal.
+  - **What happened:**
+    - *Home*, *Decisions* and the OAuth consent screen showed "skillsHome is not defined";
+    - an agent's page showed "modelRecCard is not defined";
+    - the new-agent form and the Skill Studio could fail the same way.
+  - **Cause:** these screens use functions from `llm.js`, `connectors.js` and `skills.js`, which only the console (`/ui`) loaded.
+  - **Fix:** the portal now loads them too, and the route table resolves those pages only when they open.
+  - **Test:** the English-interface crawl now also fails any page that ends on the error card, in the portal and in the console. That check found the agent-page case.
+- **Docker MCP catalog: a server turned on later only started when the gateway restarted.**
+  - **Symptom:** the Gmail connector showed as on, but the gateway exposed none of its tools.
+  - **Cause:** the hangar rewrote the gateway's files by swapping in a new file. The gateway's `--watch` kept following the old file, so only the first change after a restart was noticed.
+  - **Fix:** the files are now rewritten in place.
+- **Docker MCP catalog: *Reconnect* on a `docker:<name>` connector marked it as an error** ("Request URL is missing an 'http://' or 'https://' protocol"). These connectors have no address of their own, since the gateway serves them. *Reconnect* now asks the gateway whether that server is up and exposes its tools.
+
 ## [0.46.0] — 2026-10-20
 
 ### Added

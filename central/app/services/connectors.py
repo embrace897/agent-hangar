@@ -735,7 +735,28 @@ def remove(db: Session, acc: Access, name: str):
 
 
 # ------------------------------------------------------------------ status (de tempos em tempos)
+def _check_gateway(db: Session, m: McpServer) -> dict:
+    """Conector do catálogo Docker (`docker:<nome>`): não tem endereço próprio, quem serve é o gateway. Está ok se o
+    gateway responde e expõe as ferramentas dele (prefixo `<nome>__`)."""
+    from .. import config
+    name = m.name[len("docker:"):]
+    res = probe(config.MCP_GATEWAY_URL, "http", {}, float(m.timeout_s or 60))
+    m.checked_at = now()
+    if not res["ok"]:
+        m.status, m.status_detail = res["status"], f"gateway do catálogo Docker: {res['error']}"
+    elif not any(t["name"].startswith(f"{name}__") for t in res["tools"]):
+        res = {"ok": False, "status": "error", "error": f"o gateway está no ar, mas '{name}' não subiu: confira os "
+                                                       "segredos e a configuração (docker compose logs mcp-gateway-core)"}
+        m.status, m.status_detail = "error", res["error"]
+    else:
+        m.status, m.status_detail = "ok", ""
+    db.commit()
+    return res
+
+
 def check(db: Session, m: McpServer, first: bool = False) -> dict:
+    if not m.upstream_url and m.name.startswith("docker:"):
+        return _check_gateway(db, m)
     if m.stdio:  # servidor local: o container precisa estar de pé (sobe de novo se caiu)
         try:
             ok, why = ensure_runner(db, m)
