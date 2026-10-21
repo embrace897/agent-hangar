@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/e249551f-f706-4936-be19-4251564139c1
 
 </details>
 
-> **Status: alpha (v0.45).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
+> **Status: alpha (v0.46).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
 > sua rede até ler [docs/security.md](docs/security.md).
 
 ## Por que o Agent Hangar
@@ -108,7 +108,7 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Governança e custo | SSO, SCIM, papéis, regra de e-mail corporativo, auditoria, DLP e retenção, orçamento por empresa, time, agente ou projeto com corte, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
-| Maturidade | Alpha (v0.45), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
+| Maturidade | Alpha (v0.46), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
 
 ## Exemplo: do pedido no Claude ao agente funcionando
 
@@ -375,6 +375,7 @@ numa máquina limpa, e as APIs ainda podem mudar. As versões recentes:
 
 | Versão | O que trouxe |
 |---|---|
+| v0.46 | Jobs de harness pela assinatura Claude ou ChatGPT da própria pessoa, nos jobs que ela dispara, com limite do plano tratado e a economia de API à vista |
 | v0.45 | Digital employees: um modelo de outro fornecedor revisa a ação antes de ela rodar, e o que ele não aprova vai para uma pessoa |
 | v0.44 | Digital employees: laços fecham em silêncio quando não acham nada, e os achados chegam a uma pessoa com um resumo curto |
 | v0.43 | Agentes remotos: o DLP da empresa no caminho até o agente, e os tokens e o custo que ele informa na medição e no orçamento |

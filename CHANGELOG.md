@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.46.0] — 2026-10-20
+
+### Added
+- **Harness jobs on a personal subscription.** Someone who already pays for Claude (Pro/Max) or ChatGPT (Plus/Pro) can run the coding jobs they start on it, instead of on the company's API connection. Only `claude-code` and `codex` are supported. See [docs/harnesses.md](docs/harnesses.md#paying-with-a-personal-subscription).
+  - **Only that person's jobs use it.** Jobs from the portal, from `hangar jobs run` and from the person's AI tool through the platform's MCP. Digital employees, schedules, tests and app keys always use the API.
+  - **Off by default.** An admin turns it on in *Members → How they sign in*, with a limit on concurrent jobs per subscription. Consumer subscriptions are individual licenses; check the vendors' terms first.
+  - **Connecting:** each person connects their own under *My sign-ins*. Claude takes the token from `claude setup-token`; Codex takes the `auth.json` from `codex login`. The credential is encrypted and never returned. API keys are refused, since they belong in an LLM connection.
+  - **Who pays:** set per agent with `harness.billing`: `api` (default), `subscription`, or `subscription_then_api`. On a subscription, no API key reaches the container. `harness.subscription_model` picks the model by the CLI's name.
+  - **Plan limits:** the CLI's "usage limit reached" pauses the subscription until the reset time. Then the job fails, or runs again on the API, and the job records why. A credential the vendor rejects is flagged. Codex's refreshed sign-in is saved for the next job.
+  - **Metering:** a job paid by a subscription costs US$ 0. It also records what it would have cost on the API, shown on the job, to the person and to the admin.
+- **Harness entrypoint test with fake CLIs** (`harness/tests/subscription_check.sh`, in CI). It checks that no API key reaches the CLI on a subscription, that a plan limit comes back as `limited` with the reset time, and that Codex reads `auth.json` and its refreshed sign-in is returned.
+
 ## [0.45.1] — 2026-10-20
 
 ### Added

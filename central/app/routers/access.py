@@ -429,6 +429,7 @@ __all__ = ["router", "principal"]
 class PolicyBody(BaseModel):
     login: dict | None = None
     personal_agents: dict | None = None
+    subscriptions: dict | None = None  # {enabled, max_concurrent}: assinaturas pessoais nos jobs de harness
 
 
 class CodeBody(BaseModel):
@@ -508,6 +509,43 @@ def my_session_revoke(session_id: int, request: Request, db=Depends(db_dep)):
 @router.post("/me/sessions/revoke-others")
 def my_sessions_revoke_others(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.workspace.revoke_mine(db, acc(request, db), others_than=_current_hash(request)))
+
+
+class SubscriptionBody(BaseModel):
+    credential: str
+    label: str = ""
+
+
+@router.get("/me/subscriptions")
+def my_subscriptions(request: Request, db=Depends(db_dep)):
+    """A assinatura Claude/ChatGPT de quem chama, para os jobs de harness que essa pessoa dispara."""
+    from ..services import subscriptions
+    return guard(lambda: subscriptions.mine(db, acc(request, db)))
+
+
+@router.put("/me/subscriptions/{vendor}")
+def my_subscription_connect(vendor: str, body: SubscriptionBody, request: Request, db=Depends(db_dep)):
+    from ..services import subscriptions
+    return guard(lambda: subscriptions.connect(db, acc(request, db), vendor, body.credential, body.label))
+
+
+@router.delete("/me/subscriptions/{vendor}")
+def my_subscription_remove(vendor: str, request: Request, db=Depends(db_dep)):
+    from ..services import subscriptions
+    return guard(lambda: subscriptions.remove(db, acc(request, db), vendor))
+
+
+@router.get("/admin/subscriptions")
+def admin_subscriptions(request: Request, db=Depends(db_dep)):
+    """As assinaturas conectadas pelos membros (sem a credencial): quem, qual plano, uso e economia em 30 dias."""
+    from ..services import subscriptions
+    return guard(lambda: subscriptions.admin_list(db, acc(request, db)))
+
+
+@router.delete("/admin/subscriptions/{sid}")
+def admin_subscription_revoke(sid: int, request: Request, db=Depends(db_dep)):
+    from ..services import subscriptions
+    return guard(lambda: subscriptions.admin_revoke(db, acc(request, db), sid))
 
 
 @router.post("/me/activation-code")

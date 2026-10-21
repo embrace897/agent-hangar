@@ -1,0 +1,12 @@
+#!/bin/sh
+# Claude Code de mentira (harness/tests/subscription_check.sh): confere que, pela assinatura, só o token OAuth chega
+# ao CLI (nada de chave de API nem de base_url) e responde como o `claude -p --output-format json`.
+if [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -n "${ANTHROPIC_BASE_URL:-}" ] || [ -n "${LLM_API_KEY:-}" ]; then
+  echo "VAZOU: chave de API no modo assinatura" >&2; exit 3
+fi
+[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || { echo "sem CLAUDE_CODE_OAUTH_TOKEN" >&2; exit 4; }
+if [ "${FAKE_MODE:-}" = "limit" ]; then
+  echo '{"type":"result","is_error":true,"result":"Claude AI usage limit reached|1900000000"}'
+  exit 1
+fi
+echo '{"type":"result","is_error":false,"result":"feito pela assinatura","total_cost_usd":0.5,"usage":{"input_tokens":100,"output_tokens":50}}'

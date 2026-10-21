@@ -242,10 +242,12 @@ async function myAccessPage() {
       <td>${when(s.last_seen_at)}</td><td class="mute small" data-noi18n>${esc(s.ip || '')}</td>
       <td>${s.current ? '' : `<button class="ghost small ma-rev" data-id="${s.id}">Encerrar</button>`}</td></tr>`).join('')}</table></div>
   <div class="card mt" id="ma-push"></div>
+  <div class="card mt" id="ma-subs"></div>
   <div class="card mt"><h2>Entrar em outro navegador</h2>
     <div class="mute small">Gere um código e digite no outro navegador em <b>Entrar → Entrar com código de ativação</b>. Vale uma vez, por 24 horas.</div>
     <div class="row mt"><button id="ma-code">Gerar código</button><span id="ma-code-out"></span></div></div>`;
   pushCard($('#ma-push')).catch(() => {});
+  subscriptionsCard($('#ma-subs')).catch(() => { $('#ma-subs').remove(); });
   main.querySelectorAll('.ma-rev').forEach(b => b.onclick = e => act(e.target, () => api(`/me/sessions/${b.dataset.id}`, { method: 'DELETE' }).then(route), 'Acesso encerrado'));
   const o = $('#ma-others');
   if (o) o.onclick = e => confirm(window.t('Sair de todos os outros navegadores e aparelhos?')) && act(e.target, () => api('/me/sessions/revoke-others', { method: 'POST' }).then(route), 'Os outros acessos foram encerrados');
@@ -255,6 +257,38 @@ async function myAccessPage() {
     $('#ma-code-out').innerHTML = `<span class="code-big" data-noi18n>${esc(r.code)}</span> <span class="mute small"><span>válido até</span> ${new Date(r.expires_at).toLocaleString(window.LOCALE)}</span>
       <div class="small mt">Ou abra o link no outro navegador: ${copyable(link)}</div>`;
   });
+}
+
+/* ---------- minha assinatura (Claude / ChatGPT) nos jobs de harness que eu disparo ---------- */
+const SUB_HOWTO = {
+  anthropic: 'No seu computador, rode <code class="inline">claude setup-token</code>, entre com a sua conta Claude (Pro/Max) e cole aqui o token que ele mostra.',
+  openai: 'No seu computador, rode <code class="inline">codex login</code>, entre com a sua conta ChatGPT (Plus/Pro) e cole aqui o conteúdo do arquivo <code class="inline">~/.codex/auth.json</code>.',
+};
+const SUB_STATUS = { active: ['ativa', 'ok'], limited: ['no limite do plano', 'warn'], invalid: ['recusada: conecte de novo', 'bad'] };
+
+async function subscriptionsCard(el) {
+  const r = await api('/me/subscriptions');
+  const have = Object.fromEntries(r.subscriptions.map(s => [s.vendor, s]));
+  el.innerHTML = `<h2>Minha assinatura nos jobs de código</h2>
+    <div class="mute small">Os agentes com harness (Claude Code, Codex) podem rodar os jobs que <b>você</b> dispara pela sua assinatura, em vez da API da empresa. Ela só é usada nos seus jobs: Digital employees, agendamentos, testes e chaves de app usam sempre a API. A credencial fica criptografada e não aparece de novo.</div>
+    ${r.policy.enabled ? Object.entries(r.vendors).map(([v, plan]) => {
+      const s = have[v], st = s ? (SUB_STATUS[s.status] || [s.status, '']) : null;
+      return `<div class="card mt"><div class="row between"><b data-noi18n>${esc(plan)}</b>${s ? `<span class="pill ${st[1]}">${esc(window.t(st[0]))}</span>` : '<span class="pill">não conectada</span>'}</div>
+        ${s ? `<div class="small mt"><span>final</span> <code class="inline" data-noi18n>…${esc(s.hint)}</code>${s.label ? ` · <span data-noi18n>${esc(s.label)}</span>` : ''}
+          · ${s.jobs_30d} <span>job(s) em 30 dias</span> · <span>economia estimada</span> US$ ${Number(s.saved_usd_30d || 0).toFixed(2)}
+          ${s.limited_until && s.status === 'limited' ? `<div class="mute small"><span>volta em</span> ${new Date(s.limited_until).toLocaleString(window.LOCALE)}</div>` : ''}
+          ${s.last_error && s.status !== 'active' ? `<div class="mute small" data-noi18n>${esc(s.last_error)}</div>` : ''}</div>` : ''}
+        <div class="mute small mt">${SUB_HOWTO[v]}</div>
+        <textarea class="sb-cred mt" data-v="${v}" rows="${v === 'openai' ? 4 : 1}" placeholder="${v === 'openai' ? '{&quot;tokens&quot;: …}' : 'sk-ant-oat…'}" autocomplete="off" data-noi18n></textarea>
+        <div class="row mt"><button class="sb-save" data-v="${v}">${s ? 'Trocar' : 'Conectar'}</button>${s ? `<button class="ghost danger sb-del" data-v="${v}">Remover</button>` : ''}</div></div>`;
+    }).join('') : '<div class="mute mt">A empresa ainda não liberou o uso de assinaturas pessoais. O admin liga em Membros → Como entram.</div>'}`;
+  el.querySelectorAll('.sb-save').forEach(b => b.onclick = e => act(e.target, async () => {
+    const cred = el.querySelector(`.sb-cred[data-v="${b.dataset.v}"]`).value.trim();
+    await api(`/me/subscriptions/${b.dataset.v}`, { method: 'PUT', body: { credential: cred } });
+    await subscriptionsCard(el);
+  }, 'Assinatura conectada'));
+  el.querySelectorAll('.sb-del').forEach(b => b.onclick = e => confirm(window.t('Remover a assinatura? Os seus jobs voltam a usar a API.')) &&
+    act(e.target, async () => { await api(`/me/subscriptions/${b.dataset.v}`, { method: 'DELETE' }); await subscriptionsCard(el); }, 'Assinatura removida'));
 }
 
 /* ---------- console (admin): Membros — pessoas e convites, acessos abertos, como entram ---------- */
@@ -324,7 +358,7 @@ async function membersAccess(el) {
 
 async function membersPolicy(el) {
   const pol = await api('/workspace/policy');
-  const L = pol.login, P = pol.personal_agents, admin = ME.is_admin;
+  const L = pol.login, P = pol.personal_agents, S = pol.subscriptions || { enabled: false, max_concurrent: 2 }, admin = ME.is_admin;
   el.innerHTML = `<div class="grid g2">
     <div class="card"><h2>Como os membros entram</h2>
       ${[['password', 'Usuário e senha'], ['sso', 'SSO (Entra ID, Google, GitHub…)'], ['activation', 'Código de ativação (chave virtual)'], ['key', 'Token pessoal na tela de login']].map(([k, v]) =>
@@ -338,12 +372,26 @@ async function membersPolicy(el) {
         <label>Orçamento por membro / mês (US$, 0 = sem teto)<input id="wp-budget" type="number" min="0" step="1" value="${P.monthly_budget_usd}" ${admin ? '' : 'disabled'}></label>
         <label>Conexões de LLM liberadas (vírgula; vazio = todas)<input id="wp-llm" value="${esc((P.llm_connections || []).join(', '))}" ${admin ? '' : 'disabled'} data-noi18n></label></div>
     </div></div>
+  <div class="card mt"><h2>Assinaturas pessoais nos jobs de código</h2>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="wp-subs" ${S.enabled ? 'checked' : ''} ${admin ? '' : 'disabled'} style="width:auto">Membros podem rodar os próprios jobs de harness (Claude Code, Codex) pela assinatura Claude ou ChatGPT deles</label>
+    <label class="mt" style="max-width:260px">Jobs ao mesmo tempo por assinatura<input id="wp-subs-max" type="number" min="1" max="10" value="${S.max_concurrent}" ${admin ? '' : 'disabled'}></label>
+    <div class="mute small mt">As assinaturas de consumidor são licenças individuais: a plataforma só usa a de uma pessoa nos jobs que ela mesma dispara (nunca em Digital employees, agendamentos, testes ou chaves de app). Confira os termos de uso da Anthropic e da OpenAI antes de ligar. No limite do plano, o job falha ou volta para a API, conforme o agente (harness.billing).</div>
+    <div id="wp-subs-list" class="mt"></div></div>
   ${admin ? '<button id="wp-save" class="mt">Salvar política</button>' : ''}`;
+  if (admin) api('/admin/subscriptions').then(rows => {
+    $('#wp-subs-list').innerHTML = rows.length ? `<table><tr><th>Membro</th><th>Plano</th><th>Situação</th><th>Jobs (30 dias)</th><th>Economia estimada</th><th></th></tr>
+      ${rows.map(s => `<tr><td data-noi18n>${esc(s.user)}</td><td data-noi18n>${esc(s.plan)}</td><td>${esc(window.t((SUB_STATUS[s.status] || [s.status])[0]))}</td>
+        <td>${s.jobs_30d}</td><td>US$ ${Number(s.saved_usd_30d || 0).toFixed(2)}</td><td><button class="ghost small danger wp-subs-rev" data-id="${s.id}">Revogar</button></td></tr>`).join('')}</table>`
+      : '<div class="mute small">Nenhum membro conectou uma assinatura.</div>';
+    el.querySelectorAll('.wp-subs-rev').forEach(b => b.onclick = e => confirm(window.t('Revogar esta assinatura? Os jobs do membro voltam a usar a API.')) &&
+      act(e.target, () => api(`/admin/subscriptions/${b.dataset.id}`, { method: 'DELETE' }).then(route), 'Assinatura revogada'));
+  }).catch(() => {});
   const save = $('#wp-save');
   if (save) save.onclick = e => act(e.target, () => api('/workspace/policy', { method: 'PUT', body: {
     login: Object.fromEntries([...el.querySelectorAll('.wp-login')].map(c => [c.value, c.checked])),
     personal_agents: { enabled: $('#wp-pa').checked, who: $('#wp-who').value, max_per_member: Number($('#wp-max').value || 0),
-      monthly_budget_usd: Number($('#wp-budget').value || 0), llm_connections: $('#wp-llm').value.split(',').map(x => x.trim()).filter(Boolean) } } }).then(route), 'Política salva');
+      monthly_budget_usd: Number($('#wp-budget').value || 0), llm_connections: $('#wp-llm').value.split(',').map(x => x.trim()).filter(Boolean) },
+    subscriptions: { enabled: $('#wp-subs').checked, max_concurrent: Number($('#wp-subs-max').value || 2) } } }).then(route), 'Política salva');
 }
 
 /* ---------- cadastro da empresa: primeiro acesso do admin e Configurações → Empresa ---------- */

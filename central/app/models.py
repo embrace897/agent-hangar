@@ -311,6 +311,32 @@ class Job(OrgScoped, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # réplica da central que roda o worker do job (várias réplicas: cada uma só recupera os próprios órfãos)
     worker: Mapped[str] = mapped_column(String(100), default="")
+    # quem paga: api (a conexão) | subscription (a assinatura de quem disparou; services/subscriptions.py)
+    billing: Mapped[str] = mapped_column(String(20), default="api")
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # quem disparou (pessoa)
+    subscription_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    api_equiv_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)  # pela assinatura: quanto custaria na API
+    billing_note: Mapped[str] = mapped_column(Text, default="")  # por que não usou a assinatura, limite, troca para API
+
+
+class UserSubscription(OrgScoped, Base):
+    """A assinatura Claude (Pro/Max) ou ChatGPT (Plus/Pro) de UMA pessoa, para os jobs de harness que ELA dispara.
+    A credencial (token do `claude setup-token` ou o auth.json do `codex login`) fica criptografada e nunca volta pela
+    API. Não serve Digital employees, agendamentos, testes nem chaves de app: esses atendem outras pessoas."""
+    __tablename__ = "user_subscriptions"
+    __table_args__ = (UniqueConstraint("org_id", "user_id", "vendor", name="uq_user_subscription"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    vendor: Mapped[str] = mapped_column(String(20))  # anthropic (claude-code) | openai (codex)
+    credential: Mapped[str] = mapped_column(Text, default="")  # "enc:v1:…"
+    hint: Mapped[str] = mapped_column(String(20), default="")
+    label: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | limited | invalid
+    limited_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class ApiKey(OrgScoped, Base):

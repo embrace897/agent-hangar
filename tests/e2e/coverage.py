@@ -292,6 +292,29 @@ def scim():
     check("SCIM: sem a chave, recusado", httpx.get(f"{URL}/scim/v2/Users", headers={"Authorization": "Bearer x"}).status_code == 401)
 
 
+def subscriptions(dev):
+    """Assinatura pessoal nos jobs de harness: a empresa liga, a pessoa conecta, ninguém vê a credencial."""
+    token = "sk-ant-oat01-" + uuid.uuid4().hex + uuid.uuid4().hex
+    off = dev.put("/api/me/subscriptions/anthropic", json={"credential": token})
+    check("assinatura: desligada por padrão na empresa", off.status_code == 403, off.text[:200])
+    pol = ok(admin.get("/api/workspace/policy"))["subscriptions"]
+    ok(admin.put("/api/workspace/policy", json={"subscriptions": {"enabled": True, "max_concurrent": 2}}))
+    try:
+        api_key = dev.put("/api/me/subscriptions/anthropic", json={"credential": "sk-ant-api03-" + "z" * 40})
+        check("assinatura: chave de API recusada (é conexão de LLM)", api_key.status_code == 400, api_key.text[:200])
+        r = ok(dev.put("/api/me/subscriptions/anthropic", json={"credential": token, "label": "Max"}))
+        check("assinatura: conectada, só com o final", r["hint"] == token[-4:] and r["status"] == "active", r)
+        mine = ok(dev.get("/api/me/subscriptions"))
+        rows = ok(admin.get("/api/admin/subscriptions"))
+        check("assinatura: a credencial não volta pela API", token not in str(mine) and token not in str(rows))
+        mine_row = next((x for x in rows if x["id"] == r["id"]), None)
+        check("assinatura: o admin vê quem conectou", mine_row is not None and mine_row["plan"].startswith("Claude"), rows[:2])
+        ok(admin.delete(f"/api/admin/subscriptions/{r['id']}"))
+        check("assinatura: o admin revoga", ok(dev.get("/api/me/subscriptions"))["subscriptions"] == [])
+    finally:
+        ok(admin.put("/api/workspace/policy", json={"subscriptions": pol}))
+
+
 def offboard(dev, mgr, slug):
     r = ok(mgr.post(f"/api/employees/{slug}/status", json={"to": "offboarded", "reason": f"e2e {RUN}"}))
     check("desligamento: status", r["status"] == "offboarded", r.get("status"))
@@ -321,6 +344,7 @@ def main():
     section(access_and_versions, dev, mgr, team, out)
     section(templates_and_composer, dev, team)
     section(scim)
+    section(subscriptions, dev)
     section(offboard, dev, mgr, slug)
     print(f"\n{passed} checks ok, {len(failures)} falha(s)", flush=True)
     for f in failures:

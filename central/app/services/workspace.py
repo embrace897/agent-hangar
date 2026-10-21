@@ -48,8 +48,10 @@ CODE_HOURS = 24
 def policy(db, org_id: int | None = None) -> dict:
     o = db.get(Organization, org_id or tenancy.current_org())
     raw = (o.access_policy if o else None) or {}
+    from .subscriptions import DEFAULT as SUBS
     return {"login": {**DEFAULT["login"], **(raw.get("login") or {})},
-            "personal_agents": {**DEFAULT["personal_agents"], **(raw.get("personal_agents") or {})}}
+            "personal_agents": {**DEFAULT["personal_agents"], **(raw.get("personal_agents") or {})},
+            "subscriptions": {**SUBS, **(raw.get("subscriptions") or {})}}
 
 
 def set_policy(db, acc: Access, changes: dict) -> dict:
@@ -73,6 +75,9 @@ def set_policy(db, acc: Access, changes: dict) -> dict:
             pa[k] = max(0.0, float(v))
         elif k == "llm_connections":
             pa[k] = sorted({str(x).strip() for x in v or [] if str(x).strip()})
+    if changes.get("subscriptions") is not None:  # assinaturas pessoais nos jobs de harness (services/subscriptions.py)
+        from .subscriptions import set_policy as subs_policy
+        subs_policy(db, changes["subscriptions"] or {})
     o = db.get(Organization, tenancy.current_org())
     o.access_policy = {**(o.access_policy or {}), "login": login, "personal_agents": pa}  # o resto (e-mail…) fica
     db.commit()

@@ -55,6 +55,12 @@ class HarnessSpec(_Strict):
     model: str = Field(default="", description="modelo da conexão (vazio = o padrão da conexão)")
     stage: HarnessEnvOverride | None = None
     prod: HarnessEnvOverride | None = None
+    billing: Literal["api", "subscription", "subscription_then_api"] = Field(
+        default="api", description="quem paga o job: a conexão de API (api); a assinatura Claude/ChatGPT de quem "
+        "disparou o job (subscription); ou a assinatura e, sem ela ou no limite, a API (subscription_then_api). Só "
+        "claude-code e codex. Jobs de Digital employees, agendamentos, testes e chaves de app usam sempre a API")
+    subscription_model: str = Field(default="", description="modelo no nome do CLI quando roda pela assinatura "
+                                    "(vazio = o padrão do plano)")
 
 
 class RemoteEnvOverride(_Strict):

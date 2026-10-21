@@ -20,11 +20,14 @@ def db_dep():
 
 
 class JobCallback(BaseModel):
-    status: str  # passed | failed
+    status: str  # passed | failed | limited (a assinatura bateu no limite do plano)
     result: str = ""
     diff: str = ""
     logs: str = ""
     usage: dict | None = None
+    subscription_limit: dict | None = None  # {resets_at (epoch), message}
+    codex_auth: str | None = None  # o auth.json que o Codex renovou durante o job
+    auth_rejected: str | None = None  # o fornecedor recusou a credencial da assinatura
 
 
 @router.post("/jobs/{job_id}/callback")
@@ -35,9 +38,11 @@ def job_callback(job_id: int, body: JobCallback, request: Request, db=Depends(db
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     if not job.token or not hmac.compare_digest(token, job.token):
         raise HTTPException(401, "token de job inválido")
-    if body.status not in ("passed", "failed"):
-        raise HTTPException(400, "status deve ser 'passed' ou 'failed'")
-    svc.complete_job(db, job, body.status, body.result, body.diff, body.logs, body.usage)
+    if body.status not in ("passed", "failed", "limited"):
+        raise HTTPException(400, "status deve ser 'passed', 'failed' ou 'limited'")
+    svc.complete_job(db, job, body.status, body.result, body.diff, body.logs, body.usage,
+                     {"subscription_limit": body.subscription_limit, "codex_auth": body.codex_auth,
+                      "auth_rejected": body.auth_rejected})
     return {"ok": True}
 
 

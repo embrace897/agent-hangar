@@ -40,18 +40,25 @@ def job_dict(j: Job) -> dict:
     return {"id": j.id, "version": j.version, "env": j.env, "harness_id": j.harness_id,
             "connection": j.connection, "task": j.task, "status": j.status, "result": j.result,
             "diff": j.diff, "logs": j.logs, "duration_ms": j.duration_ms, "tokens_in": j.tokens_in,
-            "tokens_out": j.tokens_out, "cost_usd": j.cost_usd,
+            "tokens_out": j.tokens_out, "cost_usd": j.cost_usd, "billing": j.billing or "api",
+            "api_equiv_cost_usd": j.api_equiv_cost_usd or 0, "billing_note": j.billing_note or "",
             "created_at": iso(j.created_at), "finished_at": iso(j.finished_at)}
 
 
 def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, actor="admin",
-               channel="api", exec_override: dict | None = None) -> Job:
-    """Valida, grava como `queued` e devolve na hora. A execução roda num worker."""
+               channel="api", exec_override: dict | None = None, user_id: int | None = None) -> Job:
+    """Valida, grava como `queued` e devolve na hora. A execução roda num worker. user_id: a pessoa que disparou o
+    job (portal, CLI, a IA dela pelo MCP); só com ela o job pode rodar pela assinatura dela (services/subscriptions.py)."""
     if not task or not task.strip():
         raise PlatformError("task vazia")
     a = get_agent(db, slug)
     spec = resolve_spec(db, a, env)
     hconf = resolve_harness(db, spec, env)
+    from . import subscriptions as subs
+    billing = (spec.get("harness") or {}).get("billing") or "api"
+    sub, note = subs.choose(db, hconf["harness_id"], billing, user_id)
+    if sub is None and billing == "subscription":
+        raise PlatformError(f"este agente roda só pela assinatura de quem dispara o job: {note}")
     timeout_s = min(max(int(timeout_s or config.JOB_TIMEOUT_S), 10), config.JOB_MAX_TIMEOUT_S)
     skills_txt = "\n\n".join(f"## {s['name']}\n{s['content']}" for s in spec.get("skills_resolved", []))
     system_prompt = "\n\n".join(x for x in (spec.get("instructions", ""), skills_txt) if x)
@@ -64,12 +71,14 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
 
     job = Job(agent_id=a.id, version=a.current_version, env=env, harness_id=hconf["harness_id"],
               connection=hconf["connection"], task=task, status="queued", token=secrets.token_hex(24),
-              result="", diff="", logs="", container_name="", duration_ms=0, worker=config.REPLICA_ID)
+              result="", diff="", logs="", container_name="", duration_ms=0, worker=config.REPLICA_ID,
+              billing="subscription" if sub else "api", user_id=user_id, subscription_id=sub.id if sub else None,
+              billing_note=note)
     db.add(job)
     db.commit()
     job.container_name = deploy.job_container_name(job.id)
     db.commit()
-    image = config.harness_image("base" if hconf["mock"] else hconf["harness_id"])
+    image = config.harness_image("base" if hconf["mock"] and not sub else hconf["harness_id"])
     environment = {
         "HARNESS_ID": hconf["harness_id"],  # sem LLM_API_KEY o entrypoint roda em modo mock
         "TASK": task, "SYSTEM_PROMPT": system_prompt, "MCP_CONFIG_JSON": json.dumps(mcp_servers),
@@ -79,8 +88,14 @@ def submit_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, a
         "JOB_CALLBACK_URL": f"{config.INTERNAL_BASE_URL}/internal/jobs/{job.id}/callback",
         "JOB_TOKEN": job.token,
     }
+    fallback = None
+    if sub is not None:  # pela assinatura: sem a chave da conexão; se o agente aceita, a API fica de reserva
+        if billing == "subscription_then_api" and not hconf["mock"]:
+            fallback = (image, dict(environment))
+        environment.update(subs.environment(sub), LLM_API_KEY="", LLM_BASE_URL="",
+                           LLM_MODEL=(spec.get("harness") or {}).get("subscription_model") or "")
     _callback[job.id], _done[job.id] = threading.Event(), threading.Event()
-    _meta[job.id] = {"prices": hconf["prices"], "channel": channel,
+    _meta[job.id] = {"prices": hconf["prices"], "channel": channel, "fallback": fallback,
                      "tags": {"version": a.current_version, "model": hconf["model"],
                               "effort": (exec_override or {}).get("level", "") if exec_override is not None
                               else ((prof or {}).get("effort_level") or "")}}
@@ -105,6 +120,28 @@ def _execute(job_id: int, image: str, environment: dict, timeout_s: int, actor: 
         _wait_status(db, job_id, _callback[job_id], timeout_s, ("running",))
         db.expire_all()
         job = db.get(Job, job_id)
+        if job.status == "limited":  # a assinatura bateu no limite do plano
+            fb = (_meta.get(job_id) or {}).get("fallback")
+            if not fb:
+                job.status = "failed"
+                job.result = ("A assinatura atingiu o limite do plano; o job não rodou. Tente depois do reset, ou deixe o "
+                              "agente usar a API quando isso acontecer (harness.billing = subscription_then_api).\n\n"
+                              + (job.result or ""))[:20000]
+                return _finish(db, job, t0, actor)
+            deploy.remove_job_container(job.container_name)
+            job.status, job.billing, job.subscription_id = "running", "api", None
+            job.billing_note = "; ".join(x for x in (job.billing_note, "limite da assinatura: refeito pela API") if x)
+            job.result, job.diff, job.tokens_in, job.tokens_out, job.cost_usd, job.finished_at = "", "", 0, 0, 0.0, None
+            db.commit()
+            _callback[job_id] = threading.Event()
+            try:
+                deploy.run_job_container(job.container_name, fb[0], fb[1], config.JOB_MEM_LIMIT, config.JOB_CPUS)
+            except Exception as e:
+                job.status, job.result = "error", f"Falha ao iniciar o container do job (API): {e}"
+                return _finish(db, job, t0, actor)
+            _wait_status(db, job_id, _callback[job_id], timeout_s, ("running",))
+            db.expire_all()
+            job = db.get(Job, job_id)
         if job.status == "running":
             job.status, job.result = "timeout", f"Job excedeu o limite de {timeout_s}s."
         return _finish(db, job, t0, actor)
@@ -130,8 +167,11 @@ def _finish(db: Session, job: Job, t0: float, actor: str):
     prices = meta.get("prices") or (None, None)
     # preço do catálogo tem prioridade; sem ele, vale a estimativa que o próprio harness reportou (já gravada pelo
     # callback em cost_usd, em qualquer réplica)
-    job.cost_usd = (cost_usd(job.tokens_in, job.tokens_out, prices) if any(prices)
-                    else round(float(job.cost_usd or 0), 6))
+    cost = (cost_usd(job.tokens_in, job.tokens_out, prices) if any(prices) else round(float(job.cost_usd or 0), 6))
+    if job.billing == "subscription":  # pago pela assinatura: US$ 0 na medição, e quanto custaria pela API
+        job.api_equiv_cost_usd, job.cost_usd = cost, 0.0
+    else:
+        job.cost_usd = cost
     if not job.logs and job.container_name:
         job.logs = deploy.job_logs(job.container_name, 200)
     job.finished_at = job.finished_at or now()
@@ -149,11 +189,28 @@ def _finish(db: Session, job: Job, t0: float, actor: str):
         ev.set()
 
 
-def complete_job(db: Session, job: Job, status: str, result: str, diff: str, logs: str, usage: dict | None):
-    """Chamado pelo callback do container (já autenticado pelo token do job)."""
+def complete_job(db: Session, job: Job, status: str, result: str, diff: str, logs: str, usage: dict | None,
+                 extra: dict | None = None):
+    """Chamado pelo callback do container (já autenticado pelo token do job). extra (jobs pela assinatura):
+    subscription_limit {resets_at, message}, codex_auth (o auth.json renovado), auth_rejected (a credencial caiu)."""
     if job.status not in ("running", "queued"):
         return
-    usage = usage or {}
+    usage, extra = usage or {}, extra or {}
+    if job.subscription_id:
+        from ..models import UserSubscription
+        from . import subscriptions as subs
+        sub = db.get(UserSubscription, job.subscription_id)
+        if sub is not None:
+            if status == "limited" or extra.get("subscription_limit"):
+                status = "limited"
+                subs.limited(db, sub, extra.get("subscription_limit") or {})
+            if extra.get("auth_rejected"):
+                subs.rejected(db, sub, str(extra["auth_rejected"]))
+            if extra.get("codex_auth"):
+                subs.refreshed(db, sub, str(extra["codex_auth"]))
+            result, logs, diff = subs.scrub(result, sub), subs.scrub(logs, sub), subs.scrub(diff, sub)
+    elif status == "limited":
+        status = "failed"
     job.status, job.result, job.diff, job.logs = status, result[:20000], diff[:50000], logs[:20000]
     job.tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
     job.tokens_out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
@@ -195,9 +252,9 @@ def wait_job(job_id: int, timeout_s: float) -> Job:
 
 
 def run_harness_job(db: Session, slug: str, task: str, env="stage", timeout_s=None, actor="admin",
-                    channel="api", exec_override: dict | None = None) -> Job:
+                    channel="api", exec_override: dict | None = None, user_id: int | None = None) -> Job:
     """Versão síncrona (MCP, testes, gateway): submete e espera terminar."""
-    job = submit_job(db, slug, task, env, timeout_s, actor, channel, exec_override)
+    job = submit_job(db, slug, task, env, timeout_s, actor, channel, exec_override, user_id)
     limit = min(max(int(timeout_s or config.JOB_TIMEOUT_S), 10), config.JOB_MAX_TIMEOUT_S) + 30
     return wait_job(job.id, limit)
 

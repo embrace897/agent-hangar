@@ -625,8 +625,10 @@ function tests(t, a) {
 }
 
 function jobCard(j) {
-  return `<div class="card mt"><div class="row between"><div>${pill(j.status)} <b>#${j.id}</b> · v${j.version} · ${esc(j.env)} · ${esc(j.harness_id)}${j.connection ? ' · ' + esc(j.connection) : ' · mock'}</div>
-    <span class="mute small">${when(j.created_at)} · ${fmt(j.duration_ms)}ms · ${fmt((j.tokens_in || 0) + (j.tokens_out || 0))} tokens · ${usd(j.cost_usd)}</span></div>
+  const sub = j.billing === 'subscription';
+  return `<div class="card mt"><div class="row between"><div>${pill(j.status)} <b>#${j.id}</b> · v${j.version} · ${esc(j.env)} · ${esc(j.harness_id)}${sub ? ' · <span class="pill info">pela assinatura</span>' : j.connection ? ' · ' + esc(j.connection) : ' · mock'}</div>
+    <span class="mute small">${when(j.created_at)} · ${fmt(j.duration_ms)}ms · ${fmt((j.tokens_in || 0) + (j.tokens_out || 0))} tokens · ${usd(j.cost_usd)}${sub && j.api_equiv_cost_usd ? ` <span>(na API:</span> ${usd(j.api_equiv_cost_usd)})` : ''}</span></div>
+    ${j.billing_note ? `<div class="mute small mt">${esc(window.t('Quem pagou'))}: <span data-noi18n>${esc(j.billing_note)}</span></div>` : ''}
     <div class="mt"><b>Tarefa:</b> <span data-noi18n>${esc(j.task)}</span></div>
     <div class="mt"><b>Resultado:</b><pre>${esc(j.result) || '(vazio)'}</pre></div>
     ${j.diff ? `<details class="mt"><summary>Diff</summary><pre>${esc(j.diff)}</pre></details>` : ''}

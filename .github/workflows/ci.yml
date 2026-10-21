@@ -178,6 +178,8 @@ jobs:
           python tests/e2e/copilotkit.py browser /tmp/ck.env || { docker logs --tail 80 e2e-copilotkit; exit 1; }
       - name: Harness job with a workspace owned by another user (Kubernetes emptyDir)
         run: sh harness/tests/workspace_owner_check.sh agent-hangar/harness-base:latest
+      - name: Harness job on a personal subscription (Claude Code, Codex; fake CLIs)
+        run: sh harness/tests/subscription_check.sh agent-hangar/harness-base:latest
       - name: Logs on failure
         if: failure()
         run: docker compose logs --tail 200 central
