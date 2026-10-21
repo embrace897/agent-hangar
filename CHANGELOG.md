@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.45.1] — 2026-10-20
+
+### Added
+- **End-to-end test of what the other end-to-end tests didn't exercise** (`tests/e2e/coverage.py`, in CI). It doesn't stop at the first failure: it runs everything and lists what failed. It covers:
+  - a Digital employee's lifecycle: pause, stop all and offboard;
+  - routines, the inbound webhook with deduplication, and shadow mode with the manager's review and the career plan;
+  - the company floor demanding two different people;
+  - a budget hard stop at the gateway, released by the manager;
+  - governance: retention, a data subject request erased by another admin, and an information barrier with break-glass;
+  - announcements, the live view, the manager dashboard, Prometheus metrics and the business calendar;
+  - an access request to another team's agent, spec versions with rollback and ship, templates and the composer, and SCIM.
+
+### Changed
+- **Release testing** now also checks the CLI and operations against a fresh install: `whoami`, `agents ls`, `templates ls`, `doctor`, `test-drive`, `demo` (it asks for `--manager` when there is no admin account), `backup` and `restore`, then `doctor` again.
+- **The Helm chart is installed on k3s** at release time, and the smoke test and `hangar test-drive` run against the cluster with the Kubernetes driver.
+
 ## [0.45.0] — 2026-10-19
 
 ### Added

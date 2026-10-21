@@ -161,6 +161,8 @@ jobs:
         run: |
           pip install ag-ui-protocol
           HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) ECHO_URL=http://e2e-echo:8080 python tests/e2e/features.py
+      - name: Lifecycle, budgets, governance, access, versions, SCIM and dashboards (E2E)
+        run: HANGAR_TOKEN=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2-) ECHO_URL=http://e2e-echo:8080 python tests/e2e/coverage.py
       - name: Interface in English (no Portuguese left on screen)
         run: |
           pip install httpx playwright==1.63.0
