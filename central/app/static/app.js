@@ -918,7 +918,19 @@ async function auditPage() {
 const PORTAL_ROUTES = ['', 'my-issues', 'issues', 'mine', 'org', 'decisions', 'inbox', 'connect-ai', 'access', 'employees',
   'tasks', 'keys', 'search', 'agents', 'projects', 'oauth', 'vscode', 'login', 'work', 'runs'];
 const PORTAL_DETAIL_ONLY = ['agents', 'projects', 'employees', 'tasks', 'runs'];  // no portal, só a página de um (aberta por um link)
+let ROUTE_SEQ = 0;  // cada navegação ganha um número: a que foi substituída não escreve erro por cima da nova
+let ROUTE_BUSY = Promise.resolve();
 async function route() {
+  // uma página por vez no #main: a anterior que terminasse depois apagava os elementos da nova no meio do render
+  const seq = ++ROUTE_SEQ, prev = ROUTE_BUSY;
+  let done;
+  ROUTE_BUSY = new Promise(r => { done = r; });
+  try {
+    await Promise.race([prev, new Promise(r => setTimeout(r, 2000))]);
+    if (seq === ROUTE_SEQ) await renderRoute(seq);
+  } finally { done(); }
+}
+async function renderRoute(seq) {
   const [, r = '', a, b] = location.hash.split('?')[0].split('/');  // #/catalog?remote_ok=x -> catalog
   if (r === 'login' || !ME) return;
   if (r === 'hub') { hubGo(a); return; }  // item do menu: abre a última aba usada do assunto
@@ -1006,7 +1018,7 @@ async function route() {
       approvals: approvalsPage, employees: employeesPage, decisions: decisionsPage, plugins: pluginsPage, workforce: workforcePage, teams: teamsPage, sso: ssoPage, vscode: vscodeAuthorizePage, oauth: oauthConsentPage }[r] || dashboard)();
     hubBar(r, a);  // as abas do assunto (Trabalho: filas, playbooks, reuniões…)
     uxAfterRoute(r);  // recentes, favorito, avisos e primeiros passos
-  } catch (e) { if (!(e instanceof AuthError)) main.innerHTML = `<div class="card"><h2>Erro</h2>${esc(e.message)}</div>`; }
+  } catch (e) { if (!(e instanceof AuthError) && seq === ROUTE_SEQ) main.innerHTML = `<div class="card"><h2>Erro</h2>${esc(e.message)}</div>`; }
 }
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/login')) showLogin(); else route(); });
 boot();

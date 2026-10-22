@@ -116,7 +116,8 @@ def chart(db: Session, acc: Access, team: str | None = None, mine: bool = False)
     for n in nodes:  # o chefe fora do meu organograma: o agente fica direto abaixo de mim
         if n["reports_to"] not in slugs:
             n["reports_to"] = None
-    return {"nodes": nodes, "me": {"name": (u.name or u.email) if u else acc.p.name, "email": u.email if u else "",
+    from .workspace import built_agents  # os agentes comuns dela também ficam abaixo dela (não são arrastáveis)
+    return {"nodes": nodes, "agents": built_agents(db, acc) if acc.p.user_id else [], "me": {"name": (u.name or u.email) if u else acc.p.name, "email": u.email if u else "",
                                    "avatar_url": u.avatar_url if u else "", "role": "CEO" if acc.p.is_admin else "Staff"}}
 
 

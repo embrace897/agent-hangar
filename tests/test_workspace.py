@@ -246,6 +246,9 @@ def test_my_agents_also_lists_regular_agents_i_created_or_maintain(client, env, 
     assert mgr[by_dev]["why"] == "maintainer" and mgr[by_dev]["team"] and mgr[by_dev]["version"] >= 1
     dev = {a["slug"]: a for a in client.get("/api/me/workspace", headers=env["h"]["own"]).json()["built_agents"]}
     assert by_dev in dev and dev[by_dev]["why"] == "creator" and by_mgr not in dev
+    # e o organograma do portal mostra os mesmos agentes abaixo da pessoa
+    chart = client.get("/api/org-chart", headers=env["h"]["own"], params={"mine": 1}).json()
+    assert {a["slug"] for a in chart["agents"]} == set(dev)
 
 
 def test_created_by_is_the_person_not_the_name(client, env, uniq):

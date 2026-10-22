@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.48.2] — 2026-10-22
+
+### Fixed
+- **Console: "Cannot set properties of null" on People and teams** (and other pages) when you navigated while the previous page was still loading. The old page finished late and wiped the new one mid-render. Navigations now render one at a time: a new one waits up to 2 s for the previous to finish, and one that was already replaced is skipped.
+- **Portal org chart showed none of the person's regular agents.** Only Digital employees appeared, so an agent you built (in the portal or through your AI) wasn't there. Your personal agents, the ones you created and the ones of teams you maintain (the same list as My agents) now appear below you. These are links, and you can't drag them.
+
 ## [0.48.1] — 2026-10-22
 
 ### Fixed

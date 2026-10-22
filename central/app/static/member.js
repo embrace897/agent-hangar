@@ -129,11 +129,17 @@ async function orgVisualPage() {
       ${workingChip(n.working_on)}</div>
     ${(kids[n.slug] || []).length ? `<ul>${kids[n.slug].map(node).join('')}</ul>` : ''}</li>`;
   const me = d.me;
-  const top = (kids[''] || []).map(node).join('');
+  const agents = d.agents || [];  // os agentes comuns da pessoa: aparecem abaixo dela, sem arrastar
+  const agentNode = a => `<li><div class="oc-card ${a.personal ? 'personal' : ''}" tabindex="0">
+      <div class="row between"><a href="#/agents/${esc(a.slug)}"><b data-noi18n>${esc(a.name)}</b></a><span class="pill ${(AGENT_STATUS[a.status] || [])[1] || ''}">${esc(window.t((AGENT_STATUS[a.status] || [a.status])[0]))}</span></div>
+      <div class="mute small" data-noi18n>${esc(a.objective || '')}</div>
+      <div class="oc-chips"><span class="chip">${window.t('agente')}</span>${a.team ? `<span class="chip" data-noi18n>${esc(a.team)}</span>` : ''}${a.personal ? '<span class="pill info">pessoal</span>' : ''}</div></div></li>`;
+  const top = (kids[''] || []).map(node).join('') + agents.map(agentNode).join('');
+  const total = d.nodes.length + agents.length;
   const meCard = me ? `<li><div class="oc-card oc-person" id="oc-root" tabindex="0">
       <div class="row" style="gap:10px">${me.avatar_url ? `<img class="oc-person-av" src="${esc(me.avatar_url)}" alt="" referrerpolicy="no-referrer">` : `<span class="oc-person-av">${esc((me.name || '?')[0].toUpperCase())}</span>`}
         <div><b data-noi18n>${esc(me.name)}</b><div class="mute small"><span class="pill ${me.role === 'CEO' ? 'warn' : 'info'}">${esc(me.role)}</span> <span>você</span></div></div></div>
-      <div class="mute small">${d.nodes.length} <span>agente(s) seu(s)</span> · <span>solte um agente aqui para ele reportar direto a você</span></div></div>
+      <div class="mute small">${total} <span>agente(s) seu(s)</span> · <span>solte um agente aqui para ele reportar direto a você</span></div></div>
     ${top ? `<ul>${top}</ul>` : ''}</li>` : '';
   main.innerHTML = `<div class="row between"><div><h1>Organograma</h1><div class="sub">${USER_MODE
       ? 'Você no topo e, abaixo, os seus agentes (os pessoais e os que você gerencia). Arraste um agente para cima de outro para mudar a quem ele reporta.'
@@ -141,7 +147,7 @@ async function orgVisualPage() {
     ${USER_MODE ? '' : `<div class="row"><select id="oc-team" style="width:auto"><option value="">${window.t('Todos os times')}</option>${teams.map(t => `<option ${t === team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       <a href="#/org?view=tree${team ? `&team=${encodeURIComponent(team)}` : ''}" class="small">Lista</a></div>`}</div>
   ${me ? `<div class="card oc-wrap"><ul class="oc-tree">${meCard}</ul></div>
-    ${d.nodes.length ? '' : '<div class="card empty mt"><div class="mute">Você ainda não tem agentes. Crie um em <a href="#/mine">Meus agentes</a> (ou peça para a sua IA): ele aparece aqui, abaixo de você.</div></div>'}`
+    ${total ? '' : '<div class="card empty mt"><div class="mute">Você ainda não tem agentes. Crie um em <a href="#/mine">Meus agentes</a> (ou peça para a sua IA): ele aparece aqui, abaixo de você.</div></div>'}`
     : d.nodes.length ? `<div class="oc-root" id="oc-root">Solte aqui para não reportar a ninguém</div>
     <div class="card oc-wrap"><ul class="oc-tree">${top}</ul></div>`
     : '<div class="card empty"><div class="mute">Nenhum Digital employee visível.</div></div>'}`;

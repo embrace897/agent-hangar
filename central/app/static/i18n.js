@@ -2474,6 +2474,7 @@
     '% aprovadas sem edição': '% approved without edits',
     '% das execuções com achado': '% of runs with findings', '% dos achados que viraram ação': '% of findings that led to an action',
     'Execuções sem achados': 'Runs with no findings', 'achado': 'finding', 'sem achados': 'no findings',
+    'agente': 'agent',
     'Ver o conector': 'See the connector',
     'Salvar alterações': 'Save changes',
     'Já está ativo. Preencha abaixo só para trocar a senha ou a configuração salvas (campo vazio mantém o valor atual).': 'It\'s already on. Fill in below only to change the saved password or settings (an empty field keeps the current value).',
