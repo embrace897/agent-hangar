@@ -137,6 +137,16 @@ class ExecutionSpec(_Strict):
         default=None, description="false: uma ferramenta por vez (padrão: as de servidores diferentes rodam juntas)")
     prompt_cache: bool | None = Field(default=None, description="false: não usa cache do prompt (padrão: usa)")
     max_turns: int | None = Field(default=None, ge=1, le=500, description="harness: rodadas máximas do CLI")
+    compact: bool | None = Field(
+        default=None, description="false: não compacta a conversa (padrão: quando passa do orçamento de contexto, os "
+                                  "resultados grandes de ferramenta saem da conversa e o histórico antigo vira um resumo)")
+    context_budget: int | None = Field(
+        default=None, ge=2000, le=2_000_000,
+        description="tokens de contexto antes de compactar (padrão: 60% da janela do modelo, ou 48 mil sem a lista)")
+    light_model: str | None = Field(
+        default=None, max_length=200,
+        description="modelo por resposta: 'auto' (o mais barato da mesma conexão com ferramentas) ou o id de um modelo "
+                    "da conexão. Pedidos simples vão a ele; os difíceis, e quando ele falha, ao modelo do agente")
 
 
 class JudgeSpec(_Strict):

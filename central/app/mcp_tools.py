@@ -335,8 +335,9 @@ async def recommend_models(ctx: Context, role: str = "general", caps: list[str] 
 @mcp.tool()
 async def get_execution_profile(ctx: Context, slug: str, env: str = "prod") -> dict:
     """Como o agente usa o modelo em cada chamada: esforço de raciocínio (automático pelo papel ou definido), limite de
-    saída, ferramentas em paralelo, cache do prompt e rodadas do harness — o que a spec pede, o que vai de fato ao
-    provedor ou ao CLI do harness (sends) e os avisos (ex.: modelo sem modo de raciocínio ou sem ferramentas). Para
+    saída, ferramentas em paralelo, cache do prompt, rodadas do harness, compactação do contexto (orçamento em tokens)
+    e o modelo por resposta (light_model e os candidatos mais baratos da conexão) — o que a spec pede, o que vai de fato
+    ao provedor ou ao CLI do harness (sends) e os avisos (ex.: modelo sem modo de raciocínio ou sem ferramentas). Para
     mudar, design_agent(execution={...}); null num campo volta ao automático."""
     def go(db, acc):
         a = _agent(db, acc, slug, "view_spec")
@@ -430,16 +431,24 @@ async def apply_template(ctx: Context, template_id: str, connection: str = "", h
 
 
 @mcp.tool()
+async def list_avatars() -> list:
+    """Os avatares (personagens) que um agente pode ter: id, rótulo e os papéis de cada um. Ao criar um agente
+    (register_agent, compose_agent, build_multi_agent), passe em `avatar` o id que combina com o papel dele."""
+    return svc.avatars.catalog()
+
+
+@mcp.tool()
 async def register_agent(ctx: Context, name: str, objective: str, final_output: str, owner: str = "",
-                         team: str = "", visibility: str = "") -> dict:
+                         team: str = "", visibility: str = "", avatar: str = "") -> dict:
     """Registra um agente: nome, objetivo e saída final. `team`: slug do time (opcional se você só é developer
     de um). `visibility`: private (só o time) | org (catálogo da empresa, uso sob pedido — padrão) | open
-    (qualquer um da empresa usa). Devolve o slug para as próximas chamadas."""
+    (qualquer um da empresa usa). `avatar`: o personagem do agente, escolhido pelo papel dele (ids em list_avatars;
+    vazio = a central escolhe pelo nome e objetivo). Devolve o slug para as próximas chamadas."""
     def go(db, acc):
         t = acc.team_for_new_agent(team or None)
         a = svc.create_agent(db, name, objective, final_output, owner=owner, actor=acc.p.name, team_id=t.id,
-                             visibility=visibility or None)
-        return {"slug": a.slug, "team": t.slug, "visibility": a.visibility, "status": a.status,
+                             visibility=visibility or None, avatar=avatar or None)
+        return {"slug": a.slug, "team": t.slug, "visibility": a.visibility, "status": a.status, "avatar": a.avatar,
                 "version": a.current_version, "next": "design_agent para definir instruções, skills, MCPs, tools e testes"}
     return await _run(ctx, go)
 
@@ -456,7 +465,9 @@ async def design_agent(ctx: Context, slug: str, instructions: str | None = None,
     remove=["harness"] para voltar a ser agente de chat, ou remove=["llm"] antes de virar harness).
     guide: Markdown do guia do agente para quem vai usar (O que é, O que faz, O que não faz, Como usar com 2 a 4 pedidos de exemplo, Limites). É gravado para a versão criada por esta chamada (o mesmo que set_agent_guide).
     execution: perfil de execução {effort: auto|minimal|low|medium|high|max, max_output_tokens, parallel_tools,
-    prompt_cache, max_turns (harness)}. Em geral deixe ausente (automático pelo papel); confira com
+    prompt_cache, max_turns (harness), compact (false desliga a compactação do contexto), context_budget (tokens antes de
+    compactar), light_model ("auto" ou o id de um modelo mais barato da mesma conexão: pedidos simples vão a ele, os
+    difíceis e as falhas ao modelo do agente)}. Em geral deixe ausente (automático); confira com
     get_execution_profile."""
     patch = {k: v for k, v in (("instructions", instructions), ("skills", skills), ("mcps", mcps),
                                ("tools", tools), ("sub_agents", sub_agents), ("tests", tests),
@@ -496,17 +507,20 @@ async def compose_agent(ctx: Context, name: str, objective: str, final_output: s
                         tools: list | None = None, tests: list[dict] | None = None,
                         copy_tests_from: list[str] | None = None, copy_base_tests: bool = True,
                         include_skill_tests: bool = True, llm: dict | None = None, memory: dict | None = None,
-                        team: str = "", visibility: str = "", plan_id: str = "", guide: str = "") -> dict:
+                        team: str = "", visibility: str = "", plan_id: str = "", guide: str = "",
+                        avatar: str = "") -> dict:
     """Cria um agente NOVO montado a partir de peças do catálogo — os agentes de origem NUNCA são alterados.
     specialists: slugs (em produção) que o novo chama como estão (sub_agents, via A2A; outro time exige acesso).
     base: slug cujas instruções, skills, ferramentas e testes (versão em produção) são COPIADOS para o novo.
     skills: nomes do catálogo. new_skills: [{name, description, content, examples?, test?}] — skills novas do time.
     instructions/tests: SÓ o que é novo (o resto vem das peças). copy_tests_from: copia os testes de outros agentes.
-    Os testes das skills entram automaticamente. guide: Markdown do guia do agente para quem vai usar (O que é, O que faz, O que não faz, Como usar com 2 a 4 pedidos de exemplo, Limites). É gravado para a versão criada por esta chamada. Depois: ship_agent(slug)."""
+    Os testes das skills entram automaticamente. guide: Markdown do guia do agente para quem vai usar (O que é, O que faz, O que não faz, Como usar com 2 a 4 pedidos de exemplo, Limites). É gravado para a versão criada por esta chamada. avatar: o personagem pelo papel do agente (ids em
+    list_avatars; vazio = pelo nome e objetivo). Depois: ship_agent(slug)."""
     def go(db, acc):
         out = svc.composer.compose(
             db, acc, name, objective, final_output, instructions, team, visibility, specialists, base, skills,
-            new_skills, mcps, tools, tests, copy_tests_from, copy_base_tests, include_skill_tests, llm, memory, plan_id)
+            new_skills, mcps, tools, tests, copy_tests_from, copy_base_tests, include_skill_tests, llm, memory, plan_id,
+            avatar=avatar or None)
         a = svc.get_agent(db, out["slug"])
         if guide:
             svc.guides.set_text(db, acc, a.slug, guide, acc.p.name, version=a.current_version)
@@ -832,9 +846,10 @@ async def rollback_agent(ctx: Context, slug: str, version: int) -> dict:
 @mcp.tool()
 async def build_multi_agent(ctx: Context, name: str, objective: str, final_output: str,
                             orchestrator_instructions: str, members: list, connection: str = "", model: str = "",
-                            owner: str = "", team: str = "", guide: str = "") -> dict:
+                            owner: str = "", team: str = "", guide: str = "", avatar: str = "") -> dict:
     """Cria um multiagente de uma vez (todos no mesmo time). members: [{name, objective, final_output,
-    instructions, skills?, mcps?, tools?, tests?, guide?}]. Cada membro vira um agente; o orquestrador delega a eles via
+    instructions, skills?, mcps?, tools?, tests?, guide?, avatar?}]. avatar e members[].avatar: ids de list_avatars
+    pelo papel de cada um (vazio = pelo nome e objetivo). Cada membro vira um agente; o orquestrador delega a eles via
     A2A. `connection`/`model` valem para todos. guide (do orquestrador) e members[].guide: o guia de cada agente em
     Markdown (O que é, O que faz, O que não faz, Como usar, Limites). Depois use ship_agent no orquestrador."""
     def go(db, acc):
@@ -843,7 +858,7 @@ async def build_multi_agent(ctx: Context, name: str, objective: str, final_outpu
         slugs = []
         for m in members:
             a = svc.create_agent(db, m["name"], m["objective"], m["final_output"], owner=owner, actor=acc.p.name,
-                                 team_id=t.id)
+                                 team_id=t.id, avatar=m.get("avatar") or None)
             patch = {k: m[k] for k in ("instructions", "skills", "mcps", "tools", "tests") if k in m}
             if llm_patch:
                 patch["llm"] = llm_patch
@@ -851,7 +866,8 @@ async def build_multi_agent(ctx: Context, name: str, objective: str, final_outpu
             if m.get("guide"):
                 svc.guides.set_text(db, acc, a.slug, m["guide"], acc.p.name, version=a.current_version)
             slugs.append(a.slug)
-        o = svc.create_agent(db, name, objective, final_output, owner=owner, actor=acc.p.name, team_id=t.id)
+        o = svc.create_agent(db, name, objective, final_output, owner=owner, actor=acc.p.name, team_id=t.id,
+                             avatar=avatar or None)
         patch = {"instructions": orchestrator_instructions, "sub_agents": slugs}
         if llm_patch:
             patch["llm"] = llm_patch

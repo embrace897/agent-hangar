@@ -8,7 +8,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 APP_NAME = "Agent Hangar"
-VERSION = "0.48.2"
+VERSION = "0.49.0"
 
 DATABASE_URL = _env("DATABASE_URL", "sqlite:///./hangar.db")
 

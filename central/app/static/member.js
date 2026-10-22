@@ -67,7 +67,7 @@ const AGENT_STATUS = { draft: ['rascunho', ''], tested: ['testado', 'info'], tes
 
 function builtRow(a) {  // um agente comum em Meus agentes: abre a página do agente (não a de Digital employee)
   const st = AGENT_STATUS[a.status] || [a.status, ''];
-  return `<div class="card agent-card mt"><div class="row between"><div><a href="#/agents/${esc(a.slug)}"><b data-noi18n>${esc(a.name)}</b></a>
+  return `<div class="card agent-card mt"><div class="row between"><div><a href="#/agents/${esc(a.slug)}">${agentAvatar(a)} <b data-noi18n>${esc(a.name)}</b></a>
       <span class="pill ${st[1]}">${esc(window.t(st[0]))}</span> <span class="pill">${esc(window.t(BUILT_WHY[a.why] || a.why))}</span>
       <div class="mute small one-line" data-noi18n style="max-width:620px">${esc(a.objective)}</div></div>
       <a href="#/agents/${esc(a.slug)}"><button class="ghost small">Abrir</button></a></div>
@@ -81,7 +81,7 @@ async function myAgentsPage() {
   const card = Object.fromEntries((chart.nodes || []).map(n => [n.slug, n]));
   const list = (w.agents || []).map(a => ({ ...a, ...(card[a.slug] || {}), personal: a.personal, name: a.name }));
   const personal = list.filter(a => a.personal), team = list.filter(a => !a.personal);
-  const row = a => `<div class="card agent-card"><div class="row between"><div><a href="#/employees/${esc(a.slug)}"><b data-noi18n>${esc(a.name)}</b></a>
+  const row = a => `<div class="card agent-card"><div class="row between"><div><a href="#/employees/${esc(a.slug)}">${agentAvatar(a)} <b data-noi18n>${esc(a.name)}</b></a>
       ${a.personal ? '<span class="pill info">pessoal</span>' : ''} ${empPill(a.status)}
       <div class="mute small" data-noi18n>${esc(a.title || '')}</div></div>
       <div class="row">${a.personal ? `<button class="ghost small mine-promote" data-slug="${esc(a.slug)}">Promover para o time</button>` : ''}
@@ -121,7 +121,7 @@ async function orgVisualPage() {
   d.nodes.forEach(n => { const p = n.reports_to && by[n.reports_to] ? n.reports_to : ''; (kids[p] = kids[p] || []).push(n); });
   const teams = [...new Set(d.nodes.map(n => n.team).filter(Boolean))];
   const node = n => `<li><div class="oc-card ${n.personal ? 'personal' : ''} st-${esc(n.status)}" draggable="true" data-slug="${esc(n.slug)}" tabindex="0">
-      <div class="row between"><a href="#/employees/${esc(n.slug)}"><b data-noi18n>${esc(n.name)}</b></a>${empPill(n.status)}</div>
+      <div class="row between"><a href="#/employees/${esc(n.slug)}">${agentAvatar(n)} <b data-noi18n>${esc(n.name)}</b></a>${empPill(n.status)}</div>
       <div class="mute small" data-noi18n>${esc(n.title || '')}</div>
       <div class="oc-chips">${modelChip(n)}${harnessChip(n.harness)}<span class="chip">${esc(LEVEL_LABEL[n.level] || n.level)}</span>${n.personal ? '<span class="pill info">pessoal</span>' : ''}</div>
       ${(n.specialists || []).length ? `<div class="oc-spec small">${n.specialists.map(s => `<span title="${esc(s.harness || '')}">${icon('bot')}<span data-noi18n>${esc(s.name)}</span></span>`).join('')}</div>` : ''}
@@ -131,7 +131,7 @@ async function orgVisualPage() {
   const me = d.me;
   const agents = d.agents || [];  // os agentes comuns da pessoa: aparecem abaixo dela, sem arrastar
   const agentNode = a => `<li><div class="oc-card ${a.personal ? 'personal' : ''}" tabindex="0">
-      <div class="row between"><a href="#/agents/${esc(a.slug)}"><b data-noi18n>${esc(a.name)}</b></a><span class="pill ${(AGENT_STATUS[a.status] || [])[1] || ''}">${esc(window.t((AGENT_STATUS[a.status] || [a.status])[0]))}</span></div>
+      <div class="row between"><a href="#/agents/${esc(a.slug)}">${agentAvatar(a)} <b data-noi18n>${esc(a.name)}</b></a><span class="pill ${(AGENT_STATUS[a.status] || [])[1] || ''}">${esc(window.t((AGENT_STATUS[a.status] || [a.status])[0]))}</span></div>
       <div class="mute small" data-noi18n>${esc(a.objective || '')}</div>
       <div class="oc-chips"><span class="chip">${window.t('agente')}</span>${a.team ? `<span class="chip" data-noi18n>${esc(a.team)}</span>` : ''}${a.personal ? '<span class="pill info">pessoal</span>' : ''}</div></div></li>`;
   const top = (kids[''] || []).map(node).join('') + agents.map(agentNode).join('');

@@ -38,7 +38,8 @@ def record_usage(db: Session, agent_id: int, env: str, channel: str, protocol: s
         tokens_out=int(tokens_out if tokens_out is not None else u.get("completion_tokens", 0) or 0),
         cost_usd=float(cost if cost is not None else u.get("cost_usd", 0) or 0),
         latency_ms=latency_ms, ok=ok, user_id=user_id, version=tags.get("version"),
-        model=str(tags.get("model") or "")[:200], effort=str(tags.get("effort") or "")[:12])
+        # modelo por resposta: o runtime diz qual modelo atendeu (o leve ou o do agente)
+        model=str(u.get("model_used") or tags.get("model") or "")[:200], effort=str(tags.get("effort") or "")[:12])
     db.add(ev)
     db.commit()
     a = db.get(Agent, agent_id)

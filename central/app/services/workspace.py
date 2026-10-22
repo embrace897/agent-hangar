@@ -34,6 +34,7 @@ from ..models import (
     UserSession,
     now,
 )
+from . import avatars
 from .access import RANK, Access, Forbidden
 from .common import PlatformError, audit, iso
 
@@ -542,7 +543,8 @@ def built_agents(db, acc: Access) -> list[dict]:
         out.append({"slug": a.slug, "name": a.name, "objective": (a.objective or "")[:200], "status": a.status,
                     "version": a.current_version, "kind": a.kind, "team": teams.get(a.team_id, ""), "why": why,
                     "personal": bool(a.personal_owner_id), "schedules": len(sch),
-                    "next_run_at": iso(nxt) if nxt else None, "cost_30d_usd": round(cost, 4)})
+                    "next_run_at": iso(nxt) if nxt else None, "cost_30d_usd": round(cost, 4),
+                    "avatar_url": avatars.url(avatars.of(a))})
     return out
 
 

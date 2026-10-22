@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.49.0] — 2026-10-22
+
+### Added
+- **Long context: chat agents compact the conversation instead of overflowing it.** When a conversation goes over the agent's context budget (60% of the model's window by default, or `execution.context_budget`), large tool results leave the conversation and the agent reads them back with `hangar_read_result`. If it still doesn't fit, the old history becomes a summary in the system prompt and the last messages stay whole. On by default; `execution.compact: false` turns it off. See [docs/execution.md](docs/execution.md#long-context).
+- **Model per response.** With `execution.light_model` (`auto`, or a model id on the same connection), short and simple requests go to a cheaper model. Attachments, long requests or conversations, analysis, code and planning, Digital employee tasks and coding agents go to the agent's model. That model also takes over when the light one fails, returns nothing, writes a broken tool call or keeps calling tools. Each call is billed at its own model's price, and the usage event records the model that answered. `auto` picks the best-rated model that costs at most 40% of the agent's model. Set both on the agent's page (Execution) or through MCP. See [docs/execution.md](docs/execution.md#model-per-response).
+- **Agent avatars.** Every agent has a character: 58 of them, from journalist and data scientist to firefighter and astronaut. Your AI picks one that fits the agent's role when it builds the agent through MCP (`avatar` on `register_agent`, `compose_agent` and `build_multi_agent`; `list_avatars` lists them). If it doesn't pick, the hangar chooses one from the name and goal. The owner swaps it on the agent's page: click the avatar. It shows in the agent list, on the agent's page, in My agents and in the org chart. Agents created before this get the one for their role. API: `GET /api/avatars`, `PUT /api/agents/{slug}/avatar`.
+
 ## [0.48.2] — 2026-10-22
 
 ### Fixed

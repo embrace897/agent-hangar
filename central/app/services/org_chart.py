@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Agent, Employee, Team, User
+from . import avatars
 from .access import Access
 from .common import PlatformError, audit
 
@@ -150,4 +151,5 @@ def card(db: Session, acc: Access, e: Employee, a: Agent, people: dict) -> dict:
     return {"model": model or config.DEFAULT_MODEL, "connection": llm.get("connection") or "",
             "harness": ((spec.get("harness") or {}).get("id") or "hangar"), "specialists": specialists,
             "personal": bool(a.personal_owner_id), "owner": people.get(a.personal_owner_id, "") if a.personal_owner_id else "",
-            "can_manage": manage, "working_on": {"id": running.id, "title": running.title} if running else None}
+            "can_manage": manage, "working_on": {"id": running.id, "title": running.title} if running else None,
+            "avatar_url": avatars.url(avatars.of(a))}

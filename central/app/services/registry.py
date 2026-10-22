@@ -16,6 +16,7 @@ from ..models import (
     UsageEvent,
 )
 from ..tenancy import current_org, unscoped
+from . import avatars
 from .common import PlatformError, audit, find_agent, get_agent, slugify, spec_of
 
 META_KEYS = ("name", "objective", "final_output", "owner")
@@ -23,7 +24,7 @@ META_KEYS = ("name", "objective", "final_output", "owner")
 
 def create_agent(db: Session, name: str, objective: str, final_output: str, kind="single", owner="",
                  actor="admin", slug: str | None = None, team_id: int | None = None,
-                 visibility: str | None = None) -> Agent:
+                 visibility: str | None = None, avatar: str | None = None) -> Agent:
     if not (name and objective and final_output):
         raise PlatformError("name, objective e final_output são obrigatórios")
     def taken(s: str) -> bool:  # slug é único na instalação (nome do container): confere em todas as empresas
@@ -44,7 +45,8 @@ def create_agent(db: Session, name: str, objective: str, final_output: str, kind
     org = db.get(Organization, current_org())
     a = Agent(slug=slug, name=name, objective=objective, final_output=final_output, kind=kind or "single",
               owner=owner or "", status="draft", current_version=1, team_id=team_id or 1,
-              visibility=visibility or (org.default_visibility if org else "org"))
+              visibility=visibility or (org.default_visibility if org else "org"),
+              avatar=avatars.check(avatar) if avatar else avatars.pick(name, objective))  # sem escolha: pelo papel
     a.versions.append(AgentVersion(version=1, spec=specmod.default_spec(), created_by=actor, created_user_id=tenancy.current_user()))
     db.add(a)
     db.commit()
@@ -114,6 +116,15 @@ def design_agent(db: Session, slug: str, patch: dict, actor="admin", acc=None) -
 def replace_spec(db: Session, slug: str, spec: dict, actor="admin", acc=None) -> Agent:
     """Substitui a spec inteira (editor da UI e GitOps/apply)."""
     return _commit_version(db, get_agent(db, slug), spec or {}, actor, "agent.spec", "spec substituída", acc)
+
+
+def set_avatar(db: Session, slug: str, avatar: str, actor="admin") -> Agent:
+    """O dono troca o avatar (o escolhido na criação, pela IA ou pelo papel). Não cria versão: não muda o comportamento."""
+    a = get_agent(db, slug)
+    a.avatar = avatars.check(avatar)
+    db.commit()
+    audit(db, actor, "agent.avatar", slug, avatar)
+    return a
 
 
 def rollback_agent(db: Session, slug: str, version: int, actor="admin") -> Agent:

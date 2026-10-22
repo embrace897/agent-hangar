@@ -366,7 +366,7 @@ def compose(db: Session, acc: Access, name: str, objective: str, final_output: s
             skills: list | None = None, new_skills: list | None = None, mcps: list | None = None,
             tools: list | None = None, tests: list | None = None, copy_tests_from: list | None = None,
             copy_base_tests: bool = True, include_skill_tests: bool = True, llm: dict | None = None,
-            memory: dict | None = None, plan_id: str = "", personal: bool = False) -> dict:
+            memory: dict | None = None, plan_id: str = "", personal: bool = False, avatar: str | None = None) -> dict:
     from .registry import create_agent, replace_spec  # import tardio: registry importa deste módulo
 
     t = acc.team_for_new_agent(team or None, any_role=personal)
@@ -460,7 +460,7 @@ def compose(db: Session, acc: Access, name: str, objective: str, final_output: s
     for s in created_skills:
         audit(db, acc.p.name, "skill.create", s.name, f"criada na montagem de '{name}'")
     a = create_agent(db, name, objective, final_output, owner="", actor=acc.p.name, team_id=t.id,
-                     visibility=visibility or None)
+                     visibility=visibility or None, avatar=avatar)
     a = replace_spec(db, a.slug, spec, acc.p.name)
     mode = ("mixed" if base_agent and subs else "base" if base_agent else "specialists" if subs
             else "parts" if (skill_names or copied_tests or mcps) else "scratch")

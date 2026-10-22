@@ -110,6 +110,17 @@ Discovery and token endpoints are open (CORS enabled); the consent and managemen
 
 See [composer.md](composer.md). MCP tools: `plan_agent`, `compose_agent`, `agent_lineage`.
 
+## Agent avatar
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/avatars` | The characters an agent can have: `id`, `label`, `url` (`/ui/avatars/<id>.webp`) and the `roles` each one stands for |
+| PUT | `/api/agents/{slug}/avatar` | Editors (the owner, the team): `{avatar}`. It changes only the picture: no new version, no tests |
+
+Agents get one when they are created: the `avatar` the creator passes (`POST /api/agents`, the MCP tools
+`register_agent`, `compose_agent`, `build_multi_agent`), or else one picked from the name and goal. Agents created
+before avatars existed get the one for their role when they are shown. MCP tool: `list_avatars`.
+
 ## Agent guide (`/api/agents/{slug}/guide`)
 
 | Method | Path | Description |
@@ -326,7 +337,7 @@ The client acts with the key owner's roles. The tools are:
 - **Schedules:** `schedule_agent`, `list_schedules`, `update_schedule`, `delete_schedule`, `run_schedule_now`, `schedule_runs`.
 - **Catalog:** `list_catalog`, `list_llm_models`, `get_model_profile`, `check_model_needs`, `recommend_models`, `suggest_agent_models`, `get_execution_profile`, `get_execution_tuning`, `compare_execution_profiles`, `register_llm_connection`, `register_skill`, `register_mcp_server`.
 - **Templates:** `list_templates`, `apply_template`.
-- **Build:** `register_agent`, `design_agent` (merge patch plus `remove`), `rollback_agent`, `build_multi_agent`.
+- **Build:** `register_agent`, `design_agent` (merge patch plus `remove`), `rollback_agent`, `build_multi_agent`, `list_avatars`.
 - **Inspect:** `list_agents`, `get_agent`, `get_agent_spec` (spec, plus which version runs in prod and in stage).
 - **Edit later:** `edit_agent` (changes, then stage and tests, then publish when `promote=True`), `diff_agent_versions`, `update_agent_access`.
 - **Test and deploy:** `run_tests`, `deploy_stage`, `promote_to_production`, `ship_agent`, `stop_agent`.

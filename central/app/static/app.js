@@ -134,13 +134,13 @@ async function agentsPage(view) {
     const rows = shown.filter(a => (a.name + a.slug + a.objective).toLowerCase().includes(q) && (!tf || (a.team && a.team.name === tf)));
     $('#rows').innerHTML = rows.length ? rows.map(a => catalogView ? `
       <tr class="click strip st-${a.status}" onclick="location.hash='#/agents/${a.slug}'">
-        <td class="agent-cell"><b>${esc(a.name)}</b><div class="mute small one-line" data-noi18n title="${esc(a.objective)}">${esc(a.objective)}</div></td>
+        <td class="agent-cell"><div class="row" style="gap:10px;flex-wrap:nowrap">${agentAvatar(a)}<div style="min-width:0"><b>${esc(a.name)}</b><div class="mute small one-line" data-noi18n title="${esc(a.objective)}">${esc(a.objective)}</div></div></div></td>
         <td>${esc(a.team ? a.team.name : '—')}</td><td>${kindPill(a.kind)} ${harnessPill(a.harness)}</td>
         <td>${a.prod ? '<span class="pill ok">em produção</span>' : pill(a.status)}</td>
         <td>${a.last_test ? pill(a.last_test.status) : '<span class="mute">—</span>'}</td><td>${visPill(a.visibility)}</td><td>${accessPill(a.access)}</td>
         <td>${a.access === 'viewer' ? `<button class="ghost ar-go" data-s="${a.slug}" onclick="event.stopPropagation()">Solicitar acesso</button>` : ''}</td></tr>` : `
       <tr class="click strip st-${a.status}" onclick="location.hash='#/agents/${a.slug}'">
-        <td class="agent-cell"><b>${esc(a.name)}</b><div class="mute small one-line" data-noi18n title="${esc(a.objective)}"><code>${esc(a.slug)}</code> ${esc(a.objective)}</div></td>
+        <td class="agent-cell"><div class="row" style="gap:10px;flex-wrap:nowrap">${agentAvatar(a)}<div style="min-width:0"><b>${esc(a.name)}</b><div class="mute small one-line" data-noi18n title="${esc(a.objective)}"><code>${esc(a.slug)}</code> ${esc(a.objective)}</div></div></div></td>
         <td>${esc(a.team ? a.team.name : '—')}<div>${accessPill(a.access)}</div></td>
         <td>${kindPill(a.kind)} ${harnessPill(a.harness)}</td><td>${pill(a.status)}${a.pending_promotion ? ' <span class="pill warn">aguarda aprovação</span>' : ''}</td><td>v${a.version}</td>
         <td><span class="dot ${a.stage ? 'on' : ''}"></span>stage &nbsp;<span class="dot ${a.prod ? 'on' : ''}"></span>prod</td>
@@ -157,6 +157,25 @@ async function agentsPage(view) {
       ? '<tr><th>Agente</th><th>Time</th><th>Tipo</th><th>Status</th><th>Testes</th><th>Visibilidade</th><th>Seu acesso</th><th></th></tr>'
       : '<tr><th>Agente</th><th>Time</th><th>Tipo</th><th>Status</th><th>Versão</th><th>Ambientes</th><th>Último teste</th><th>Req. 7d</th><th>Custo 7d</th><th>Modelo</th></tr>'}<tbody id="rows"></tbody></table></div>`;
   render(); $('#q').oninput = render; $('#tf').onchange = render;
+}
+
+/* avatar do agente: o personagem escolhido na criação (pela IA, pelo papel); quem edita o agente troca aqui */
+function agentAvatar(a, size = '') {
+  return a && a.avatar_url ? `<img class="ag-av ${size}" src="${esc(a.avatar_url)}" alt="" loading="lazy">` : '';
+}
+let AVATARS = null;
+async function avatarPicker(box, a) {
+  if (box.innerHTML) { box.innerHTML = ''; return; }  // segundo clique fecha
+  AVATARS = AVATARS || await api('/avatars');
+  box.innerHTML = `<div class="card"><div class="row between"><h2>${window.t('Escolha o avatar')}</h2><button class="ghost small" id="av-close">${window.t('Fechar')}</button></div>
+    <div class="mute small">${window.t('Escolhido pelo papel quando o agente foi criado. Troque por outro personagem: muda só a imagem, não o comportamento.')}</div>
+    <div class="av-grid mt">${AVATARS.map(v => `<button data-id="${esc(v.id)}" class="${v.id === a.avatar ? 'on' : ''}" title="${esc(v.roles.join(', '))}">
+      <img src="${esc(v.url)}" alt="" loading="lazy"><span>${esc(window.t(v.label))}</span></button>`).join('')}</div></div>`;
+  $('#av-close').onclick = () => { box.innerHTML = ''; };
+  box.querySelectorAll('.av-grid button').forEach(b => b.onclick = async () => {
+    try { await api(`/agents/${a.slug}/avatar`, { method: 'PUT', body: { avatar: b.dataset.id } }); toast(window.t('Avatar atualizado')); route(); }
+    catch (e) { toast(e.message, true); }
+  });
 }
 
 async function requestAccessDialog(slug) {
@@ -277,7 +296,9 @@ async function agentDetail(slug, tab = 'overview') {
   const direct = can(a, 'promote');
   main.innerHTML = `
   <div class="row between"><div><a href="#/agents${['viewer'].includes(a.access) ? '/catalog' : ''}" class="mute small">← Agentes</a>
-    <h1>${esc(a.name)} ${kindPill(a.kind)} ${harnessPill(a.harness)} ${pill(a.status)}</h1>
+    <div class="row" style="gap:14px;align-items:center;flex-wrap:nowrap">${can(a, 'edit')
+      ? `<button id="b-av" class="ag-av-btn" title="${window.t('Trocar o avatar')}">${agentAvatar(a, 'lg')}</button>` : agentAvatar(a, 'lg')}
+    <h1>${esc(a.name)} ${kindPill(a.kind)} ${harnessPill(a.harness)} ${pill(a.status)}</h1></div>
     <div class="sub" data-noi18n>${esc(a.objective)}</div><div class="row small" style="margin:-10px 0 4px"><span class="chip" title="Time dono">${icon('team')}${esc(a.team ? a.team.name : '—')}</span>${visPill(a.visibility)}${accessPill(a.access) ? `<span class="mute">Seu acesso</span>${accessPill(a.access)}` : ''}</div></div>
     <div class="row">
       ${can(a, 'edit') ? `<button id="b-test" class="ghost">Rodar testes</button>
@@ -286,6 +307,7 @@ async function agentDetail(slug, tab = 'overview') {
       ${can(a, 'manage') ? `<button id="b-stop" class="ghost">Parar prod</button><button id="b-del" class="danger">Excluir</button>` : ''}
       ${can(a, 'request_access') ? '<button id="b-req">Solicitar acesso</button>' : ''}
     </div></div>
+  <div id="av-pick"></div>
   ${a.pending_promotion ? `<div class="card warn-card">Há um pedido de promoção para produção aguardando aprovação — veja em <a href="#/approvals">Aprovações</a>.</div>` : ''}
   <div class="tabs">${shown.map(t => `<a href="#/agents/${slug}/${t}" class="${t === tab ? 'on' : ''}">${names[t]}</a>`).join('')}</div>
   <div id="tab"></div>`;
@@ -297,6 +319,7 @@ async function agentDetail(slug, tab = 'overview') {
   on('#b-stop', e => act(e.target, () => api(`/agents/${slug}/stop`, { method: 'POST', body: { env: 'prod' } }).then(reload), 'Produção parada'));
   on('#b-del', e => confirm(`Excluir ${a.name} e seus containers?`) && act(e.target, () => api('/agents/' + slug, { method: 'DELETE' }).then(() => location.hash = '#/agents')));
   on('#b-req', () => requestAccessDialog(slug));
+  on('#b-av', () => avatarPicker($('#av-pick'), a));
   const t = $('#tab');
   const key = shown.includes(tab) ? tab : 'overview';
   ({ overview, connect: agentConnect, guide: agentGuide, spec: specEditor, versions, tests, jobs, deployments, usage, playground, schedules: agentSchedules, memory: agentMemory, access: agentAccess })[key](t, a);

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import config
 from ..models import Agent, Deployment, PromotionRequest, Team, TestRun, UsageEvent, now
+from . import avatars
 from .common import iso, spec_of
 from .jobs import job_dict
 from .usage import agent_usage
@@ -56,7 +57,8 @@ def agent_dict(db: Session, a: Agent, detail=False, acc=None) -> dict:
            "prod": next((dep_dict(d) for d in a.deployments if d.env == "prod" and d.status == "running"), None),
            "last_test": test_dict(a.tests[0]) if a.tests else None,
            "requests_7d": reqs, "tokens_7d": int(tok), "cost_7d": round(float(cost), 4),
-           "visibility": a.visibility, "expose_spec": a.expose_spec, "team": _team(db, a.team_id)}
+           "visibility": a.visibility, "expose_spec": a.expose_spec, "team": _team(db, a.team_id),
+           "avatar": avatars.of(a), "avatar_url": avatars.url(avatars.of(a))}
     perms = acc.permissions(a) if acc is not None else None
     if perms is not None:
         # pedido de promoção pendente é assunto interno do time

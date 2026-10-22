@@ -3,6 +3,7 @@ from ..models import Agent  # noqa: F401  (svc.Agent é usado pelo MCP)
 from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.ship…)
                       access,
                       analysis,
+                      avatars,
                       bizcal,
                       browser,
                       budgets,
@@ -115,6 +116,7 @@ from .registry import (  # noqa: F401
                       design_agent,
                       replace_spec,
                       rollback_agent,
+                      set_avatar,
 )
 from .runtime import (  # noqa: F401
                       active_deployment,

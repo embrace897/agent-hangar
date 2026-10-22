@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import logging
+import mimetypes
 import os
 import re
 from contextlib import asynccontextmanager
@@ -378,6 +379,9 @@ def ui_index(request: Request):
     if p is not None and not p.is_admin:
         return RedirectResponse(f"/app/?v={UI_VERSION}", 303)
     return HTMLResponse(_INDEX, headers={"Cache-Control": "no-cache"})
+
+
+mimetypes.add_type("image/webp", ".webp")  # os avatares dos agentes; a imagem slim não conhece o tipo
 
 
 class UIFiles(StaticFiles):

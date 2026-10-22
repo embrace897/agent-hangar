@@ -45,6 +45,7 @@ class Agent(Base):
     visibility: Mapped[str] = mapped_column(String(10), default="org")
     personal_owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # agente pessoal de um membro
     expose_spec: Mapped[bool] = mapped_column(Boolean, default=False)  # quem é de fora vê instruções/spec
+    avatar: Mapped[str | None] = mapped_column(String(40), nullable=True)  # id em services/avatars (vazio: pelo papel)
     # draft | tested | test_failed | stage | production
     status: Mapped[str] = mapped_column(String(20), default="draft")
     current_version: Mapped[int] = mapped_column(Integer, default=1)

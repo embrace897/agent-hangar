@@ -367,6 +367,17 @@ async function execCard(box, a, canEdit, env = 'prod') {
       ${harness ? `<dt>Rodadas máximas</dt><dd>${canEdit ? `<input id="ex-turns" type="number" min="1" max="500" value="${s.max_turns || ''}" placeholder="padrão do harness" style="width:180px">` : (s.max_turns || '<span class="mute">padrão do harness</span>')}</dd>`
         : `<dt>Ferramentas em paralelo</dt><dd><label class="row small"><input type="checkbox" id="ex-par" style="width:auto" ${s.parallel_tools === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>servidores diferentes e sub-agentes rodam ao mesmo tempo (as do mesmo servidor seguem em ordem)</span></label></dd>`}
       <dt>Cache do prompt</dt><dd><label class="row small"><input type="checkbox" id="ex-cache" style="width:auto" ${s.prompt_cache === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>${esc(window.t(CACHE_MODE[p.prompt_cache] || p.prompt_cache || '—'))}</span></label></dd>
+      ${harness ? '' : `<dt>Contexto longo</dt><dd><label class="row small"><input type="checkbox" id="ex-compact" style="width:auto" ${s.compact === false ? '' : 'checked'} ${canEdit ? '' : 'disabled'}> <span>compactar quando a conversa passar de</span>
+          ${canEdit ? `<input id="ex-budget" type="number" min="2000" step="1000" value="${s.context_budget || ''}" placeholder="${p.context_budget || ''}" style="width:120px">` : `<b>${p.context_budget || '—'}</b>`} <span>tokens</span></label>
+        <div class="small mute"><span>${esc(window.t(p.context_source || ''))}</span> · <span>os resultados grandes de ferramenta saem da conversa (o agente os lê de volta) e o histórico antigo vira um resumo</span></div></dd>
+      <dt>Modelo por resposta</dt><dd>${canEdit ? `<select id="ex-light" style="width:auto" data-noi18n>
+          <option value="">${esc(window.t('desligado: o modelo do agente responde tudo'))}</option>
+          <option value="auto" ${s.light_model === 'auto' ? 'selected' : ''}>${esc(window.t('automático (o mais capaz entre os baratos)'))}</option>
+          ${[...new Set([...(p.light_candidates || []).map(c => c.model), ...(s.light_model && s.light_model !== 'auto' ? [s.light_model] : [])])].map(mid => {
+            const c = (p.light_candidates || []).find(x => x.model === mid) || {};
+            return `<option value="${esc(mid)}" ${s.light_model === mid ? 'selected' : ''}>${esc(mid)}${c.price_in != null ? ` · US$ ${c.price_in}/${c.price_out} por 1M` : ''}</option>`; }).join('')}</select> ` : ''}
+        ${p.light_model ? `<span class="pill ok" data-noi18n>${esc(p.light_model)}</span>` : '<span class="pill">desligado</span>'}
+        <div class="small mute"><span>${esc(window.t(p.light_source || ''))}</span> · <span>pedidos curtos e simples vão ao modelo leve; os difíceis, e quando ele falha, ao modelo do agente</span></div></dd>`}
     </dl>
     ${p.warnings.length ? p.warnings.map(w => `<div class="small mt"><span class="pill warn">aviso</span> <span data-noi18n>${esc(w)}</span></div>`).join('') : ''}
     ${canEdit ? `<div class="row mt"><button id="ex-save">Salvar execução</button><span class="mute small">vira uma versão nova, que passa pelos testes antes de produção</span></div>` : ''}</div>
@@ -378,7 +389,8 @@ async function execCard(box, a, canEdit, env = 'prod') {
     const num = id => { const x = $(id); return x && x.value ? Number(x.value) : null; };
     const ex = { effort: $('#ex-effort').value === 'auto' ? null : $('#ex-effort').value, max_output_tokens: num('#ex-out'),
       parallel_tools: $('#ex-par') && !$('#ex-par').checked ? false : null, prompt_cache: $('#ex-cache').checked ? null : false,
-      max_turns: num('#ex-turns') };
+      max_turns: num('#ex-turns'), compact: $('#ex-compact') && !$('#ex-compact').checked ? false : null,
+      context_budget: num('#ex-budget'), light_model: $('#ex-light') && $('#ex-light').value ? $('#ex-light').value : null };
     const empty = Object.values(ex).every(v => v === null);
     await api('/agents/' + a.slug, { method: 'PATCH', body: { execution: empty ? null : ex } });
     route();

@@ -26,6 +26,7 @@ from ..models import (
     now,
 )
 from ..tenancy import current_org
+from . import avatars
 from . import decision_memos as memosmod
 from . import employee_external as externalmod
 from . import employee_gate as gatemod
@@ -378,6 +379,7 @@ def employee_dict(db: Session, e: Employee, acc: Access | None = None, detail: b
         EmployeeTask.employee_id == e.id, EmployeeTask.created_at >= since)) or 0.0
     uid = acc.p.user_id if acc else None
     d = {"slug": a.slug, "name": a.name, "title": e.title, "mission": e.mission, "status": e.status,
+         "avatar_url": avatars.url(avatars.of(a)),
          "autonomy_level": e.autonomy_level, "team": a.team_id, "manager": names.get(e.manager_user_id),
          "owner": names.get(e.owner_user_id), "backups": [names.get(b) for b in e.backup_user_ids or []],
          "tasks": counts, "open_decisions": open_req, "overdue_tasks": overdue, "cost_30d": round(float(cost), 4),

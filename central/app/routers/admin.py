@@ -12,7 +12,7 @@ from .. import auth, config, deploy
 from .. import services as svc
 from .. import spec as specmod
 from ..models import Agent, ApiKey, AuditLog, Deployment, Job, LlmConnection, McpServer, Skill, TestRun, UsageEvent
-from ..services import org
+from ..services import avatars, org
 from .deps import acc, actor, db_dep, guard, principal, require_admin, require_auditor
 
 router = APIRouter(prefix="/api")
@@ -45,6 +45,7 @@ class NewAgent(BaseModel):
     slug: str | None = None
     team: str | None = None
     visibility: str | None = None
+    avatar: str | None = None
 
 
 class RollbackBody(BaseModel):
@@ -139,7 +140,8 @@ def create_agent(body: NewAgent, request: Request, db=Depends(db_dep)):
         a = acc(request, db)
         team = a.team_for_new_agent(body.team)
         agent = svc.create_agent(db, body.name, body.objective, body.final_output, owner=body.owner,
-                                 actor=actor(request), slug=body.slug, team_id=team.id, visibility=body.visibility)
+                                 actor=actor(request), slug=body.slug, team_id=team.id, visibility=body.visibility,
+                                 avatar=body.avatar)
         return svc.agent_dict(db, agent, detail=True, acc=a)
     return guard(go)
 
@@ -149,6 +151,23 @@ def agent(slug: str, request: Request, db=Depends(db_dep)):
     a = _agent(request, db, slug)
     svc.refresh_deployments(db, [a])
     return svc.agent_dict(db, a, detail=True, acc=acc(request, db))
+
+
+@router.get("/avatars")
+def avatar_catalog():
+    """Os avatares que um agente pode ter (id, rótulo, imagem e os papéis que cada um representa)."""
+    return avatars.catalog()
+
+
+class AvatarBody(BaseModel):
+    avatar: str
+
+
+@router.put("/agents/{slug}/avatar")
+def set_agent_avatar(slug: str, body: AvatarBody, request: Request, db=Depends(db_dep)):
+    """Troca o avatar do agente (quem edita o agente: o dono, o time)."""
+    _agent(request, db, slug, "edit")
+    return guard(lambda: svc.agent_dict(db, svc.set_avatar(db, slug, body.avatar, actor(request)), acc=acc(request, db)))
 
 
 @router.patch("/agents/{slug}")

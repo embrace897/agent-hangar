@@ -107,7 +107,8 @@ def test_deploy_hands_the_resolved_profile_to_the_runtime(client, db, uniq, fake
     monkeypatch.setattr(svc.runtime.deploy, "run_agent", run_agent)
     svc.deploy_env(db, a.slug, "stage", "t")
     assert seen["execution_resolved"] == {"api": {"reasoning_effort": "high", "max_tokens": 1024},
-                                          "lite_api": {"reasoning_effort": "low"}, "parallel_tools": True, "cache": False}
+                                          "lite_api": {"reasoning_effort": "low"}, "parallel_tools": True, "cache": False,
+                                          "compact": True, "context_budget": 48_000, "light": None}
 
 
 def test_harness_jobs_get_the_profile_in_their_cli_vocabulary(db, uniq, fake_docker):

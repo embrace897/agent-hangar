@@ -1,5 +1,5 @@
 """Perfil de execução: como o modelo trabalha em cada chamada — esforço de raciocínio, limite de saída, ferramentas
-em paralelo, cache do prompt e rodadas do harness.
+em paralelo, cache do prompt, rodadas do harness, compactação do contexto e o modelo por resposta.
 
 A spec do agente diz o que quer (`execution`, tudo opcional). A central junta isso com o papel do agente e com o que
 o modelo suporta (recursos da lista do provedor) e resolve um perfil. Cada destino recebe o perfil na sua língua:
@@ -18,7 +18,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Agent, LlmConnection, LlmModel
+from ..models import Agent, LlmConnection, LlmModel, ModelProfile
 
 LEVELS = ("minimal", "low", "medium", "high", "max")
 LEVEL_LABEL = {"minimal": "mínimo", "low": "baixo", "medium": "médio", "high": "alto", "max": "máximo"}
@@ -37,6 +37,11 @@ HARNESS_EFFORT = {
     "codex": {"minimal": "low", "low": "low", "medium": "medium", "high": "high", "max": "high"},
     "hermes": {"minimal": "minimal", "low": "low", "medium": "medium", "high": "high", "max": "max"},
 }
+# contexto: compacta quando a conversa passa desta fração da janela do modelo (o resto fica para a resposta)
+CONTEXT_SHARE = 0.6
+CONTEXT_DEFAULT = 48_000  # conexão sem lista: não dá para saber a janela
+# modelo por resposta, "auto": o leve custa no máximo isto do preço do modelo do agente
+LIGHT_MAX_SHARE = 0.4
 HARNESS_PARAMS = {
     "claude-code": {"effort": "--effort", "output": "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "turns": "--max-turns",
                     "cache": "DISABLE_PROMPT_CACHING"},
@@ -82,10 +87,16 @@ def resolve(db: Session, spec: dict, target: str, conn_name: str, model: str, na
            "caps": caps, "effort": None, "effort_level": None, "effort_source": "", "effort_param": "",
            "max_output_tokens": want.get("max_output_tokens"), "output_param": "",
            "parallel_tools": want.get("parallel_tools") is not False, "prompt_cache": "",
-           "max_turns": want.get("max_turns"), "warnings": warnings}
+           "max_turns": want.get("max_turns"), "warnings": warnings,
+           "compact": None, "context_budget": None, "context_source": "",
+           "light_model": None, "light_prices": None, "light_source": "", "light_candidates": []}
+    if target == "runtime":
+        _context(db, conn, model, want, out)
     if not conn:
         out["effort_source"] = "sem conexão (modo mock)"
         out["prompt_cache"] = "off"
+        if target == "runtime" and want.get("light_model"):
+            warnings.append("modelo por resposta precisa de uma conexão: o agente está em modo mock")
         return out
 
     # --- esforço de raciocínio
@@ -160,7 +171,87 @@ def resolve(db: Session, spec: dict, target: str, conn_name: str, model: str, na
         warnings.append(f"o modelo '{model}' não declara suporte a chamadas de ferramenta, e "
                         f"{'o harness depende delas' if target != 'runtime' else 'o agente usa ferramentas'}: "
                         "prefira um modelo com ferramentas")
+    if target == "runtime":
+        _light(db, conn, model, needs_tools, want.get("light_model"), out)
     return out
+
+
+def _context(db: Session, conn: LlmConnection | None, model: str, want: dict, out: dict):
+    """Compactação: ligada por padrão (só age quando a conversa passa do orçamento). O orçamento vem da spec ou de
+    60% da janela do modelo, pela lista do provedor."""
+    out["compact"] = want.get("compact") is not False
+    row = _model_row(db, conn, model)
+    window = row.context_length if row is not None else None
+    if want.get("context_budget"):
+        out["context_budget"], out["context_source"] = want["context_budget"], "definido no agente"
+        if window and want["context_budget"] > window * 0.9:
+            out["warnings"].append(f"o orçamento de contexto ({want['context_budget']}) passa de 90% da janela do "
+                                   f"modelo ({window}): sobra pouco para a resposta")
+    elif window:
+        out["context_budget"] = int(window * CONTEXT_SHARE)
+        out["context_source"] = f"60% da janela do modelo ({window} tokens)"
+    else:
+        out["context_budget"] = CONTEXT_DEFAULT
+        out["context_source"] = "padrão: a conexão não informa a janela do modelo"
+    if not out["compact"]:
+        out["context_source"] = "desligada no agente"
+
+
+def _blended(row: LlmModel) -> float:
+    return (row.price_in_per_mtok or 0) + (row.price_out_per_mtok or 0)
+
+
+def _light(db: Session, conn: LlmConnection, model: str, needs_tools: bool, asked: str | None, out: dict):
+    """Modelo por resposta: um modelo mais barato DA MESMA CONEXÃO (o container já tem a chave dela) atende os pedidos
+    simples. 'auto' escolhe entre os que custam até 40% do principal: o de melhor nota de raciocínio nas fichas ou,
+    sem fichas, o mais caro deles (o mais capaz entre os baratos)."""
+    main = _model_row(db, conn, model)
+    rows = [r for r in db.scalars(select(LlmModel).where(LlmModel.connection_id == conn.id, LlmModel.available.is_(True),
+                                                          LlmModel.kind == "text"))
+            if r.model_id != model and (not needs_tools or "tools" in (r.caps or []))]
+    # gratuitos (preço 0) ficam de fora do automático: limites de uso apertados e termos próprios de uso dos dados
+    cheaper = [r for r in rows if main is not None and _blended(main) > 0 and r.price_in_per_mtok is not None
+               and 0 < _blended(r) <= _blended(main) * LIGHT_MAX_SHARE]
+    out["light_candidates"] = [{"model": r.model_id, "price_in": r.price_in_per_mtok, "price_out": r.price_out_per_mtok}
+                               for r in sorted(cheaper, key=_blended)][:30]
+    if not asked:
+        out["light_source"] = "desligado"
+        return
+    if asked == "auto":
+        if main is None or not _blended(main):
+            out["warnings"].append("modelo por resposta 'auto' precisa do preço do modelo do agente (lista da "
+                                   "conexão): desligado")
+            out["light_source"] = "desligado: sem preço para comparar"
+            return
+        if not cheaper:
+            out["warnings"].append(f"nenhum modelo da conexão '{conn.name}' custa até 40% de '{model}'"
+                                   f"{' e tem ferramentas' if needs_tools else ''}: modelo por resposta desligado")
+            out["light_source"] = "desligado: nenhum modelo mais barato na conexão"
+            return
+        from .model_profiles import key_of
+        keys = {key_of(r.model_id) for r in cheaper}
+        score = {p.key: ((p.scores or {}).get("reasoning") or {}).get("value")
+                 for p in db.scalars(select(ModelProfile).where(ModelProfile.key.in_(list(keys))))}
+        rated = [r for r in cheaper if isinstance(score.get(key_of(r.model_id)), (int, float))]
+        if rated:
+            pick = max(rated, key=lambda r: score[key_of(r.model_id)])
+            source = "automático: melhor nota de raciocínio entre os que custam até 40%"
+        else:
+            pick = max(cheaper, key=_blended)
+            source = "automático: o mais capaz entre os que custam até 40% (sem fichas com nota)"
+    else:
+        pick = next((r for r in rows if r.model_id == asked), None)
+        if pick is None and db.scalar(select(LlmModel.id).where(LlmModel.connection_id == conn.id)) is not None:
+            out["warnings"].append(f"o modelo '{asked}' não está na lista da conexão '{conn.name}'"
+                                   f"{' com ferramentas' if needs_tools else ''}: modelo por resposta desligado")
+            out["light_source"] = "desligado: modelo fora da lista da conexão"
+            return
+        source = "definido no agente"
+        if pick is None:  # conexão sem lista: confia no id, sem preço
+            out.update(light_model=asked, light_prices=[None, None], light_source=source + " (sem preço na lista)")
+            return
+    out.update(light_model=pick.model_id, light_prices=[pick.price_in_per_mtok, pick.price_out_per_mtok],
+               light_source=source)
 
 
 def runtime_options(profile: dict) -> dict:
@@ -178,7 +269,10 @@ def runtime_options(profile: dict) -> dict:
         low = "minimal" if profile["effort"] == "minimal" else "low"
         lite = {"reasoning": {"effort": low}} if "reasoning" in api else {"reasoning_effort": low}
     return {"api": api, "lite_api": lite, "parallel_tools": bool(profile.get("parallel_tools")),
-            "cache": profile.get("prompt_cache") == "explicit"}
+            "cache": profile.get("prompt_cache") == "explicit",
+            "compact": profile.get("compact") is not False, "context_budget": profile.get("context_budget"),
+            "light": ({"model": profile["light_model"], "prices": profile.get("light_prices") or [None, None]}
+                      if profile.get("light_model") else None)}
 
 
 def harness_options(profile: dict) -> dict:
