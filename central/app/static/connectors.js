@@ -65,10 +65,12 @@ async function connectorItemPage(key) {
   <div class="card mt" id="cx-connect"></div>`;
   const box = $('#cx-connect');
   if (x.kind === 'docker') {
-    box.innerHTML = `<h2>Ativar</h2><div class="mute small">Roda num container isolado pelo gateway do catálogo Docker MCP (perfil mcp-gateway). Segredos ficam criptografados na central.</div>
+    box.innerHTML = `${x.installed ? `<div class="row between"><h2>Ativo <span class="pill ok">ativo</span></h2><a href="#/connectors/${encodeURIComponent(x.key)}">Ver o conector</a></div>
+      <div class="mute small">Já está ativo. Preencha abaixo só para trocar a senha ou a configuração salvas (campo vazio mantém o valor atual).</div>`
+      : '<h2>Ativar</h2>'}<div class="mute small">Roda num container isolado pelo gateway do catálogo Docker MCP (perfil mcp-gateway). Segredos ficam criptografados na central.</div>
       ${(x.secrets || []).map(s => `<label class="mt">${esc(s.name)}<input type="password" class="cx-sec-in" data-n="${esc(s.name)}" placeholder="${esc(s.description || s.env || '')}" autocomplete="off"></label>`).join('')}
       ${(x.config || []).map(c => `<label class="mt">${esc(c.name)}<input class="cx-cfg-in" data-n="${esc(c.name)}" placeholder="${esc(c.description || c.type)}"></label>`).join('')}
-      <button id="cx-go" class="mt">Ativar conector</button>`;
+      <button id="cx-go" class="mt">${x.installed ? 'Salvar alterações' : 'Ativar conector'}</button>`;
     $('#cx-go').onclick = e => act(e.target, async () => {
       const secrets = {}, config = {};
       box.querySelectorAll('.cx-sec-in').forEach(i => { if (i.value) secrets[i.dataset.n] = i.value; });

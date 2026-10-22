@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.48.1] — 2026-10-22
+
+### Fixed
+- **Docker MCP catalog: icons the catalog points to but that no longer exist** (Gmail's among them) fall back to the site's favicon instead of a plain initial. Gmail gets its own icon.
+- **Docker MCP catalog: an active connector's page still showed the activation form only**, so it looked as if it hadn't been saved. The page now says it's on, links to the connector, and says that filling the form only replaces the saved password or settings.
+
 ## [0.48.0] — 2026-10-21
 
 ### Added

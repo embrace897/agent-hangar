@@ -104,8 +104,19 @@ POPULAR = ("notion", "linear", "atlassian", "github", "stripe", "hubspot", "supa
 
 
 # ------------------------------------------------------------------ ícones
+# ícones do catálogo Docker cuja URL de origem quebrou (o fornecedor tirou a imagem do ar)
+ICON_OVERRIDES = {"docker:gmail-mcp": "https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png"}
+
+
+def favicon_of(url: str) -> str | None:
+    host = urllib.parse.urlparse(url or "").hostname
+    return f"https://www.google.com/s2/favicons?domain={host}&sz=128" if host else None
+
+
 def icon_source(key: str) -> str | None:
     """De onde baixar o ícone (só origens conhecidas: nada de URL arbitrária vinda do navegador)."""
+    if key in ICON_OVERRIDES:
+        return ICON_OVERRIDES[key]
     kind, _, ref = key.partition(":")
     if kind == "curated":
         c = next((x for x in CURATED if x["id"] == ref), None)
@@ -124,20 +135,25 @@ def ICON_GET(url: str):  # noqa: N802  (os testes trocam)
 
 
 def get_icon(db: Session, key: str) -> tuple[str, bytes] | None:
-    row = db.get(IconCache, key)
+    cache_key = ICON_OVERRIDES.get(key, key)  # a substituição tem cache próprio: trocar a URL não serve o ícone antigo
+    row = db.get(IconCache, cache_key)
     if row is not None:
         return row.content_type, row.data
     url = icon_source(key)
     if not url:
         return None
-    try:
-        r = ICON_GET(url)
-    except httpx.HTTPError:
+    # a imagem do catálogo pode sumir na origem: aí vale o favicon do mesmo site (melhor que só a inicial)
+    for candidate in dict.fromkeys(x for x in (url, favicon_of(url) if key.startswith(("docker:", "remote:")) else None) if x):
+        try:
+            r = ICON_GET(candidate)
+        except httpx.HTTPError:
+            continue
+        ctype = r.headers.get("content-type", "").split(";")[0]
+        if r.status_code == 200 and ctype.startswith("image/") and len(r.content) <= 256 * 1024:
+            break
+    else:
         return None
-    ctype = r.headers.get("content-type", "").split(";")[0]
-    if r.status_code != 200 or not ctype.startswith("image/") or len(r.content) > 256 * 1024:
-        return None
-    db.merge(IconCache(key=key, content_type=ctype, data=r.content, fetched_at=now()))
+    db.merge(IconCache(key=cache_key, content_type=ctype, data=r.content, fetched_at=now()))
     db.commit()
     return ctype, r.content
 

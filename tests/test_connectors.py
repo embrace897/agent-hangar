@@ -210,3 +210,27 @@ def test_catalog_lists_curated_and_icons_come_only_from_known_sources(client, mo
     r = client.get("/api/connectors/icon?key=curated:notion", headers=ADMIN)
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert client.get("/api/connectors/icon?key=url:https://evil.example/x.png", headers=ADMIN).status_code == 404
+
+
+def test_broken_catalog_icon_falls_back_to_the_sites_favicon(client, monkeypatch):
+    """O catálogo Docker aponta para uma imagem que sumiu: vale o favicon do mesmo site; o Gmail tem o ícone dele."""
+    from app.db import SessionLocal
+    from app.models import IconCache
+    from app.services import mcp_gateway
+    asked = []
+
+    def get(url):
+        asked.append(url)
+        ok = "s2/favicons" in url or "gstatic.com" in url
+        return type("R", (), {"status_code": 200 if ok else 404, "content": b"\x89PNG..",
+                              "headers": {"content-type": "image/png" if ok else "text/html"}})()
+    monkeypatch.setattr(cn, "ICON_GET", get)
+    monkeypatch.setattr(mcp_gateway, "catalog", lambda force=False: {"x-mcp": {"icon": "https://cdn.example.com/gone.png"}})
+    with SessionLocal() as db:
+        db.query(IconCache).filter(IconCache.key.in_(["docker:x-mcp", cn.ICON_OVERRIDES["docker:gmail-mcp"]])).delete(synchronize_session=False)
+        db.commit()
+    assert client.get("/api/connectors/icon?key=docker:x-mcp", headers=ADMIN).status_code == 200
+    assert asked == ["https://cdn.example.com/gone.png", "https://www.google.com/s2/favicons?domain=cdn.example.com&sz=128"]
+    asked.clear()
+    assert client.get("/api/connectors/icon?key=docker:gmail-mcp", headers=ADMIN).status_code == 200
+    assert asked == [cn.ICON_OVERRIDES["docker:gmail-mcp"]]  # o ícone do Gmail, sem cair no favicon
