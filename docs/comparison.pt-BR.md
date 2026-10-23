@@ -10,7 +10,7 @@ Nas fontes consultadas, o Agent Hangar é o único que junta, em um produto self
 - **Construtor visual:** Dify, forte em workflow e RAG, publica apps como API ou ferramenta MCP.
 - **Clouds:** AWS Bedrock AgentCore e Microsoft Foundry com Agent 365. Têm registry e A2A, mas dentro do respectivo cloud.
 
-O ponto de atenção é maturidade: o Agent Hangar está em alpha (v0.50) e o repositório não cita certificações de conformidade.
+O ponto de atenção é maturidade: o Agent Hangar está em alpha (v0.51) e o repositório não cita certificações de conformidade.
 
 ## Tabela comparativa
 
@@ -34,7 +34,7 @@ O ponto de atenção é maturidade: o Agent Hangar está em alpha (v0.50) e o re
 | Governança e custo | SSO, SCIM, papéis, regra de e-mail corporativo, auditoria, DLP e retenção, orçamento por empresa, time, agente ou projeto com corte, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
-| Maturidade | Alpha (v0.50), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
+| Maturidade | Alpha (v0.51), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
 
 ## Modelos LLM: o que cada plataforma permite
 

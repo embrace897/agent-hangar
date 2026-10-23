@@ -1,4 +1,5 @@
-"""Memória dos agentes do Agent Hangar: grafo de conhecimento temporal (Graphiti) sobre Neo4j ou FalkorDB.
+"""Memória dos agentes do Agent Hangar: grafo de conhecimento temporal (Graphiti) sobre Neo4j ou FalkorDB, ou
+fatos com busca vetorial (Mem0) sobre Postgres com pgvector (MEMORY_BACKEND=mem0, mais leve: sem banco de grafo).
 
 Só a central fala com este serviço (rede interna hangar_memory + MEMORY_TOKEN). Os agentes chamam
 /internal/memory/mcp na central, que confere quem é o agente e impõe os grupos de memória pelos headers:
@@ -160,6 +161,86 @@ async def graphiti():
         return g
 
 
+# ------------------------------------------------------------------ Mem0 sobre pgvector (MEMORY_BACKEND=mem0)
+# Sem banco de grafo: cada fato é um vetor no Postgres, e o LLM decide se um fato novo acrescenta, atualiza ou apaga um
+# antigo. O grupo da central vira o user_id do Mem0 (uma tabela, filtrada por grupo, como o group_id no Neo4j). O
+# histórico de mudanças de cada fato fica num SQLite no volume do serviço. Telemetria do Mem0 desligada no Dockerfile.
+MEM0_PG_URL = os.environ.get("MEM0_PG_URL", "")
+MEM0_COLLECTION = os.environ.get("MEM0_COLLECTION", "hangar_memory")
+MEM0_HISTORY = os.environ.get("MEM0_HISTORY_PATH", "/data/mem0_history.db")
+
+
+async def mem0():
+    if S.graphiti is not None:
+        return S.graphiti
+    async with S.lock:
+        if S.graphiti is not None:
+            return S.graphiti
+        from mem0 import Memory
+
+        if not MEM0_PG_URL:
+            raise RuntimeError("MEMORY_BACKEND=mem0 exige MEM0_PG_URL (Postgres com pgvector)")
+        conf = await asyncio.to_thread(_central_config)
+        llm = conf.get("llm") or {}
+        if not llm.get("base_url"):
+            raise RuntimeError("memória sem LLM: defina MEMORY_LLM_CONNECTION na central")
+        dim = int(os.environ.get("EMBEDDING_DIM", 384))
+        if EMBEDDER == "openai":
+            e = conf.get("embedding") or {}
+            if not e.get("base_url"):
+                raise RuntimeError("MEMORY_EMBEDDER=openai exige MEMORY_EMBEDDING_CONNECTION na central")
+            embedder = {"provider": "openai", "config": {"model": e["model"], "api_key": e.get("api_key") or "none",
+                                                         "openai_base_url": e["base_url"], "embedding_dims": dim}}
+        else:  # o mesmo modelo local do Graphiti (fastembed/ONNX): nada sai da rede para virar vetor
+            embedder = {"provider": "fastembed", "config": {"model": LOCAL_MODEL, "embedding_dims": dim}}
+        m = await asyncio.to_thread(Memory.from_config, {
+            "vector_store": {"provider": "pgvector", "config": {
+                "connection_string": MEM0_PG_URL, "collection_name": MEM0_COLLECTION, "embedding_model_dims": dim,
+                "hnsw": True}},
+            "llm": {"provider": "openai", "config": {"model": llm["model"], "api_key": llm.get("api_key") or "none",
+                                                     "openai_base_url": llm["base_url"], "temperature": 0}},
+            "embedder": embedder,
+            "history_db_path": MEM0_HISTORY,
+            "custom_instructions": EXTRACTION,
+        })
+        S.config = {"backend": "mem0", "llm_model": llm["model"], "embedder": EMBEDDER,
+                    "embedding_model": LOCAL_MODEL if EMBEDDER == "local" else (conf.get("embedding") or {}).get("model")}
+        S.graphiti = m
+        log.info("memória pronta: backend=mem0 (pgvector) llm=%s embedder=%s", llm["model"], EMBEDDER)
+        return m
+
+
+def _mem0_fact(r: dict, group: str) -> dict:
+    exp = r.get("expiration_date")
+    current = True
+    if exp:
+        try:
+            end = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+            current = (end if end.tzinfo else end.replace(tzinfo=UTC)) > datetime.now(UTC)
+        except ValueError:
+            pass
+    return {"id": r.get("id"), "fact": r.get("memory", ""), "valid_at": r.get("created_at"),
+            "invalid_at": exp, "created_at": r.get("created_at"), "updated_at": r.get("updated_at"),
+            "current": current, "group": group}
+
+
+def _rows(res) -> list[dict]:
+    return (res.get("results") if isinstance(res, dict) else res) or []
+
+
+async def _mem0_search(m, query: str, groups: list[str], limit: int, history: bool) -> dict:
+    out = {"facts": [], "entities": [], "sources": []}
+    for grp in groups:
+        res = await asyncio.to_thread(m.search, query, filters={"user_id": grp}, top_k=limit, show_expired=history)
+        out["facts"] += [_mem0_fact(r, grp) for r in _rows(res)]
+    out["facts"] = _unique(out["facts"])
+    return out
+
+
+async def store():
+    return await (mem0() if BACKEND == "mem0" else graphiti())
+
+
 def _driver_for(g, group: str):
     """FalkorDB guarda cada grupo num grafo próprio (isolamento físico); Neo4j filtra por group_id."""
     return g.driver.clone(database=group) if BACKEND == "falkordb" else g.driver
@@ -167,17 +248,24 @@ def _driver_for(g, group: str):
 
 # ------------------------------------------------------------------ fila de gravação
 async def _worker():
-    from graphiti_core.nodes import EpisodeType
+    EpisodeType = None  # noqa: N806
+    if BACKEND != "mem0":
+        from graphiti_core.nodes import EpisodeType  # noqa: N811
 
     while True:
         item = await S.queue.get()
         try:
-            g = await graphiti()
+            g = await store()
             for attempt in range(1, RETRIES + 1):  # a extração é por LLM: JSON inválido de vez em quando é normal
                 try:
-                    await g.add_episode(name=item["name"], episode_body=item["content"], source=EpisodeType.text,
-                                        source_description=item["source"], reference_time=item["at"],
-                                        group_id=item["group"], custom_extraction_instructions=EXTRACTION)
+                    if BACKEND == "mem0":
+                        # o Mem0 aberto não aceita timestamp (só a plataforma paga): a data vai nos metadados
+                        await asyncio.to_thread(g.add, item["content"], user_id=item["group"],
+                                                metadata={"source": item["source"], "at": item["at"].isoformat()})
+                    else:
+                        await g.add_episode(name=item["name"], episode_body=item["content"], source=EpisodeType.text,
+                                            source_description=item["source"], reference_time=item["at"],
+                                            group_id=item["group"], custom_extraction_instructions=EXTRACTION)
                     break
                 except Exception as e:
                     if attempt == RETRIES:
@@ -260,8 +348,10 @@ async def recall(query: str, ctx: Context, limit: int = 10, include_history: boo
     também os substituídos, com as datas de validade. `today` é a data de hoje (compare com valid_at/invalid_at);
     `current` já diz se o fato vale hoje."""
     read, _, _ = _groups(ctx)
-    g = await graphiti()
-    found = await _search(g, query, read, max(1, min(limit, 30)))
+    g = await store()
+    lim = max(1, min(limit, 30))
+    found = (await _mem0_search(g, query, read, lim, include_history) if BACKEND == "mem0"
+             else await _search(g, query, read, lim))
     if not include_history:
         found["facts"] = [f for f in found["facts"] if f["current"]]
     # a data de hoje vai junto: sem ela o LLM lê "válido até 15/10" e não sabe se isso já passou
@@ -306,7 +396,7 @@ async def admin_status(request: Request):
         return JSONResponse({"error": "não autorizado"}, 401)
     ready, err = True, ""
     try:
-        await graphiti()
+        await store()
     except Exception as e:
         ready, err = False, f"{type(e).__name__}: {str(e)[:300]}"
     return JSONResponse({"ready": ready, "error": err, "backend": BACKEND, **S.config,
@@ -324,8 +414,11 @@ async def admin_embed(request: Request):
     texts = [str(t)[:4000] for t in (body.get("texts") or [])][:256]
     if not texts:
         return JSONResponse({"vectors": [], "model": S.config.get("embedding_model", "")})
-    g = await graphiti()
-    vectors = await g.embedder.create_batch(texts)
+    g = await store()
+    if BACKEND == "mem0":
+        vectors = [await asyncio.to_thread(g.embedding_model.embed, t, "search") for t in texts]
+    else:
+        vectors = await g.embedder.create_batch(texts)
     return JSONResponse({"vectors": [list(map(float, v)) for v in vectors], "model": S.config.get("embedding_model", "")})
 
 
@@ -338,7 +431,13 @@ async def admin_facts(request: Request):
     limit = max(1, min(int(request.query_params.get("limit", "50")), 200))
     if not GROUP.match(group):
         return JSONResponse({"error": "grupo inválido"}, 400)
-    g = await graphiti()
+    g = await store()
+    if BACKEND == "mem0":
+        res = (await _mem0_search(g, q, [group], limit, True))["facts"] if q else _unique(
+            [_mem0_fact(r, group) for r in _rows(await asyncio.to_thread(
+                g.get_all, filters={"user_id": group}, top_k=limit, show_expired=True))])
+        return JSONResponse({"group": group, "facts": sorted(res, key=lambda f: f["created_at"] or "", reverse=True)
+                             if not q else res})
     if q:
         facts = (await _search(g, q, [group], limit))["facts"]
     else:
@@ -359,8 +458,11 @@ async def admin_clear(request: Request):
     group = request.path_params["group"]
     if not GROUP.match(group):
         return JSONResponse({"error": "grupo inválido"}, 400)
+    g = await store()
+    if BACKEND == "mem0":
+        await asyncio.to_thread(g.delete_all, user_id=group)
+        return JSONResponse({"cleared": group})
     from graphiti_core.utils.maintenance.graph_data_operations import clear_data
-    g = await graphiti()
     await clear_data(_driver_for(g, group), group_ids=[group])
     return JSONResponse({"cleared": group})
 

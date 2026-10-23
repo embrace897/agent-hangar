@@ -411,9 +411,11 @@ services:
   #   docker compose --profile memory up -d --build
   # FalkorDB (mais rápido, licença SSPL) no lugar do Neo4j: MEMORY_BACKEND=falkordb no .env e
   #   docker compose --profile memory-falkordb up -d --build
+  # Mem0 (fatos com busca vetorial, sem banco de grafo) sobre Postgres com pgvector: MEMORY_BACKEND=mem0 e
+  #   docker compose --profile memory-mem0 up -d --build
   # Só a central fala com o serviço (MEMORY_TOKEN); os agentes passam por /internal/memory/mcp na central.
   memory:
-    profiles: [memory, memory-falkordb]
+    profiles: [memory, memory-falkordb, memory-mem0]
     image: ${HANGAR_REGISTRY:-agent-hangar}/mcp-memory:${HANGAR_VERSION:-latest}
     build: { context: mcp-servers/memory, args: { PYTHON_IMAGE: "${PYTHON_IMAGE:-python:3.12-slim}" } }
     environment:
@@ -427,12 +429,33 @@ services:
       FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
       MEMORY_EMBEDDER: ${MEMORY_EMBEDDER:-local}
       EMBEDDING_DIM: ${MEMORY_EMBEDDING_DIM:-384}  # 384 = modelo local; ajuste ao modelo remoto
+      # Mem0: o Postgres do perfil memory-mem0, ou um Postgres da empresa com pgvector (RDS, Cloud SQL, Azure)
+      MEM0_PG_URL: ${MEM0_PG_URL:-postgresql://mem0:${MEM0_PG_PASSWORD:-}@mem0-postgres:5432/mem0}
+    volumes:
+      - memory_data:/data   # Mem0: o histórico de mudanças de cada fato (SQLite)
     read_only: true
     tmpfs: ["/tmp:size=64m"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges"]
     # memory_net: só a central (e saída para o LLM de extração); memory_db: o banco de grafo, sem internet
     networks: [memory_net, memory_db]
+    restart: unless-stopped
+
+  mem0-postgres:
+    profiles: [memory-mem0]
+    image: ${MEM0_PG_IMAGE:-pgvector/pgvector:0.8.6-pg17}
+    environment:
+      POSTGRES_DB: mem0
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: ${MEM0_PG_PASSWORD:-}
+    volumes:
+      - mem0_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mem0 -d mem0"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [memory_db]   # sem internet; só o serviço de memória o alcança
     restart: unless-stopped
 
   neo4j:
@@ -507,6 +530,8 @@ volumes:
   tailscale_state:
   neo4j_data:
   falkordb_data:
+  memory_data:
+  mem0_pg:
   activepieces_pg:
   activepieces_redis:
   mcp_gateway:

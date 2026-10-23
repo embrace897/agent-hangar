@@ -61,8 +61,8 @@ CLIENTS = {"claude-code": "Claude Code", "claude-desktop": "Claude Desktop", "co
            "cursor": "Cursor", "vscode": "VS Code (extensão Agent Hangar)"}
 TUNNEL_PROFILE = {"cloudflare": "tunnel-cloudflare", "ngrok": "tunnel-ngrok", "tailscale": "tunnel-tailscale"}
 SECRET_KEYS = ("ADMIN_TOKEN", "HANGAR_SECRET_KEY", "INTERNAL_SECRET", "POSTGRES_PASSWORD", "MEMORY_TOKEN",
-               "NEO4J_PASSWORD", "FALKORDB_PASSWORD", "ACTIVEPIECES_ENCRYPTION_KEY", "ACTIVEPIECES_JWT_SECRET",
-               "ACTIVEPIECES_POSTGRES_PASSWORD")
+               "NEO4J_PASSWORD", "FALKORDB_PASSWORD", "MEM0_PG_PASSWORD", "ACTIVEPIECES_ENCRYPTION_KEY",
+               "ACTIVEPIECES_JWT_SECRET", "ACTIVEPIECES_POSTGRES_PASSWORD")
 
 
 class SetupError(Exception):
@@ -178,7 +178,7 @@ def generated_secrets(env: dict) -> dict:
     """Segredos que faltam (nunca troca um que já existe: trocar HANGAR_SECRET_KEY tornaria ilegíveis as chaves
     de API já criptografadas)."""
     gen = {"ADMIN_TOKEN": _rand, "INTERNAL_SECRET": _rand, "POSTGRES_PASSWORD": _rand, "MEMORY_TOKEN": _rand,
-           "NEO4J_PASSWORD": _rand, "FALKORDB_PASSWORD": _rand, "ACTIVEPIECES_JWT_SECRET": _rand,
+           "NEO4J_PASSWORD": _rand, "FALKORDB_PASSWORD": _rand, "MEM0_PG_PASSWORD": _rand, "ACTIVEPIECES_JWT_SECRET": _rand,
            "ACTIVEPIECES_POSTGRES_PASSWORD": _rand,
            "ACTIVEPIECES_ENCRYPTION_KEY": lambda: secrets.token_hex(16),
            "HANGAR_SECRET_KEY": lambda: base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}

@@ -35,6 +35,7 @@ set_if_empty ACTIVEPIECES_POSTGRES_PASSWORD "$(rand)"
 set_if_empty MEMORY_TOKEN "$(rand)"
 set_if_empty NEO4J_PASSWORD "$(rand)"
 set_if_empty FALKORDB_PASSWORD "$(rand)"
+set_if_empty MEM0_PG_PASSWORD "$(rand)"
 chmod 600 .env 2>/dev/null || true
 echo
 echo "Pronto. Suba com:  docker compose up -d --build"

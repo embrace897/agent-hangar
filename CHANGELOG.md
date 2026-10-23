@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.51.0] — 2026-10-22
+
+### Added
+- **Mem0 on pgvector as a memory backend (experimental).** `MEMORY_BACKEND=mem0` with the `memory-mem0` profile keeps agent memory as facts with vector search in PostgreSQL with pgvector, with no graph database. It can also use your company's Postgres (`MEM0_PG_URL`). Same tools, groups, stage isolation and Memory tab; local embeddings; Mem0 telemetry off. On the same install and LLM it wrote facts about 15× faster than Graphiti and found a fact Graphiti missed, but it doesn't keep the dated history of a changed fact. See [docs/memory.md](docs/memory.md#mem0-on-pgvector-experimental).
+
 ## [0.50.0] — 2026-10-22
 
 ### Added
