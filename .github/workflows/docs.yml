@@ -1,0 +1,51 @@
+# O site de documentação (https://valteresj2.github.io/agent-hangar/): Astro Starlight gerado a partir de docs/, com a
+# demo interativa (docs/demo) no mesmo endereço de antes. Requer Settings → Pages → Source: GitHub Actions.
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "website/**", "llms.txt", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", "website/**", ".github/workflows/docs.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Build
+        working-directory: website
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

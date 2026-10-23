@@ -1,9 +1,11 @@
 """Conectores: servidores MCP para os agentes trabalharem com as ferramentas da empresa.
 
-Três origens, uma tela (como o catálogo de plugins do ChatGPT):
+Quatro origens, uma tela (como o catálogo de plugins do ChatGPT):
 - curados: servidores MCP oficiais de SaaS conhecidos (Notion, Linear, Atlassian, Stripe…), com o endereço publicado
   pelo fornecedor — o teste de conexão confirma;
 - catálogo Docker MCP: 237 servidores que rodam em container (ativados pelo gateway) e ~30 remotos;
+- registro MCP do GitHub (services/mcp_registry.py): centenas de remotos (OAuth, abertos ou com token) e pacotes
+  npm/PyPI, já com o jeito mais simples de conectar cada um; o que já está nas origens acima não se repete;
 - personalizados: qualquer servidor MCP remoto que o admin (ou o time, ou a pessoa) cadastrar.
 
 Todo conector remoto passa pela PONTE da central (/internal/mcp-proxy/<nome>): o agente fala Streamable HTTP com a
@@ -125,6 +127,12 @@ def icon_source(key: str) -> str | None:
         from . import mcp_gateway
         src = (mcp_gateway.catalog() if kind == "docker" else mcp_gateway.remotes()).get(ref) or {}
         return src.get("icon") or None
+    if kind == "github":  # o avatar da editora no GitHub (o registro informa), ou o ícone do site do servidor
+        from . import mcp_registry
+        it = mcp_registry.find(ref) or {}
+        if str(it.get("avatar", "")).startswith("https://avatars.githubusercontent.com/"):
+            return it["avatar"]
+        return favicon_of((it.get("remote") or {}).get("url") or it.get("homepage") or "")
     if kind == "domain" and re.fullmatch(r"[a-z0-9.-]{3,120}", ref):
         return f"https://www.google.com/s2/favicons?domain={ref}&sz=128"
     return None
@@ -664,7 +672,7 @@ def create(db: Session, acc: Access, body: dict) -> dict:
     m = existing or McpServer(name=name)
     m.stdio = spec
     m.description = (body.get("description") or "")[:1000]
-    m.source = body.get("source") if body.get("source") in ("custom", "curated", "remote") else "custom"
+    m.source = body.get("source") if body.get("source") in ("custom", "curated", "remote", "github") else "custom"
     m.upstream_url, m.url, m.auth, m.headers = url, proxy_url(name), auth, headers
     m.timeout_s = max(5, min(int(body.get("timeout_s") or 60), 600))
     m.category = body.get("category") or m.category or ""
@@ -903,8 +911,40 @@ def catalog(db: Session, acc: Access) -> dict:
                       "kind": "docker", "auth": "secrets" if s["secrets"] else "none", "secrets": s["secrets"],
                       "config": s["config"], "installed": s["name"] in enabled or f"docker:{s['name']}" in have,
                       "popular": s["name"] in POPULAR, "tools_count": len(s["tools"])})
+    items += _registry_items(items, have)
     return {"sections": SECTIONS, "items": items,
             "installed": [connector_dict(db, m, acc) | {"key": f"installed:{m.name}"} for m in installed]}
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"mcp|server", "", (s or "").lower()))
+
+
+def _registry_items(items: list[dict], have: set) -> list[dict]:
+    """O registro MCP do GitHub, sem o que já está no catálogo (o curado ou o do Docker vale mais): mesmo host do
+    endereço remoto ou mesmo nome."""
+    from . import mcp_registry
+    try:
+        reg = mcp_registry.items()
+    except Exception:  # noqa: BLE001 — sem o registro, o catálogo segue com as outras origens
+        return []
+    hosts = {mcp_registry.host_of(i.get("url", "")) for i in items if i.get("url")} - {""}
+    names = ({_norm(i["id"]) for i in items} | {_norm(i["name"]) for i in items}) - {""}
+    out = []
+    for it in reg:
+        rem = it.get("remote") or {}
+        last = _norm(it["registry_name"].split("/")[-1])
+        if mcp_registry.host_of(rem.get("url", "")) in hosts or (last and last in names) or _norm(it["name"]) in names:
+            continue
+        out.append({"key": f"github:{it['id']}", "id": it["id"], "name": it["name"], "description": it["description"],
+                    "icon": icon_url(f"github:{it['id']}"), "section": it["section"], "kind": "github",
+                    # "auto": o registro às vezes erra o transporte (declara SSE e fala HTTP); o teste de conexão decide
+                    "auth": it["auth"], "url": rem.get("url", ""), "transport": "auto",
+                    "headers": rem.get("headers") or [], "url_vars": rem.get("url_vars") or [],
+                    "stdio": it["package"] if it["auth"] == "stdio" else None, "installed": it["id"] in have,
+                    "popular": False, "publisher": it["publisher"], "stars": it["stars"], "license": it["license"],
+                    "repo": it["repo"], "org": it["org"], "registry_name": it["registry_name"]})
+    return sorted(out, key=lambda x: -x["stars"])  # em cada seção, os mais usados primeiro
 
 
 # ------------------------------------------------------------------ importar mcpServers (Claude Desktop, Cursor…)

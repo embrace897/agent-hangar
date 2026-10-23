@@ -11,6 +11,7 @@ import base64
 import hashlib
 import re
 import secrets
+import socket
 import time
 import urllib.parse
 from datetime import UTC, timedelta
@@ -73,6 +74,30 @@ def _same_origin(url: str, base: str) -> str:
     return urllib.parse.urlunsplit((b.scheme, b.netloc, u.path, u.query, u.fragment))
 
 
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def RESOLVES(host: str) -> bool:  # noqa: N802  (os testes trocam)
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except OSError:
+        return False
+
+
+def _reach(url: str, origin: str) -> str:
+    """O endereço que o servidor anunciou, quando a central o alcança (o servidor de autorização pode estar em outro
+    domínio: auth.empresa.com, WorkOS, Clerk…). Só vira o mesmo caminho na origem do MCP quando o anunciado é local, do
+    próprio host do MCP ou não resolve daqui: um Activepieces local se anuncia como localhost:8080 e a central o alcança
+    por outro nome."""
+    if not origin or not url:
+        return url
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if host in LOCAL_HOSTS or host == urllib.parse.urlsplit(origin).hostname or not RESOLVES(host):
+        return _same_origin(url, origin)
+    return url
+
+
 def discover(url: str) -> dict:
     """401 do MCP -> metadados do recurso protegido -> metadados do servidor de autorização."""
     with HTTP() as http:
@@ -85,11 +110,11 @@ def discover(url: str) -> dict:
         origin = f"{u.scheme}://{u.netloc}"
         prm_url = m.group(1) if m else f"{origin}/.well-known/oauth-protected-resource{u.path}"
         # o servidor pode anunciar a própria origem sem a porta/host que a central usa: busca pelo host do MCP
-        prm = _json(http.get(_same_origin(prm_url, origin)), "metadados do recurso")
+        prm = _json(http.get(_reach(prm_url, origin)), "metadados do recurso")
         as_url = (prm.get("authorization_servers") or [origin])[0]
         meta = None
         for path in ("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"):
-            resp = http.get(_same_origin(as_url.rstrip("/") + path, origin))
+            resp = http.get(_reach(as_url.rstrip("/") + path, origin))
             if resp.status_code == 200:
                 meta = resp.json()
                 break
@@ -109,7 +134,7 @@ def _register(meta: dict) -> tuple[str, str]:
     if not meta.get("registration_endpoint"):
         raise PlatformError("o servidor não oferece registro dinâmico de cliente (DCR)")
     with HTTP() as http:
-        body = _json(http.post(_same_origin(meta["registration_endpoint"], meta["origin"]), json={
+        body = _json(http.post(_reach(meta["registration_endpoint"], meta["origin"]), json={
             "client_name": "Agent Hangar", "redirect_uris": [redirect_uri()],
             "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
             "token_endpoint_auth_method": "none"}), "registro do cliente (DCR)")
@@ -179,7 +204,7 @@ def finish(db: Session, acc: Access, code: str, state: str, cookie: str) -> Remo
     if r.client_secret:
         form["client_secret"] = crypto.decrypt(r.client_secret)
     with HTTP() as http:
-        body = _json(http.post(_same_origin(o["token_endpoint"], o["origin"]), data=form,
+        body = _json(http.post(_reach(o["token_endpoint"], o["origin"]), data=form,
                                headers={"Accept": "application/json"}), "troca do código")
     _save_tokens(r, body)
     r.connected_by = acc.p.name
@@ -216,7 +241,7 @@ def token(db: Session, name: str, force: bool = False) -> tuple[RemoteMcp, str]:
             form["client_secret"] = crypto.decrypt(r.client_secret)
         try:
             with HTTP() as http:
-                body = _json(http.post(_same_origin(o["token_endpoint"], o["origin"]), data=form,
+                body = _json(http.post(_reach(o["token_endpoint"], o["origin"]), data=form,
                                        headers={"Accept": "application/json"}), "renovação do token")
         except PlatformError as e:
             r.status, r.last_error = "error", f"{e} — reconecte o MCP"
@@ -240,7 +265,7 @@ def remove(db: Session, acc: Access, name: str):
     if r.refresh_token and (r.oauth or {}).get("revocation_endpoint"):
         try:  # melhor esforço: revoga no provedor
             with HTTP() as http:
-                http.post(_same_origin(r.oauth["revocation_endpoint"], r.oauth["origin"]),
+                http.post(_reach(r.oauth["revocation_endpoint"], r.oauth["origin"]),
                           data={"token": crypto.decrypt(r.refresh_token), "client_id": r.oauth["client_id"]})
         except Exception:
             pass

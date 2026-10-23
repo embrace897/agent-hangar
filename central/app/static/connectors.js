@@ -4,7 +4,9 @@ const CX_STATUS = { ok: ['conectado', 'ok'], auth: ['precisa de autenticação',
 const CX_STATE = { approved: ['aprovada', 'ok'], pending: ['nova: esperando aprovação', 'warn'], changed: ['mudou: esperando aprovação', 'warn'], disabled: ['desligada', ''] };
 const CX_ACTION = { read: 'leitura', write_internal: 'escrita interna', send_external: 'envia para fora', publish: 'publica',
   delete: 'exclui', financial: 'financeira' };
-const CX_KIND = { curated: 'oficial do fornecedor', remote: 'remoto (catálogo Docker)', docker: 'container (catálogo Docker)' };
+const CX_KIND = { curated: 'oficial do fornecedor', remote: 'remoto (catálogo Docker)', docker: 'container (catálogo Docker)', github: 'Registro MCP do GitHub' };
+const CX_AUTH = { oauth: 'OAuth (você autoriza no site do fornecedor)', bearer: 'token / chave do fornecedor', none: 'nenhuma',
+  headers: 'chave ou token no cabeçalho', url: 'endereço da sua conta', stdio: 'pacote que roda num container isolado (só admins instalam)' };
 const cxIcon = (url, size = 32, name = '') => url
   ? `<img class="cx-ic" src="${esc(url)}" alt="" width="${size}" height="${size}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'cx-ic cx-ini',textContent:${esc(JSON.stringify((name || '?').slice(0, 1).toUpperCase()))}}))">`
   : `<span class="cx-ic cx-ini" style="width:${size}px;height:${size}px">${esc((name || '?').slice(0, 1).toUpperCase())}</span>`;
@@ -23,7 +25,7 @@ async function connectorsPage() {
   const items = CX.items;
   const bySec = id => id === 'popular' ? items.filter(x => x.popular).sort((a, b) => (a.kind === 'curated' ? 0 : 1) - (b.kind === 'curated' ? 0 : 1))
     : items.filter(x => x.section === id && !(x.popular && x.kind === 'curated'));
-  const custom = installed.filter(m => ['custom', 'curated', 'remote'].includes(m.source));
+  const custom = installed.filter(m => ['custom', 'curated', 'remote', 'github'].includes(m.source));
   main.innerHTML = `<div class="cx-head"><div><h1>Conectores</h1><div class="sub">Conecte servidores MCP para os agentes trabalharem com as ferramentas da empresa</div></div>
     <div class="cx-addw"><button id="cx-add">${icon('plus')} Adicionar</button>
       <div class="cx-menu card" hidden><a href="#/connectors/custom">${icon('plug')} Servidor MCP personalizado</a><a href="#/connectors/import">${icon('file')} Importar JSON (mcpServers)</a></div></div></div>
@@ -80,18 +82,43 @@ async function connectorItemPage(key) {
     }, 'Conector ativado');
     return;
   }
+  if (x.kind === 'github' && x.auth === 'stdio' && !ME.is_admin) {
+    box.innerHTML = `<h2>Conectar</h2><div class="mute small">Este conector é um pacote que roda num container na sua empresa: só um admin instala. Peça a um admin.</div>`;
+    return;
+  }
+  const field = (cls, v, extra = '') => `<label class="mt"><span data-noi18n>${esc(v.name)}</span>${v.required === false ? ' <span class="mute small">(opcional)</span>' : ''}
+      <input class="${cls}" data-n="${esc(v.name)}" ${v.secret ? 'type="password"' : ''} autocomplete="off" placeholder="${esc(v.description || (v.secret ? 'vai direto para o cofre' : ''))}" ${extra}></label>`;
+  const hvars = (x.headers || []).flatMap(h => h.variables.map(v => ({ ...v, secret: v.secret || h.secret })));
   box.innerHTML = `<h2>Conectar</h2>
-    <div class="mute small">${x.kind === 'curated' ? 'Servidor MCP oficial, no endereço publicado pelo fornecedor.' : 'Servidor MCP remoto do catálogo Docker MCP.'}
+    <div class="mute small">${x.kind === 'curated' ? 'Servidor MCP oficial, no endereço publicado pelo fornecedor.'
+      : x.kind === 'github' ? 'Servidor MCP do registro do GitHub, publicado por quem o mantém (o registro confere o dono do nome).'
+      : 'Servidor MCP remoto do catálogo Docker MCP.'}
       Os agentes falam com ele pela central: a credencial fica no cofre e só passam as ferramentas que você aprovar.</div>
-    <dl class="kv mt"><dt>Endereço</dt><dd>${copyable(x.url)}</dd><dt>Autenticação</dt><dd><span>${x.auth === 'oauth' ? 'OAuth (você autoriza no site do fornecedor)' : x.auth === 'bearer' ? 'token / chave do fornecedor' : 'nenhuma'}</span></dd></dl>
+    <dl class="kv mt">${x.kind === 'github' ? `<dt>Publicado por</dt><dd><span data-noi18n>${esc(x.publisher)}</span>${x.org ? ' <span class="pill">organização</span>' : ''}
+        ${x.stars ? ` · ★ ${x.stars}` : ''}${x.license ? ` · <span data-noi18n>${esc(x.license)}</span>` : ''}${x.repo ? ` · <a href="${esc(x.repo)}" target="_blank" rel="noopener">repositório</a>` : ''}</dd>` : ''}
+      ${x.stdio ? `<dt>Pacote</dt><dd><code class="inline" data-noi18n>${esc(x.stdio.runner)} ${esc(x.stdio.package)}</code></dd>` : `<dt>Endereço</dt><dd>${copyable(x.url)}</dd>`}
+      <dt>Autenticação</dt><dd><span>${esc(CX_AUTH[x.auth] || x.auth)}</span></dd></dl>
     ${x.auth === 'bearer' ? '<label class="mt">Token ou chave<input id="cx-tok" type="password" autocomplete="off" placeholder="vai direto para o cofre"></label>' : ''}
+    ${(x.url_vars || []).map(v => field('cx-uv', v)).join('')}
+    ${hvars.map(v => field('cx-hv', v)).join('')}
+    ${x.stdio ? (x.stdio.env || []).map(v => field('cx-env', v)).join('') : ''}
     ${scopeFields()}
     ${riskBox()}
-    <button id="cx-go" class="mt" disabled>${x.auth === 'oauth' ? 'Conectar com OAuth' : 'Conectar'}</button>`;
+    <button id="cx-go" class="mt" disabled>${x.auth === 'oauth' ? 'Conectar com OAuth' : x.auth === 'stdio' ? 'Instalar e conectar' : 'Conectar'}</button>`;
   wireRisk(box);
+  const vals = cls => Object.fromEntries([...box.querySelectorAll('.' + cls)].map(i => [i.dataset.n, i.value.trim()]));
+  const fill = (s, v) => s.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, k) => v[k] || '');
   $('#cx-go').onclick = e => act(e.target, async () => {
-    const r = await api('/connectors', { method: 'POST', body: { name: x.id, url: x.url, transport: x.transport || 'auto', auth: x.auth,
-      token: ($('#cx-tok') || {}).value || '', source: x.kind, icon: x.key, description: x.description, accept_risk: true, ...scopeBody() } });
+    const uv = vals('cx-uv'), hv = vals('cx-hv'), ev = vals('cx-env');
+    const missing = [...(x.url_vars || []).filter(v => !uv[v.name]), ...hvars.filter(v => !hv[v.name]),
+      ...(x.stdio ? x.stdio.env.filter(v => v.required && !ev[v.name]) : [])].map(v => v.name);
+    if (missing.length) throw new Error(window.t('Preencha') + ': ' + missing.join(', '));
+    const body = { name: x.id, url: fill(x.url || '', uv), transport: x.transport || 'auto', auth: x.auth === 'url' ? ((x.headers || []).length ? 'headers' : 'none') : x.auth,
+      token: ($('#cx-tok') || {}).value || '', source: x.kind, icon: x.key, description: x.description, accept_risk: true, ...scopeBody() };
+    if ((x.headers || []).length) body.headers = x.headers.map(h => ({ name: h.name, value: fill(h.value, hv), secret: h.secret || h.variables.some(v => v.secret) }));
+    if (x.stdio) body.stdio = { runner: x.stdio.runner, package: x.stdio.package, entry: '', args: [],
+      env: x.stdio.env.filter(v => ev[v.name]).map(v => ({ name: v.name, value: ev[v.name], secret: v.secret })) };
+    const r = await api('/connectors', { method: 'POST', body });
     if (r.authorize_url) { location.href = r.authorize_url; return; }
     location.hash = '#/connectors/' + encodeURIComponent(r.name);
   });

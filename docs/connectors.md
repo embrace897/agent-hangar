@@ -16,15 +16,49 @@ catalog:
 | Official | MCP servers that SaaS vendors publish: Notion, Linear, Atlassian, Asana, GitHub, Sentry, Stripe, PayPal, Square, Supabase, Neon, Canva, Figma, Intercom, monday.com, Webflow, Vercel | OAuth (you authorize on the vendor's site), or a token kept in the vault |
 | Docker MCP catalog, remote | ~30 HTTP servers (HubSpot, Mercado Pago, Mercado Libre, Hugging Face, Context7…) | Through the bridge |
 | Docker MCP catalog, container | 237 servers that run in isolated containers | The gateway (`mcp-gateway` profile, see [mcp-catalog.md](mcp-catalog.md)) |
+| GitHub MCP Registry | The servers listed at [github.com/mcp](https://github.com/mcp) that are not in the rows above: hundreds of remote servers and npm/PyPI packages | Through the bridge, the simplest way each one allows (see below) |
 | Custom | Any remote MCP server, added in *Adicionar personalizado* or imported from a `mcpServers` JSON | Through the bridge |
 
 The vendor addresses for the official servers are the ones the vendors publish. *Testar conexão* confirms that one
 still answers.
 
+### GitHub MCP Registry
+
+The central reads the registry's public API (`MCP_REGISTRY_URL`) in the background, once a day
+(`MCP_REGISTRY_TTL_S`), on one replica, and keeps the result in the database. Each server becomes a catalog item
+with the simplest way to connect it:
+
+| How it connects | What you do |
+|---|---|
+| Remote, OAuth with dynamic client registration | *Conectar com OAuth*, then authorize on the vendor's site |
+| Remote, open | *Conectar*, nothing to fill in |
+| Remote, token | Paste the token; it goes to the vault |
+| Remote, header | Fill in the variables the registry names (for example `NETDATA_TOKEN` for `Authorization: Bearer {NETDATA_TOKEN}`) |
+| Remote, per-account address | Fill in your account's address or ID (the `{variable}` in the URL) |
+| npm or PyPI package, pinned version | An admin installs it; it runs in the isolated runner (see [Local servers](#local-servers-stdio)) |
+
+To find out how a remote server authenticates, the central sends it the MCP `initialize` call with no credential.
+That is the same call *Testar conexão* makes, and it only goes to public `https` addresses and doesn't follow
+redirects. For OAuth, it reads the same public metadata that connecting uses.
+
+Some servers are left out:
+
+- servers that are down;
+- servers using OAuth without dynamic client registration (those need an OAuth app you register yourself: add them
+  as a custom connector);
+- Docker-only or binary packages, packages without a pinned version, and packages with a required argument.
+
+A server already in the catalog, with the same host or the same name as an official or Docker MCP item, is not shown
+twice. The item shows who publishes it (the registry checks that the publisher owns the name), the GitHub stars,
+the license and the repository. Within each section the most-starred come first. Installing works like any other
+connector: the credential stays in the vault, and new tools stay blocked until an admin approves them. Set
+`MCP_REGISTRY_URL=` (empty) to turn this source off, for example on an install without internet.
+
 **Icons.** The central downloads each icon once and serves it itself, so the browser does not reach out to the
 internet on every page.
 
-- Icons come only from known sources: the vendor's domain or the Docker catalog.
+- Icons come only from known sources: the vendor's domain, the Docker catalog, or the publisher's GitHub avatar for
+  registry items.
 - Custom connectors use the icon the admin uploads (PNG, JPEG, WebP or SVG, up to 64 KB) or the domain's icon.
 
 ## The bridge

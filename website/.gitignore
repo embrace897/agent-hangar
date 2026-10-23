@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+# gerados por scripts/sync-docs.mjs a partir de ../docs (a fonte é docs/)
+src/content/docs/*.md
+public/assets/
+public/demo/
+public/llms.txt

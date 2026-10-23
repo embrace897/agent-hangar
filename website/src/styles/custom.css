@@ -1,0 +1,53 @@
+/* O tema do Hangar sobre o Starlight: o amarelo da marca, o "tarmac" escuro do console e as mesmas fontes. */
+:root {
+  --sl-font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --hangar-sign: "Barlow Semi Condensed", "Arial Narrow", var(--sl-font);
+}
+
+/* modo escuro (o padrão do Starlight) */
+:root {
+  --sl-color-accent-low: #3a2f0b;
+  --sl-color-accent: #f4b400;
+  --sl-color-accent-high: #ffe08a;
+  --sl-color-white: #e6eaf0;
+  --sl-color-gray-1: #c9d1db;
+  --sl-color-gray-2: #9aa6b3;
+  --sl-color-gray-3: #8793a1;
+  --sl-color-gray-4: #56616e;
+  --sl-color-gray-5: #2c3643;
+  --sl-color-gray-6: #18202a;
+  --sl-color-black: #10151c;
+}
+
+/* modo claro */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fdf1cc;
+  --sl-color-accent: #8a6500;
+  --sl-color-accent-high: #4d3800;
+  --sl-color-white: #17212c;
+  --sl-color-gray-1: #26313e;
+  --sl-color-gray-2: #3d4856;
+  --sl-color-gray-3: #56616e;
+  --sl-color-gray-4: #8793a1;
+  --sl-color-gray-5: #d5dae0;
+  --sl-color-gray-6: #eceef1;
+  --sl-color-gray-7: #f6f7f9;
+  --sl-color-black: #ffffff;
+}
+
+/* títulos e o nome do site na letra de sinalização do console */
+.site-title, h1, .hero h1, .sl-markdown-content h2 {
+  font-family: var(--hangar-sign);
+  letter-spacing: 0.01em;
+}
+.site-title { font-weight: 700; font-size: 1.25rem; }
+.hero h1 { font-weight: 700; }
+
+/* a faixa amarela e preta do hangar sob o topo, como no console */
+header.header { border-bottom: 3px solid transparent;
+  border-image: repeating-linear-gradient(90deg, #f4b400 0 24px, transparent 24px 36px) 1; }
+
+/* botão principal da capa em amarelo com texto escuro (contraste) */
+.hero .sl-link-button.primary { background: #f4b400; color: #17212c; border-color: #f4b400; }
+:root[data-theme='light'] .hero .sl-link-button.primary { background: #f4b400; color: #17212c; }

@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.50.0] — 2026-10-22
+
+### Added
+- **Documentation site** at https://valteresj2.github.io/agent-hangar/ (Astro Starlight): every guide in `docs/`, with sidebar sections, search, light and dark modes, and an overview page with a quick start. It is built from `docs/` by the *Docs site* workflow on each change, so the guides are still edited in the same place, and the interactive demo stays at `/agent-hangar/demo/`.
+- **The GitHub MCP Registry is a connector source.** The servers listed at [github.com/mcp](https://github.com/mcp) that aren't already in the catalog appear in *Conectores*, each with the simplest way to connect it. Remote servers with OAuth (with dynamic client registration) or with no login connect in one click. Those that need a token, a header or an account address ask for exactly the fields the registry names. npm and PyPI packages with a pinned version run in the isolated runner, installed by an admin. The list is read in the background once a day (`MCP_REGISTRY_URL`, `MCP_REGISTRY_TTL_S`). How each server authenticates is found by the same unauthenticated `initialize` call as *Testar conexão*, to public `https` addresses only. Servers that are down, OAuth without dynamic registration, and Docker-only or unpinned packages are left out. Each item shows the publisher, GitHub stars, license and repository. See [docs/connectors.md](docs/connectors.md#github-mcp-registry).
+
+### Fixed
+- **OAuth for remote MCP servers whose authorization server is on another domain** (auth.vendor.com, WorkOS, Clerk…) failed: the central sent every OAuth request to the MCP server's own host. It now uses the address the server announces. It still uses the MCP server's host when the announced one is local (a local Activepieces announces `localhost`), the same host, or doesn't resolve.
+
 ## [0.49.0] — 2026-10-22
 
 ### Added

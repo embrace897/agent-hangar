@@ -21,6 +21,7 @@ os.environ.update({
     "DATA_STUDIO_URL": "http://data-studio.test/mcp",  # os testes trocam analysis.HTTP
     "DATA_STUDIO_FILES_URL": "http://data-studio.test:8001",
     "MODEL_CATALOG_URL": "",  # nada de baixar a tabela pública de modelos nos testes
+    "MCP_REGISTRY_URL": "",  # nem o registro MCP do GitHub (test_mcp_registry liga com uma API falsa)
 })
 sys.path.insert(0, os.path.join(ROOT, "central"))
 

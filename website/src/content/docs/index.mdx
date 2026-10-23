@@ -1,0 +1,91 @@
+---
+title: What's Agent Hangar?
+description: One home for every AI agent your company builds, whatever tool built it.
+template: splash
+hero:
+  tagline: One home for every AI agent your company builds, whatever tool built it. Build agents where you already work, run each one in its own container, and use them from any platform.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Install
+      link: /agent-hangar/install/
+      icon: right-arrow
+      variant: primary
+    - text: Concepts
+      link: /agent-hangar/concepts/
+      variant: secondary
+    - text: Interactive demo
+      link: /agent-hangar/demo/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+
+People create agents where they already work: Claude, ChatGPT, Cursor, VS Code, Codex, OpenCode. Agent Hangar
+brings them all to one place, runs each one in its own container, and makes them usable from **any** platform:
+OpenAI-compatible, MCP, A2A and ACP, and inside your own app over AG-UI. Everyone can find them, talk to them, and
+combine them into new agents.
+
+## Why Agent Hangar
+
+<CardGrid>
+  <Card title="Built where you already work" icon="laptop">
+    Ask Claude, ChatGPT, Codex or Cursor for an agent. It is built, tested and shipped through the Hangar MCP, with no
+    new tool to learn.
+  </Card>
+  <Card title="Usable from anywhere" icon="random">
+    Every agent speaks OpenAI-compatible, MCP, A2A and ACP, and runs inside your own app over AG-UI.
+  </Card>
+  <Card title="Governed by default" icon="approve-check">
+    Teams, access requests, approvals, authority rules for Digital employees, tests before production, DLP and an
+    audit trail.
+  </Card>
+  <Card title="Cost under control" icon="information">
+    Usage and cost per agent, budgets, the right reasoning effort per role, long-context compaction and a cheaper model
+    for simple requests.
+  </Card>
+</CardGrid>
+
+## Quick start
+
+<Tabs>
+  <TabItem label="Linux, macOS, WSL">
+    ```bash
+    git clone https://github.com/valteresj2/agent-hangar && cd agent-hangar
+    ./scripts/install.sh
+    ```
+  </TabItem>
+  <TabItem label="Windows">
+    ```powershell
+    git clone https://github.com/valteresj2/agent-hangar; cd agent-hangar
+    powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+    ```
+  </TabItem>
+</Tabs>
+
+The guided installer writes `.env`, starts the stack, registers and tests your LLM, creates the admin and generates
+the configuration of your AI tools. `hangar doctor` checks the result. See [Installing Agent Hangar](/agent-hangar/install/)
+for the requirements, a cloud VM or Kubernetes.
+
+## Building blocks
+
+<CardGrid>
+  <LinkCard title="Agent spec" href="/agent-hangar/spec/" description="What an agent is: instructions, model, skills, tools, MCPs, sub-agents and tests." />
+  <LinkCard title="Reuse before you build" href="/agent-hangar/composer/" description="New agents from the pieces of existing ones, without changing them." />
+  <LinkCard title="Execution profile" href="/agent-hangar/execution/" description="Reasoning effort, output limit, long-context compaction and the model per response." />
+  <LinkCard title="Harnesses" href="/agent-hangar/harnesses/" description="Claude Code, Codex, Hermes and DeepSeek Harness, one container per task." />
+  <LinkCard title="Connectors (MCP)" href="/agent-hangar/connectors/" description="Official servers, the Docker MCP catalog and the GitHub MCP Registry, through one bridge." />
+  <LinkCard title="Digital employees" href="/agent-hangar/digital-employee/" description="Agents with a role, a manager, authority rules, a career and an org chart." />
+  <LinkCard title="Connecting clients" href="/agent-hangar/clients/" description="Claude, ChatGPT, Cursor, VS Code, LibreChat, your app over AG-UI." />
+  <LinkCard title="Security model" href="/agent-hangar/security/" description="What is isolated, what is checked, and the limits we document." />
+</CardGrid>
+
+## Run it in production
+
+<CardGrid>
+  <LinkCard title="Kubernetes" href="/agent-hangar/kubernetes/" description="Helm chart for GKE, AKS and EKS, with a kernel sandbox for agents." />
+  <LinkCard title="Observability" href="/agent-hangar/observability/" description="Prometheus metrics, OpenTelemetry traces and logs." />
+  <LinkCard title="Backup and upgrade" href="/agent-hangar/backup/" description="hangar backup, restore and upgrade, and the chart hooks." />
+  <LinkCard title="HTTP API" href="/agent-hangar/api/" description="Every endpoint of the central." />
+</CardGrid>

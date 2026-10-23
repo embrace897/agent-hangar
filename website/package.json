@@ -1,0 +1,17 @@
+{
+  "name": "agent-hangar-docs",
+  "private": true,
+  "type": "module",
+  "description": "The Agent Hangar documentation site, built from docs/ with Astro Starlight",
+  "scripts": {
+    "sync": "node scripts/sync-docs.mjs",
+    "dev": "node scripts/sync-docs.mjs && astro dev",
+    "build": "node scripts/sync-docs.mjs && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.5",
+    "astro": "7.3.7",
+    "sharp": "0.35.5"
+  }
+}

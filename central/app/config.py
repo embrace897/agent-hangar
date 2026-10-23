@@ -8,7 +8,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 APP_NAME = "Agent Hangar"
-VERSION = "0.49.0"
+VERSION = "0.50.0"
 
 DATABASE_URL = _env("DATABASE_URL", "sqlite:///./hangar.db")
 
@@ -166,6 +166,10 @@ MCP_GATEWAY_URL = _env("MCP_GATEWAY_URL", "http://mcp-gateway:8811/mcp")
 MCP_GATEWAY_CONFIG_DIR = _env("MCP_GATEWAY_CONFIG_DIR", "")  # volume compartilhado com o gateway (vazio = só o banco)
 MCP_GATEWAY_CATALOG_URL = _env("MCP_GATEWAY_CATALOG_URL", "https://desktop.docker.com/mcp/catalog/v2/catalog.yaml")
 MCP_GATEWAY_CATALOG_TTL_S = int(_env("MCP_GATEWAY_CATALOG_TTL_S", "21600"))
+# Registro MCP do GitHub (github.com/mcp): mais uma origem do catálogo de conectores. Vazio desliga (instalação sem
+# internet). A lista é lida e sondada a cada MCP_REGISTRY_TTL_S, em segundo plano.
+MCP_REGISTRY_URL = _env("MCP_REGISTRY_URL", "https://api.mcp.github.com/2025-09-15/v0/servers")
+MCP_REGISTRY_TTL_S = int(_env("MCP_REGISTRY_TTL_S", "86400"))
 
 # Memória dos agentes (profile memory): Graphiti sobre Neo4j/FalkorDB. Vazio = desligada.
 MEMORY_URL = _env("MEMORY_URL", "").rstrip("/")
