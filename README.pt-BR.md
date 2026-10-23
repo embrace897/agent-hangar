@@ -9,7 +9,7 @@ reúne todos num só lugar, roda cada um no seu container e deixa que sejam usad
 **OpenAI-compatible, MCP, A2A e ACP**, e dentro do seu próprio app via **AG-UI**. Todos podem encontrar os agentes,
 conversar com eles e combiná-los em agentes novos.
 
-[Demo interativa (inglês)](https://valteresj2.github.io/agent-hangar/demo/) · [English](README.md) · [Documentação (inglês)](https://valteresj2.github.io/agent-hangar/) · [Roadmap](ROADMAP.md)
+[Site](https://valteresj2.github.io/agent-hangar/) · [Demo interativa (inglês)](https://valteresj2.github.io/agent-hangar/demo/) · [English](README.md) · [Documentação (inglês)](https://valteresj2.github.io/agent-hangar/docs/) · [Roadmap](ROADMAP.md)
 
 </div>
 
@@ -427,8 +427,9 @@ O histórico completo está no [CHANGELOG](CHANGELOG.md) e o que vem pela frente
 
 ## Documentação
 
-Navegue em **[valteresj2.github.io/agent-hangar](https://valteresj2.github.io/agent-hangar/)** (em inglês), com busca e
-modos claro e escuro. O site é gerado a partir de [`docs/`](docs/) a cada mudança.
+Navegue em **[valteresj2.github.io/agent-hangar/docs](https://valteresj2.github.io/agent-hangar/docs/)** (em inglês), com
+busca e modos claro e escuro, ao lado do [site do Hangar AI Labs](https://valteresj2.github.io/agent-hangar/). O site é
+gerado a partir de [`docs/`](docs/) a cada mudança.
 
 | | |
 |---|---|

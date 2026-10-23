@@ -1,11 +1,12 @@
-# O site de documentação (https://valteresj2.github.io/agent-hangar/): Astro Starlight gerado a partir de docs/, com a
-# demo interativa (docs/demo) no mesmo endereço de antes. Requer Settings → Pages → Source: GitHub Actions.
+# O site do Hangar AI Labs (https://valteresj2.github.io/agent-hangar/): a página de entrada e a documentação em /docs/
+# (Astro Starlight gerado a partir de docs/), com a demo interativa (docs/demo) no mesmo endereço de antes.
+# Requer Settings → Pages → Source: GitHub Actions.
 name: Docs site
 
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "website/**", "llms.txt", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "website/**", "llms.txt", "central/app/static/avatars/**", ".github/workflows/docs.yml"]
   pull_request:
     paths: ["docs/**", "website/**", ".github/workflows/docs.yml"]
   workflow_dispatch:

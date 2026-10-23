@@ -1,8 +1,9 @@
 // Gera as páginas do site a partir de ../docs (a fonte continua sendo docs/: nada é editado aqui).
 // - o primeiro "# Título" vira o title do frontmatter, e o primeiro parágrafo a description;
-// - links entre docs (concepts.md#x) viram rotas do site (/agent-hangar/concepts/#x);
+// - links entre docs (concepts.md#x) viram rotas do site (/agent-hangar/docs/concepts/#x): a raiz é a página de entrada;
 // - links para o resto do repositório (../README.md, ../examples/…) apontam para o GitHub;
-// - docs/assets e docs/demo (a demo interativa) vão para public/, no mesmo endereço de antes.
+// - docs/assets e docs/demo (a demo interativa) vão para public/, no mesmo endereço de antes;
+// - os avatares dos agentes (central/app/static/avatars) vão para public/avatars: a cena da página de entrada usa.
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = join(HERE, '..');
 const DOCS = join(SITE, '..', 'docs');
-const OUT = join(SITE, 'src', 'content', 'docs');
+const OUT = join(SITE, 'src', 'content', 'docs', 'docs');
 const BASE = (process.env.DOCS_BASE ?? '/agent-hangar').replace(/\/$/, '');
 const REPO = 'https://github.com/valteresj2/agent-hangar/blob/main';
 // fora do site: o plano comercial e o documento do cliente (fora do git), e as traduções (o site é em inglês)
@@ -29,7 +30,7 @@ function rewrite(md) {
     const [path, hash] = target.split('#');
     const anchor = hash ? `#${hash}` : '';
     if (/^[\w.-]+\.md$/.test(path) && existsSync(join(DOCS, path)) && !SKIP.has(path) && !path.includes('.pt-BR.')) {
-      return `${BASE}/${slugOf(path)}/${anchor}`;
+      return `${BASE}/docs/${slugOf(path)}/${anchor}`;
     }
     if (path.startsWith('assets/') || path.startsWith('demo/')) return `${BASE}/${path}${anchor}`;
     if (path.startsWith('../')) return `${REPO}/${path.slice(3)}${anchor}`;
@@ -72,4 +73,9 @@ for (const dir of ['assets', 'demo']) {
   }
 }
 if (existsSync(join(SITE, '..', 'llms.txt'))) cpSync(join(SITE, '..', 'llms.txt'), join(SITE, 'public', 'llms.txt'));
+const AV = join(SITE, '..', 'central', 'app', 'static', 'avatars');
+if (existsSync(AV)) {
+  rmSync(join(SITE, 'public', 'avatars'), { recursive: true, force: true });
+  cpSync(AV, join(SITE, 'public', 'avatars'), { recursive: true });
+}
 console.log(`sync-docs: ${n} páginas de docs/ (base ${BASE})`);

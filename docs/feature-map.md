@@ -124,7 +124,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Try the whole path with the test model | `hangar test-drive` | [cli.md](cli.md) |
 | GitOps: agents, skills and MCPs from a file; CI | `hangar apply` | [cli.md](cli.md#agents-in-ci) |
 | Cloud VM recipes | — | [cloud-vm.md](cloud-vm.md) |
-| Documentation site, built from `docs/` | [valteresj2.github.io/agent-hangar](https://valteresj2.github.io/agent-hangar/) | — |
+| Documentation site, built from `docs/`, and the Hangar AI Labs website | [/docs/](https://valteresj2.github.io/agent-hangar/docs/) · [website](https://valteresj2.github.io/agent-hangar/) | — |
 | Metrics, traces, logs | Prometheus, OpenTelemetry | [observability.md](observability.md) |
 
 ## For developers

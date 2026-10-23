@@ -15,7 +15,7 @@ them, and combine them into new agents.
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
 [Interactive demo](https://valteresj2.github.io/agent-hangar/demo/) · [Example](#from-a-request-in-claude-to-a-working-agent) · [Install](#installation) · [Features](#features) ·
-[How it works](#how-it-works) · [Docs site](https://valteresj2.github.io/agent-hangar/) · [Roadmap](ROADMAP.md) · [Português](README.pt-BR.md)
+[How it works](#how-it-works) · [Website](https://valteresj2.github.io/agent-hangar/) · [Docs](https://valteresj2.github.io/agent-hangar/docs/) · [Roadmap](ROADMAP.md) · [Português](README.pt-BR.md)
 
 </div>
 
@@ -503,8 +503,9 @@ hangar jobs run code-fixer "Add input validation to parse_date()" --follow
 
 ## Documentation
 
-Browse it at **[valteresj2.github.io/agent-hangar](https://valteresj2.github.io/agent-hangar/)**, with search and
-light and dark modes. The site is built from [`docs/`](docs/) on every change.
+Browse it at **[valteresj2.github.io/agent-hangar/docs](https://valteresj2.github.io/agent-hangar/docs/)**, with search
+and light and dark modes, next to the [Hangar AI Labs website](https://valteresj2.github.io/agent-hangar/). The site is
+built from [`docs/`](docs/) on every change.
 
 | | |
 |---|---|

@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Hangar AI Labs website** at https://valteresj2.github.io/agent-hangar/: an entry page with an animated 3D scene (a night runway with the brand's lights, glowing trails and the agents' avatars leaving the hangar) and five chapters that present Agent Hangar. It respects reduced motion, pauses when the tab is hidden and works on phones. The documentation moved to `/docs/`, and the old addresses redirect there.
+
 ## [0.52.0] — 2026-10-23
 
 ### Fixed

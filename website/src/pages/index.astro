@@ -1,0 +1,276 @@
+---
+// A página de entrada do Hangar AI Labs: uma cena 3D (pista noturna, trilhas de luz e os agentes saindo do hangar)
+// atrás de capítulos que apresentam o Agent Hangar. A documentação fica em /docs/ (Starlight).
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const GH = 'https://github.com/valteresj2/agent-hangar';
+const chapters = [
+  { id: 'build', title: 'Build where you work', sub: 'Claude · ChatGPT · Codex' },
+  { id: 'employees', title: 'Digital employees', sub: 'A job, a manager, authority' },
+  { id: 'govern', title: 'Governed & measured', sub: 'Tests · approvals · cost' },
+  { id: 'connect', title: 'Connect everything', sub: 'MCP · A2A · AG-UI' },
+  { id: 'open', title: 'Open & self-hosted', sub: 'Docker · Kubernetes' },
+];
+const crew = ['jornalista', 'cientista-dados', 'desenvolvedor', 'suporte', 'analista-financeiro', 'advogado', 'designer',
+  'explorador', 'professora', 'bombeiro', 'maestro', 'mentor', 'astronauta', 'consultora', 'executivo', 'vendedora'];
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hangar AI Labs — Agent Hangar</title>
+  <meta name="description" content="Hangar AI Labs builds Agent Hangar: one open-source home for every AI agent your company builds, whatever tool built it." />
+  <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+  <meta property="og:title" content="Hangar AI Labs — Agent Hangar" />
+  <meta property="og:description" content="One open-source home for every AI agent your company builds." />
+  <meta property="og:image" content={`${base}/assets/social-preview.png`} />
+</head>
+<body>
+  <canvas id="scene" data-base={base} data-crew={crew.join(',')} aria-hidden="true"></canvas>
+  <div class="veil" aria-hidden="true"></div>
+
+  <header class="top">
+    <a class="brand" href={`${base}/`} aria-label="Hangar AI Labs">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#F4B400" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 20.5V11L12 3.5 21.5 11v9.5"/><path d="M6.5 20.5v-6h11v6"/></svg>
+      <span>Hangar <b>AI Labs</b></span>
+    </a>
+    <nav class="links">
+      <a href={`${base}/docs/`}>Docs</a>
+      <a href={`${base}/demo/`}>Demo</a>
+      <a href={`${GH}/releases`}>Releases</a>
+      <a class="gh" href={GH} aria-label="GitHub">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.04 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.74-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+      </a>
+    </nav>
+  </header>
+
+  <aside class="rail" aria-label="Chapters">
+    {chapters.map((c, i) => (
+      <a class="chap" href={`#${c.id}`} data-chap={c.id}>
+        <span class="n">{String(i + 1).padStart(2, '0')}</span>
+        <span class="t">{c.title}</span>
+        <span class="s">{c.sub}</span>
+      </a>
+    ))}
+  </aside>
+
+  <main>
+    <section class="hero" id="top">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#f4b400"/></linearGradient></defs>
+        <path d="M2.5 20.5V11L12 3.5 21.5 11v9.5"/><path d="M6.5 20.5v-6h11v6"/>
+      </svg>
+      <p class="kicker">Hangar AI Labs presents</p>
+      <h1>Agent Hangar</h1>
+      <p class="tag">Where your agents report for work</p>
+      <p class="lead">One open-source home for every AI agent your company builds, whatever tool built it. Agents are
+        built where people already work, tested before they ship, run in their own containers, and are usable from any
+        platform.</p>
+      <div class="cta">
+        <a class="btn primary" href={`${base}/docs/install/`}>Get started</a>
+        <a class="btn" href={`${base}/docs/`}>Read the docs</a>
+        <a class="btn ghost" href={`${base}/demo/`}>Try the demo</a>
+      </div>
+      <button class="explore" id="explore" type="button">Press any key or scroll to explore <span aria-hidden="true">↓</span></button>
+    </section>
+
+    <section class="chapter" id="build">
+      <div class="panel">
+        <p class="num">01 · Build where you work</p>
+        <h2>Ask your AI for an agent. It builds, tests and ships it.</h2>
+        <p>The hangar is an MCP server, so Claude, ChatGPT, Codex, Cursor or OpenCode <em>are</em> the builder. They pick a
+          chat agent, a coding harness or a multi-agent team from the objective, reuse what the company already has, write
+          the tests and the user guide, and ship only when the tests pass.</p>
+        <ul class="facts">
+          <li><b>MCP</b><span>build from the AI tool you already use</span></li>
+          <li><b>Stage → prod</b><span>every version tested before it ships</span></li>
+          <li><b>Reuse</b><span>new agents from existing ones, unchanged</span></li>
+        </ul>
+        <img class="shot" src={`${base}/assets/portal-tour.gif`} alt="The user portal: an agent built by Claude, tested and in production" loading="lazy" />
+        <a class="more" href={`${base}/docs/clients/`}>Connect your AI tool →</a>
+      </div>
+    </section>
+
+    <section class="chapter" id="employees">
+      <div class="panel">
+        <p class="num">02 · Digital employees</p>
+        <h2>Hire an agent for a job, with a human in the loop.</h2>
+        <p>A Digital employee has a job profile, a human manager and an authority level the platform enforces before every
+          action, not the prompt. It works on tasks and issues in the background, pauses on exactly the action that needs a
+          decision, and can get a second opinion from a model of another vendor.</p>
+        <div class="crew" aria-hidden="true">
+          {crew.slice(0, 12).map((id) => <img src={`${base}/avatars/${id}.webp`} alt="" loading="lazy" />)}
+        </div>
+        <ul class="facts">
+          <li><b>Authority</b><span>alone, with notice, one or two approvals, never</span></li>
+          <li><b>Probation</b><span>real tasks in stage before admission</span></li>
+          <li><b>Org chart</b><span>who reports to whom, people and agents</span></li>
+        </ul>
+        <a class="more" href={`${base}/docs/digital-employee/`}>How Digital employees work →</a>
+      </div>
+    </section>
+
+    <section class="chapter" id="govern">
+      <div class="panel">
+        <p class="num">03 · Governed &amp; measured</p>
+        <h2>Nothing reaches production untested. Every cent is counted.</h2>
+        <p>Immutable versions, stage tests and LLM-as-judge rubrics, four-eyes approval, budgets with a hard stop, DLP,
+          audit and SSO with SCIM. Each agent uses the right reasoning effort for its role, compacts long conversations, and
+          can send simple requests to a cheaper model.</p>
+        <ul class="facts">
+          <li><b>Budgets</b><span>per company, team, agent or project</span></li>
+          <li><b>Audit</b><span>every change and decision recorded</span></li>
+          <li><b>Cost</b><span>per call, per model, per agent</span></li>
+        </ul>
+        <a class="more" href={`${base}/docs/execution/`}>The execution profile →</a>
+      </div>
+    </section>
+
+    <section class="chapter" id="connect">
+      <div class="panel">
+        <p class="num">04 · Connect everything</p>
+        <h2>Every protocol in, hundreds of tools out.</h2>
+        <p>Each agent answers over OpenAI-compatible, MCP, A2A, ACP and AG-UI, so it works in LibreChat, Slack, VS Code,
+          other agents or inside your own app. Agents reach your systems through connectors (official servers, Docker's
+          catalog and the GitHub MCP Registry) and plugins, with every tool approved one by one.</p>
+        <pre class="code"><code><span class="c"># any agent, any client</span>
+POST /gw/&lt;agent&gt;/v1/chat/completions   <span class="c">OpenAI</span>
+POST /gw/&lt;agent&gt;/mcp                    <span class="c">MCP</span>
+POST /gw/&lt;agent&gt;/a2a                    <span class="c">A2A</span>
+POST /gw/&lt;agent&gt;/agui                   <span class="c">AG-UI, inside your app</span></code></pre>
+        <a class="more" href={`${base}/docs/connectors/`}>Connectors and the MCP registry →</a>
+      </div>
+    </section>
+
+    <section class="chapter" id="open">
+      <div class="panel">
+        <p class="num">05 · Open &amp; self-hosted</p>
+        <h2>Your models, your servers, Apache-2.0.</h2>
+        <p>The hangar never hosts a model: agents call your LiteLLM, OpenRouter or provider. Run it on a laptop, a cloud VM
+          or Kubernetes (GKE, AKS, EKS) with a kernel sandbox for agents, signed images and an SBOM.</p>
+        <pre class="code"><code>git clone {GH} && cd agent-hangar
+./scripts/install.sh   <span class="c"># Linux, macOS, WSL</span></code></pre>
+        <div class="cta left">
+          <a class="btn primary" href={`${base}/docs/install/`}>Install</a>
+          <a class="btn" href={`${base}/docs/kubernetes/`}>Kubernetes</a>
+          <a class="btn ghost" href={GH}>Star on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>© Hangar AI Labs · Agent Hangar is open source under the Apache-2.0 license</span>
+    <span><a href={`${base}/docs/`}>Docs</a> · <a href={`${GH}/blob/main/CHANGELOG.md`}>Changelog</a> · <a href={GH}>GitHub</a></span>
+  </footer>
+
+  <style is:global>
+    :root { --gold: #f4b400; --gold-hi: #ffe08a; --ink: #eef1f5; --mute: #a9b3bf; --night: #070a0f;
+      --glass: rgba(14, 19, 27, 0.62); --line: rgba(255, 224, 138, 0.18);
+      --sign: "Barlow Semi Condensed", "Arial Narrow", sans-serif; --ui: "IBM Plex Sans", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: radial-gradient(120% 90% at 50% 10%, #1a2433 0%, #0b1018 45%, var(--night) 100%);
+      color: var(--ink); font: 16px/1.6 var(--ui); overflow-x: hidden; }
+    a { color: inherit; }
+    #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; }
+    .veil { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background: radial-gradient(70% 55% at 50% 45%, transparent 0%, rgba(7, 10, 15, 0.35) 70%, rgba(7, 10, 15, 0.8) 100%); }
+    .top { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: space-between;
+      align-items: center; padding: 18px 28px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 600 21px var(--sign); letter-spacing: .02em; }
+    .brand b { color: var(--gold); font-weight: 700; }
+    .links { display: flex; align-items: center; gap: 22px; font-size: 15px; }
+    .links a { text-decoration: none; color: var(--mute); transition: color .2s; }
+    .links a:hover, .links a:focus-visible { color: var(--ink); }
+    .rail { position: fixed; left: 22px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 10px; }
+    .chap { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; width: 210px; padding: 10px 14px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--glass); backdrop-filter: blur(8px);
+      text-decoration: none; opacity: .55; transition: opacity .25s, border-color .25s, transform .25s; }
+    .chap .n { grid-row: span 2; font: 600 13px var(--sign); color: var(--gold); padding-top: 2px; }
+    .chap .t { font: 600 15px var(--sign); letter-spacing: .02em; }
+    .chap .s { font-size: 11.5px; color: var(--mute); }
+    .chap:hover, .chap:focus-visible, .chap.on { opacity: 1; border-color: rgba(244, 180, 0, .55); transform: translateX(4px); }
+    main { position: relative; z-index: 3; }
+    .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 120px 24px 80px; }
+    .mark { width: 92px; height: 92px; filter: drop-shadow(0 0 22px rgba(244, 180, 0, .55)); }
+    .kicker { margin: 18px 0 0; font: 500 13px var(--sign); letter-spacing: .32em; text-transform: uppercase; color: var(--gold-hi); opacity: .85; }
+    h1 { margin: 6px 0 0; font: 700 clamp(56px, 9vw, 112px)/1 var(--sign); letter-spacing: .01em;
+      background: linear-gradient(180deg, #fff 10%, var(--gold-hi) 60%, var(--gold) 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+      text-shadow: 0 0 40px rgba(244, 180, 0, .15); }
+    .tag { margin: 10px 0 0; font: 500 clamp(20px, 2.6vw, 28px) var(--sign); letter-spacing: .03em; }
+    .lead { max-width: 640px; color: var(--mute); margin: 18px auto 0; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+    .cta.left { justify-content: flex-start; }
+    .btn { display: inline-block; padding: 11px 22px; border-radius: 999px; text-decoration: none; font: 600 15px var(--ui);
+      border: 1px solid rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .04); transition: transform .2s, background .2s; }
+    .btn:hover, .btn:focus-visible { transform: translateY(-2px); background: rgba(255, 255, 255, .1); }
+    .btn.primary { background: var(--gold); color: #17212c; border-color: var(--gold); }
+    .btn.primary:hover { background: var(--gold-hi); }
+    .btn.ghost { border-color: transparent; }
+    .explore { margin-top: 64px; background: none; border: 0; color: var(--mute); font: 500 12px var(--sign);
+      letter-spacing: .3em; text-transform: uppercase; cursor: pointer; animation: bob 2.4s ease-in-out infinite; }
+    @keyframes bob { 50% { transform: translateY(6px); opacity: .6; } }
+    .chapter { min-height: 100vh; display: flex; align-items: center; justify-content: flex-end; padding: 110px 6vw 90px 290px; }
+    .panel { max-width: 640px; width: 100%; padding: 32px 34px; border: 1px solid var(--line); border-radius: 18px;
+      background: var(--glass); backdrop-filter: blur(14px); box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
+      opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s ease; }
+    .panel.in { opacity: 1; transform: none; }
+    .num { margin: 0; font: 600 13px var(--sign); letter-spacing: .25em; text-transform: uppercase; color: var(--gold); }
+    h2 { margin: 10px 0 12px; font: 700 clamp(28px, 3.4vw, 40px)/1.12 var(--sign); }
+    .panel p { color: #d3d9e1; }
+    .facts { list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .facts li { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(255, 255, 255, .03); }
+    .facts b { display: block; font: 700 18px var(--sign); color: var(--gold-hi); }
+    .facts span { font-size: 13px; color: var(--mute); line-height: 1.4; }
+    .shot { width: 100%; margin-top: 20px; border-radius: 12px; border: 1px solid var(--line); }
+    .crew { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .crew img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px rgba(244, 180, 0, .35); }
+    .code { margin: 18px 0 0; padding: 16px 18px; border-radius: 12px; background: rgba(0, 0, 0, .45); border: 1px solid var(--line);
+      font: 13.5px/1.7 "IBM Plex Mono", ui-monospace, monospace; overflow-x: auto; color: #e9edf2; }
+    .code .c { color: #8a96a5; }
+    .more { display: inline-block; margin-top: 20px; color: var(--gold-hi); text-decoration: none; font-weight: 600; }
+    .more:hover { text-decoration: underline; }
+    .foot { position: relative; z-index: 3; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+      padding: 28px; color: var(--mute); font-size: 13px; border-top: 1px solid rgba(255, 255, 255, .06); background: rgba(7, 10, 15, .7); }
+    @media (max-width: 980px) {
+      .rail { display: none; }
+      .chapter { padding: 90px 16px 60px; justify-content: center; }
+      .facts { grid-template-columns: 1fr; }
+      .links { gap: 14px; font-size: 14px; }
+      .top { padding: 14px 16px; }
+    }
+    @media (max-width: 520px) { .links a:not(.gh):nth-child(2), .links a:not(.gh):nth-child(3) { display: none; } .panel { padding: 24px 20px; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .explore { animation: none; } .panel { transition: none; } }
+  </style>
+
+  <script>
+    import { startScene } from '../scripts/scene.js';
+
+    const canvas = document.getElementById('scene') as HTMLCanvasElement;
+    startScene(canvas);
+
+    // capítulos: o cartão da esquerda acende com a seção na tela; os painéis entram ao aparecer
+    const chaps = [...document.querySelectorAll<HTMLAnchorElement>('.chap')];
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.querySelector('.panel')?.classList.add('in');
+        chaps.forEach((c) => c.classList.toggle('on', c.dataset.chap === e.target.id));
+      }
+    }, { threshold: 0.35 });
+    document.querySelectorAll('.chapter').forEach((s) => io.observe(s));
+
+    // "press any key": a primeira tecla (ou o botão) leva ao primeiro capítulo
+    const go = () => document.getElementById('build')?.scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('explore')?.addEventListener('click', go);
+    window.addEventListener('keydown', (e) => {
+      if (window.scrollY < window.innerHeight * 0.5 && !e.metaKey && !e.ctrlKey && !e.altKey && e.key !== 'Tab') go();
+    }, { once: false });
+  </script>
+</body>
+</html>
