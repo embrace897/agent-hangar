@@ -84,14 +84,26 @@ The optional gateway (profile `mcp-gateway`):
 
 Agents reach it without a token, only from the internal network. See [mcp-catalog.md](mcp-catalog.md).
 
+## GitHub MCP Registry
+
+The central reads the registry's public API once a day to list its servers in the connector catalog:
+- **Probing:** to tell how each remote server authenticates, it sends the MCP `initialize` call with no credential,
+  only to public `https` addresses (private, loopback and link-local addresses are refused), without following
+  redirects, and reads the public OAuth metadata.
+- **Installing** works like any other connector: through the bridge, with the credential in the vault and every tool
+  blocked until an admin approves it. Packages run in the isolated runner and only admins install them.
+- `MCP_REGISTRY_URL=` (empty) turns the source off. See [connectors.md](connectors.md#github-mcp-registry).
+
 ## Agent memory
 
 The optional memory service (profile `memory`) is reachable only by the central, with `MEMORY_TOKEN`:
 - **Groups:** agents call `/internal/memory/mcp` on the central, which decides the memory groups from the spec.
   The agent never picks them.
 - **Stage vs production:** a per-environment token keeps stage containers from writing production memory.
-- **Database:** the graph database (Neo4j or FalkorDB) sits on an internal network with no internet access.
+- **Database:** the graph database (Neo4j or FalkorDB), or Mem0's PostgreSQL with pgvector, sits on an internal
+  network with no internet access.
 - **Embeddings:** computed locally by default.
+- **Telemetry:** Graphiti's and Mem0's telemetry is off in the image; the extraction LLM is the only outbound call.
 
 See [memory.md](memory.md).
 

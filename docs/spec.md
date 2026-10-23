@@ -33,6 +33,9 @@ execution:                # optional; absent = automatic (see execution.md)
   parallel_tools: true    # chat: tools from different servers and sub-agents run at the same time
   prompt_cache: true      # false: no prompt caching
   max_turns: 40           # harness: the CLI's maximum rounds (claude-code)
+  compact: true           # chat: false turns off long-context compaction (on by default; acts only past the budget)
+  context_budget: 60000   # chat: tokens before compacting; absent = 60% of the model's window
+  light_model: auto       # chat: auto, or a model of the same connection, for simple requests; absent = off
 judge:                    # connection used by `judge` test cases (defaults to llm.connection)
   connection: my-litellm
   model: ""

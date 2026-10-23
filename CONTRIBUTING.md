@@ -20,8 +20,9 @@ ruff check .
 Full stack: `./scripts/setup.sh && docker compose up -d --build`. Then run
 `HANGAR_TOKEN=<admin> python tests/e2e/smoke.py` for the end-to-end smoke test (mock mode, no LLM key needed).
 The CI also runs `tests/e2e/workforce.py` (Digital employees and plugins, against the echo system in
-`tests/e2e/echo_server.py`) and `tests/e2e/i18n_crawl.py`, which opens every screen in English and fails if Portuguese
-is left on it. New UI text goes in the dictionary of `central/app/static/i18n.js`; when the same Portuguese text needs a
+`tests/e2e/echo_server.py`), `tests/e2e/i18n_crawl.py`, which opens every screen in English and fails if Portuguese is
+left on it, a page breaks or a page scrolls sideways on a phone, and `tests/e2e/ui_actions.py`, which clicks through the
+main actions of the console and the portal. New UI text goes in the dictionary of `central/app/static/i18n.js`; when the same Portuguese text needs a
 different translation depending on where it appears, use `window.t(text, context)` and add the entry to `DC`. Releases
 are published by the *Release images* workflow; see `release-notes/README.md`.
 

@@ -2,13 +2,18 @@
 
 > Self-hosted control plane for AI agents. AI clients (Claude, ChatGPT, Codex, OpenCode) connect to its MCP server
 > at /mcp and build agents by chatting. Every agent is versioned, tested in stage and only then promoted to prod,
-> runs in its own Docker container, and is exposed over OpenAI-compatible, A2A, ACP and MCP at /gw/<slug>.
+> runs in its own Docker container, and is exposed over OpenAI-compatible, A2A, ACP, MCP and AG-UI at /gw/<slug>.
+> Documentation site: https://valteresj2.github.io/agent-hangar/ (built from docs/).
 
 Key facts for coding agents:
 - The platform MCP tool flow: list_templates → list_catalog → register_agent → design_agent (JSON Merge Patch;
   null deletes) → ship_agent → create_consumer_key. The spec schema comes from get_spec_schema.
 - Agent types: chat (llm.connection), harness (harness.id ∈ claude-code|codex|hermes|deepseek-harness; one ephemeral
-  container per call), multi-agent (sub_agents; chat only).
+  container per call), multi-agent (sub_agents; chat only), remote (an AG-UI agent from another framework).
+- Digital employees (hire_employee) are agents with a job, a human manager and an authority level the platform
+  enforces before every tool call.
+- execution (optional): effort, max_output_tokens, compact/context_budget (long-context compaction) and light_model
+  (a cheaper model for simple requests). Avatars: list_avatars, and `avatar` on register_agent/compose_agent.
 - Connections are external LLM endpoints; protocols: openai (chat, codex, hermes), anthropic (claude-code),
   deepseek (deepseek-harness). The hangar never hosts a model.
 - Auth: admin keys for /api and /mcp; invoke keys (optionally per agent) for /gw/<slug>.
@@ -23,3 +28,8 @@ Key facts for coding agents:
 - [Connecting clients](docs/clients.md)
 - [Templates](docs/templates.md)
 - [Security model](docs/security.md)
+- [Execution profile](docs/execution.md)
+- [Digital employees](docs/digital-employee.md)
+- [Connectors](docs/connectors.md)
+- [Memory](docs/memory.md)
+- [Feature map](docs/feature-map.md)

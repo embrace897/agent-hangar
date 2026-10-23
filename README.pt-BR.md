@@ -104,7 +104,7 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Catálogo de ferramentas | 230+ MCP servers do catálogo Docker; MCPs remotos com OAuth | Tool Repository e MCP servers próprios | Não encontrado | Marketplace com tools e integrações MCP | Gateway agrega APIs, Lambdas e MCPs num MCP virtual | Toolbox: endpoint MCP único, com governança e versão |
 | Agentes de código e IDE | Harnesses (Claude Code, Codex, Hermes, DeepSeek Harness) como agentes; extensão de VS Code; Cline, Roo Code e Continue | Parcial: plugin de skills que ensina o CrewAI a agentes de código | Não encontrado | Não encontrado | Não encontrado | Não encontrado |
 | Promoção com testes | Sim: versão imutável, gate de testes em stage, aprovação de segundo mantenedor, rollback | Não encontrado | Avaliação na mesma stack; gate de promoção não encontrado | Não encontrado | Não encontrado | Versiona agentes e cria endpoints estáveis; gate não encontrado |
-| Memória de longo prazo | Grafo temporal por agente, time ou org (Graphiti) | Memória e knowledge no framework | Estado por thread, execução durável | Base de conhecimento (RAG) | Não verificado | Memory como ferramenta nativa |
+| Memória de longo prazo | Grafo temporal por agente, time ou org (Graphiti), ou fatos vetoriais (Mem0, experimental) | Memória e knowledge no framework | Estado por thread, execução durável | Base de conhecimento (RAG) | Não verificado | Memory como ferramenta nativa |
 | Governança e custo | SSO, SCIM, papéis, regra de e-mail corporativo, auditoria, DLP e retenção, orçamento por empresa, time, agente ou projeto com corte, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
@@ -217,6 +217,9 @@ O cliente chama as ferramentas do hangar e faz o resto:
 4. Faz deploy num container de **stage** e roda os testes.
 5. Registra o resultado e só promove para **produção** se os testes passarem.
 
+Cada agente ganha um avatar de personagem que combina com o papel dele (a IA que o constrói escolhe), e o dono troca
+na página do agente.
+
 A partir daí o agente é um serviço com cinco protocolos padrão (OpenAI-compatible, MCP, A2A, ACP e AG-UI). Você
 pode plugá-lo no LibreChat, no Open WebUI, no OpenCode, no Claude Desktop, num bot de Slack, em outro agente (via
 A2A), no seu próprio app (via AG-UI) ou em qualquer SDK da OpenAI. Cada agente
@@ -257,7 +260,13 @@ A2A, ACP, MCP e AG-UI. As credenciais saem só do cofre. Veja
 **O esforço certo para cada modelo.** Cada agente tem um perfil de execução: esforço de raciocínio, limite de saída,
 ferramentas em paralelo e cache do prompt, enviados no dialeto de cada provedor e nas flags de cada harness. O esforço
 começa pelo papel do agente, o hangar mede custo e acerto por modelo e esforço, e uma comparação em stage sugere um
-nível mais barato ou mais forte, com os números. Nada muda sozinho. Veja [docs/execution.md](docs/execution.md).
+nível mais barato ou mais forte, com os números. Nada muda sozinho.
+- **Conversa longa não estoura.** Passando do orçamento de contexto, os resultados grandes de ferramenta saem da
+  conversa (o agente os lê de volta quando precisa) e o histórico antigo vira um resumo, e os fatos do começo ficam.
+- **Um modelo mais barato para pedidos simples.** Com `light_model`, os pedidos curtos vão a um modelo mais barato da
+  mesma conexão; os difíceis, e as falhas dele, vão ao modelo do agente. Cada chamada é cobrada pelo seu preço.
+
+Veja [docs/execution.md](docs/execution.md).
 
 **Issues, para pessoas e agentes.** Um quadro kanban (quadro, lista, tabela, linha do tempo) em que a issue atribuída
 a um Digital employee vira trabalho dentro da alçada e do orçamento dele: ele comenta o andamento e entrega o
@@ -269,6 +278,9 @@ nunca são apagadas. Veja [docs/issues.md](docs/issues.md).
   num container isolado ou um JSON `mcpServers` importado do Claude Desktop ou do Cursor. Cada ferramenta é aprovada
   uma a uma, e uma ferramenta nova ou alterada fica bloqueada até um admin aprovar ([docs/connectors.md](docs/connectors.md)).
 - **230+ servidores MCP** do catálogo oficial da Docker, cada um num container isolado.
+- **O Registro MCP do GitHub** ([github.com/mcp](https://github.com/mcp)) soma centenas de servidores ao catálogo, cada
+  um com o jeito mais simples de conectar: um clique com OAuth ou sem login, um token, o endereço da conta ou um pacote
+  npm/PyPI com versão fixa ([docs/connectors.md](docs/connectors.md#github-mcp-registry)).
 - **Skills** no estilo das Skills do Claude, com verificação de segurança no upload; o Skill Studio guarda versões e
   casos de teste.
 - **Plugins** conectam qualquer sistema com um manifesto declarativo, revisado por quatro olhos
@@ -294,6 +306,11 @@ de só chamá-lo. Ele tem cargo, gestor humano e **alçada**; recebe tarefas e t
   pessoas ou nunca feito, e o piso da empresa sempre vale.
 - **Humano no circuito:** a tarefa pausa na ação exata (ferramenta e argumentos) e o gestor aprova, edita, recusa ou
   instrui. Sem resposta, o pedido vai para o substituto e depois expira sem a ação.
+- **Uma segunda opinião de outro fornecedor:** uma regra de alçada pode pedir que um modelo de outro fornecedor revise a
+  ação antes de ela acontecer; se discordarem, uma pessoa decide
+  ([revisão](docs/digital-employee.md#review-by-a-model-from-another-vendor)).
+- **Loops que só incomodam com achados:** cada execução diz se achou algo, e as sem achados ficam contadas à parte em
+  vez de lotar a caixa de entrada ([loops](docs/digital-employee.md#loops-only-what-matters-reaches-a-person)).
 - **Onde gerenciar:** donos e gestores têm o seu espaço no portal (*Digital employees*, *Decisões*); o admin tem a
   força de trabalho, o catálogo de ações e o piso da empresa no console. Os relatórios diários podem ir para o Slack
   ou o Teams, o que for da empresa.
@@ -305,6 +322,14 @@ de só chamá-lo. Ele tem cargo, gestor humano e **alçada**; recebe tarefas e t
     repetidas em lições.
 
 Veja [docs/digital-employee.md](docs/digital-employee.md).
+
+**Memória de longo prazo.** Com `memory: {scope: agent | team | org}` o agente lembra clientes, decisões e
+preferências entre conversas ([docs/memory.md](docs/memory.md)).
+- O padrão é um **grafo de conhecimento temporal** (Graphiti sobre Neo4j Community ou FalkorDB): um fato que muda
+  vira histórico, não é sobrescrito.
+- **Mem0 sobre PostgreSQL com pgvector** é uma opção mais leve, experimental, sem banco de grafo: grava muito mais
+  rápido e barato, sem o histórico datado de um fato que mudou.
+- O hangar decide qual memória cada agente lê e grava, e stage nunca suja a produção. Os embeddings são locais.
 
 ## Início rápido
 
@@ -370,8 +395,9 @@ Veja [integrations/librechat](integrations/librechat/).
 
 ## Estado do projeto
 
-O Agent Hangar está em **alpha**: funciona de ponta a ponta, cada versão roda a suíte e2e completa e uma instalação
-numa máquina limpa, e as APIs ainda podem mudar. As versões recentes:
+O Agent Hangar está em **alpha**: funciona de ponta a ponta, cada versão roda a suíte e2e completa (a API, cliques de
+verdade no console e no portal, o layout no celular e os textos em inglês) e uma instalação numa máquina limpa, e as
+APIs ainda podem mudar. As versões recentes:
 
 | Versão | O que trouxe |
 |---|---|
@@ -401,6 +427,9 @@ O histórico completo está no [CHANGELOG](CHANGELOG.md) e o que vem pela frente
 
 ## Documentação
 
+Navegue em **[valteresj2.github.io/agent-hangar](https://valteresj2.github.io/agent-hangar/)** (em inglês), com busca e
+modos claro e escuro. O site é gerado a partir de [`docs/`](docs/) a cada mudança.
+
 | | |
 |---|---|
 | [Instalação](docs/install.md) · [VM na nuvem](docs/cloud-vm.md) · [Kubernetes](docs/kubernetes.md) | Instalador guiado, túneis, `hangar doctor`, upgrades; Docker numa VM; GKE, AKS e EKS |
@@ -409,8 +438,8 @@ O histórico completo está no [CHANGELOG](CHANGELOG.md) e o que vem pela frente
 | [Acesso, times e SSO](docs/access.md) · [Workspace do membro](docs/workspace.md) | Papéis, aprovações, orçamentos, OAuth2/SCIM, cadastro da empresa e e-mail corporativo |
 | [Issues](docs/issues.md) · [Digital employee](docs/digital-employee.md) · [Trabalho do dia a dia](docs/work.md) | Quadro kanban; agentes com cargo, gestor e alçada; metas, projetos, orçamentos, caixa de entrada |
 | [O dia a dia do analista](docs/analyst.md) | Análise de dados, extração de documentos, calculadoras, playbooks, filas, base de conhecimento, governança de dados |
-| [Conectores](docs/connectors.md) · [Plugins](docs/plugins.md) · [Memória](docs/memory.md) · [Catálogo MCP](docs/mcp-catalog.md) | O que os agentes sabem e usam |
-| [Harnesses](docs/harnesses.md) · [Perfil de execução](docs/execution.md) · [Reúso](docs/composer.md) · [Guia do agente](docs/guide.md) | Agentes de código, esforço por modelo, agentes a partir de outros, a aba Guia |
+| [Conectores](docs/connectors.md) · [Plugins](docs/plugins.md) · [Memória](docs/memory.md) · [Catálogo MCP](docs/mcp-catalog.md) | O que os agentes sabem e usam: memória Graphiti ou Mem0; conectores oficiais, da Docker e do Registro MCP do GitHub |
+| [Harnesses](docs/harnesses.md) · [Perfil de execução](docs/execution.md) · [Reúso](docs/composer.md) · [Guia do agente](docs/guide.md) | Agentes de código; esforço por modelo, compactação do contexto e modelo por resposta; agentes a partir de outros; a aba Guia |
 | [Observabilidade](docs/observability.md) · [Backup e upgrade](docs/backup.md) · [Cadeia de suprimentos](docs/supply-chain.md) | Métricas, logs, traces; `hangar backup`/`upgrade`; imagens assinadas e SBOM |
 | [API](docs/api.md) · [CLI](docs/cli.md) · [Segurança](docs/security.md) · [Comparativo](docs/comparison.pt-BR.md) · [Mapa de funcionalidades](docs/feature-map.md) | Referência, endurecimento e como o hangar se compara |
 

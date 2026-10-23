@@ -208,7 +208,7 @@ externalSecrets:
 Keys:
 - **Always:** `ADMIN_TOKEN`, `HANGAR_SECRET_KEY` (Fernet), `INTERNAL_SECRET`, `DATABASE_URL`.
 - **With the chart's Postgres:** `POSTGRES_PASSWORD`.
-- **With memory:** `MEMORY_TOKEN` and `NEO4J_PASSWORD`/`FALKORDB_PASSWORD`.
+- **With memory:** `MEMORY_TOKEN` and `NEO4J_PASSWORD`/`FALKORDB_PASSWORD`. The chart doesn't offer the Mem0 backend yet.
 - **With SSO:** `OAUTH_<PROVIDER>_CLIENT_SECRET`.
 - **With the tunnel:** `CLOUDFLARE_TUNNEL_TOKEN`.
 

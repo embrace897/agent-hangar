@@ -166,3 +166,5 @@ entities or source excerpts in its results.
 - **One extraction LLM per installation,** not per team.
 - **Chat agents only.** Harness agents don't get memory yet.
 - **Memory is per agent, team or org, not per end user.** A `user` scope is a natural next step.
+- **Mem0 is experimental:** it is not in the Kubernetes chart or in `hangar setup` yet, and its results have no
+  entities or source excerpts.

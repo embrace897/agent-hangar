@@ -12,7 +12,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Members: invite by e-mail (link to the portal), people and roles, open sign-ins, sign-in methods and personal-agent rules | Console → Membros | [workspace.md](workspace.md#admin-members) |
 | Full dashboard: what needs attention, my agents, usage, requests, schedules, connections, getting started, recently viewed | Portal → Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
 | Inbox: decisions, tasks I asked for, stuck work I manage, budget stops (read / archived) | Portal → Inbox | [work.md](work.md#inbox-and-search) |
-| Search everything I can see (`Ctrl+K`) | Top of every page | [work.md](work.md#inbox-and-search) |
+| Search everything I can see (`Ctrl+K`); in the portal: agents, Digital employees, tasks, issues and projects | Top of every page | [work.md](work.md#inbox-and-search) |
 | Favorites (☆ on a title) and recently viewed | Sidebar, Home | [work.md](work.md#getting-started-announcements-favorites-and-live-view) |
 | Company catalog and access requests to other teams' agents | Portal → Company catalog | [access.md](access.md) |
 | Connect AI tools (Claude, ChatGPT, Codex, Cursor, LibreChat, VS Code…) and personal keys | Portal → Connect tools, My keys | [clients.md](clients.md) |
@@ -42,7 +42,9 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Daily and weekly reports, deadlines and escalation | Employee → Reports; Decision channels | [digital-employee.md](digital-employee.md#reports) |
 | Manager dashboard: cost, decisions, deadlines, bottlenecks | Portal → Manager | [digital-employee.md](digital-employee.md#manager-dashboard) |
 | Job history (every change is a version that can be restored) | Employee → Settings | [work.md](work.md#job-history) |
-| Org chart (who reports to whom) | Portal → Org chart | [work.md](work.md#org-chart) |
+| Org chart (who reports to whom); in the portal, you on top with your Digital employees and your regular agents | Portal → Org chart | [work.md](work.md#org-chart) |
+| Review by a model from another vendor before an action runs; disagreement goes to a person | Employee → Authority | [digital-employee.md](digital-employee.md#review-by-a-model-from-another-vendor) |
+| Loops: each run says whether it found something; quiet runs are counted apart | Routines, tasks | [digital-employee.md](digital-employee.md#loops-only-what-matters-reaches-a-person) |
 
 ## The analyst's day to day
 
@@ -86,11 +88,13 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 |---|---|---|
 | New agent (form or spec), templates, multi-agent composer | Portal → New agent, Templates | [guide.md](guide.md), [composer.md](composer.md) |
 | Skills and MCP servers catalog | Portal → Skills and MCPs | [mcp-catalog.md](mcp-catalog.md) |
+| Connectors: official servers, the Docker MCP catalog and the GitHub MCP Registry, each with the simplest way to connect (OAuth, open, token, package) | Console → Capacidades → Conectores | [connectors.md](connectors.md) |
+| Agent avatar: a character picked by role when the agent is built; the owner swaps it | Agent page → click the avatar | [api.md](api.md#agent-avatar) |
 | Skill Studio: versions, saved test cases, runs, restore | Portal → Skill Studio | [work.md](work.md#skill-studio) |
 | Plugins (HTTP / server), per-action policy, personal OAuth identity, triggers, egress proxy | Portal → Plugins | [plugins.md](plugins.md) |
 | Code work through harnesses (Claude Code, Codex, OpenCode…) | Agent → Jobs | [harnesses.md](harnesses.md) |
-| Reasoning effort, output limit, parallel tools and prompt cache per agent | Agent → Visão geral → Execução | [execution.md](execution.md) |
-| Memory (agent, team, company) with review and deletion | Agent → Memory | [memory.md](memory.md) |
+| Reasoning effort, output limit, parallel tools, prompt cache, long-context compaction and a cheaper model per response | Agent → Visão geral → Execução | [execution.md](execution.md) |
+| Memory (agent, team, company) with review and deletion: Graphiti on Neo4j or FalkorDB, or Mem0 on pgvector (experimental) | Agent → Memory | [memory.md](memory.md) |
 | Stage tests, promotion to production (four eyes optional), rollback, schedules | Agent page | [concepts.md](concepts.md) |
 | Team packages: export, preview, install; ready-made teams | Portal → Team packages | [work.md](work.md#team-packages) |
 | Remote MCP gateway | Agent → Connect | [remote-mcp.md](remote-mcp.md) |
@@ -120,6 +124,7 @@ Everything Agent Hangar does, grouped by who uses it, with where to find it. **P
 | Try the whole path with the test model | `hangar test-drive` | [cli.md](cli.md) |
 | GitOps: agents, skills and MCPs from a file; CI | `hangar apply` | [cli.md](cli.md#agents-in-ci) |
 | Cloud VM recipes | — | [cloud-vm.md](cloud-vm.md) |
+| Documentation site, built from `docs/` | [valteresj2.github.io/agent-hangar](https://valteresj2.github.io/agent-hangar/) | — |
 | Metrics, traces, logs | Prometheus, OpenTelemetry | [observability.md](observability.md) |
 
 ## For developers

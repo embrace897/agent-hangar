@@ -13,14 +13,14 @@ The portal shows only what belongs to the person, even when that person is an ad
 - The menu has eight items: Início, Minhas issues, Meus agentes, Organograma, Decisões, Caixa de entrada, Conectar minha IA, Meus acessos. Each person sees their own issues; the company's board is in the console, read-only ([issues.md](issues.md#who-sees-what)).
 - Everything else (building agents, catalog, plugins, queues, budgets, teams, governance…) is in the console (`/ui`), for admins.
 - In the portal, other addresses go back to Início. Projects, agents, Digital employees and tasks open only as a detail page, from a link.
-- The global search only returns issues, Digital employees and tasks.
+- The global search returns agents, Digital employees, tasks, issues and projects: what opens in the portal.
 - "Primeiros passos" are the person's own: connect your AI, create a personal agent, create the first issue, choose where you get decisions.
 
 | Page | What it does |
 |---|---|
 | **Início** | Shows decisions waiting for you, your agents working right now (and on what), the tasks you asked for, and this month's cost. |
-| **Meus agentes** | Lists your personal Digital employees and the team ones you manage. Each one shows its model, harness, level and specialists. A third section, *Agents I created or maintain*, lists your regular agents (not Digital employees): your personal ones, those of teams you maintain, and those you created, in the portal or through your AI over MCP. Each shows its status, version, team, next scheduled run and cost over 30 days. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
-| **Organograma** | Your own structure: you at the top (CEO if you are the company admin, Staff otherwise) and, below, your agents: the personal ones and the ones you manage or own. Each card shows model, harness, level, status and the current task, and who reports to whom is kept. Drag an agent onto another to change who it reports to; drop it on your own card to have it report directly to you. The company-wide org chart, with every team, is in the console. |
+| **Meus agentes** | Lists your personal Digital employees and the team ones you manage. Each one shows its model, harness, level and specialists. A third section, *Agents I created or maintain*, lists your regular agents (not Digital employees): your personal ones, those of teams you maintain, and those you created, in the portal or through your AI over MCP. Each shows its avatar, status, version, team, next scheduled run and cost over 30 days. From here you create a personal agent, ask your AI to create one, or ask to promote one to the team. |
+| **Organograma** | Your own structure: you at the top (CEO if you are the company admin, Staff otherwise) and, below, your agents: the personal Digital employees, the ones you manage or own, and your regular agents (the same list as *Agents I created or maintain*, shown as links that can't be dragged). Each card shows model, harness, level, status and the current task, and who reports to whom is kept. Drag an agent onto another to change who it reports to; drop it on your own card to have it report directly to you. The company-wide org chart, with every team, is in the console. |
 | **Decisões** | Unchanged. |
 | **Caixa de entrada** | Unchanged. |
 | **Conectar minha IA** | Generates a personal key and gives the ready-made config for Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, VS Code and OpenCode (copy or download). Claude.ai and ChatGPT use OAuth, with no key. |
