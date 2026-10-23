@@ -338,7 +338,7 @@ async function issueDetail(key) {
       ${d.removed_at ? `<div class="card warn-card small"><span>Tirada da lista por</span> <b data-noi18n>${esc(d.removed_by)}</b> ${when(d.removed_at)} — <span>a visão da empresa mantém a issue, o histórico e as rodadas.</span></div>` : ''}
       <input id="id-title" class="iss-big iss-title-in" value="${esc(d.title)}" ${ed ? '' : 'readonly'} data-noi18n>
       <div class="card iss-desc"><div class="row between"><span class="mute small">Descrição</span>${ed ? '<button class="ghost small" id="id-desc-edit">Editar</button>' : ''}</div>
-        <div id="id-desc" class="md">${d.description ? issMd(d.description) : '<span class="mute">Sem descrição.</span>'}</div></div>
+        <div id="id-desc" class="md"${d.description ? ' data-noi18n' : ''}>${d.description ? issMd(d.description) : '<span class="mute">Sem descrição.</span>'}</div></div>
       <div class="card mt"><div class="row between"><h2><span>Sub-issues</span> ${d.sub.total ? `<span class="mute small">${d.sub.done}/${d.sub.total}</span>` : ''}</h2>${ed ? '<button class="ghost small" id="id-sub-add">+ Sub-issue</button>' : ''}</div>
         ${d.sub_issues.length ? `<table class="iss-rows">${d.sub_issues.map(i => `<tr><td class="iss-key" data-noi18n>${esc(i.key)}</td><td>${i.stage ? `<span class="chip">${window.t('etapa')} ${i.stage}</span>` : ''}</td>
           <td><a href="#/issues/${esc(i.key)}" data-noi18n>${esc(i.title)}</a> ${issRun(i.run)}</td><td>${issPill(i.status)}</td><td>${issAvatar(i.assignee)}</td></tr>`).join('')}</table>`
@@ -468,7 +468,7 @@ function issTimelineRender(d) {
       <b data-noi18n>${esc(c.author.name)}</b><span class="mute small">${when(c.created_at)}${c.edited ? ` · ${window.t('editado')}` : ''}</span>
       ${c.task_id ? `<a class="small" href="#/tasks/${c.task_id}">${window.t('rodada')} #${c.task_id}</a>` : ''}
       ${!reply && c.resolved ? `<span class="pill ok">${window.t('resolvida')}</span>` : ''}</div>
-    <div class="md iss-c-b">${c.deleted ? `<span class="mute">${window.t('Comentário apagado.')}</span>` : issMd(c.body)}</div>
+    <div class="md iss-c-b"${c.deleted ? '' : ' data-noi18n'}>${c.deleted ? `<span class="mute">${window.t('Comentário apagado.')}</span>` : issMd(c.body)}</div>
     ${c.deleted ? '' : `<div class="iss-c-a">${Object.entries(c.reactions).map(([e, n]) => `<button class="ghost small iss-react ${c.my_reactions.includes(e) ? 'on' : ''}" data-e="${e}" ${d.can_comment ? '' : 'disabled'}>${e} ${n}</button>`).join('')}
       ${d.can_comment ? `<details class="iss-react-pick"><summary class="ghost small btnlike">☺</summary><span>${['👍', '❤️', '🎉', '👀', '🚀', '😕'].map(e => `<button class="ghost small iss-react" data-e="${e}">${e}</button>`).join('')}</span></details>` : ''}
       ${!reply && d.can_comment ? `<button class="ghost small iss-reply">${window.t('Responder')}</button><button class="ghost small iss-resolve">${window.t(c.resolved ? 'Reabrir' : 'Resolver')}</button>` : ''}

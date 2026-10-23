@@ -364,6 +364,8 @@
     'Provedores de LLM': 'LLM providers', 'Chaves de API': 'API keys', 'Construção': 'Build', 'Operação': 'Operations',
     'Pipeline de agentes': 'Agent pipeline', 'Auditoria': 'Audit log', 'Deployments': 'Deployments', 'Testes': 'Tests',
     'Visão geral': 'Overview', 'Conectar': 'Connect', 'Multiagente': 'Multi-agent', 'Versões': 'Versions', 'Uso': 'Usage',
+    'planejador / orquestrador': 'planner / orchestrator', 'análise de dados': 'data analysis', 'redação': 'writing',
+    'atendimento': 'customer service', 'extração de dados': 'data extraction', 'classificação / triagem': 'classification / triage',
     'Agendamentos': 'Schedules', 'Memória': 'Memory', 'Acesso': 'Access', '← Agentes': '← Agents', '← Times': '← Teams',
     'Painel': 'Dashboard', 'Console': 'Console',
     // ---- painéis
@@ -2474,6 +2476,12 @@
     '% aprovadas sem edição': '% approved without edits',
     '% das execuções com achado': '% of runs with findings', '% dos achados que viraram ação': '% of findings that led to an action',
     'Execuções sem achados': 'Runs with no findings', 'achado': 'finding', 'sem achados': 'no findings',
+    'Agentes, Digital employees, tarefas, issues e projetos — só o que você pode ver.': 'Agents, Digital employees, tasks, issues and projects — only what you can see.',
+    'tarefa removida': 'task removed',
+    'Tarefa removida': 'Task removed',
+    'A tarefa': 'Task',
+    'não existe mais: foi apagada junto com o time ou o Digital employee dela.': 'no longer exists: it was deleted along with its team or Digital employee.',
+    'A caixa de entrada é de uma pessoa. Você está na sessão de emergência (token de admin): entre com a sua conta para ver as suas decisões e tarefas. As aprovações da empresa ficam em': 'The inbox belongs to a person. You are in the emergency session (admin token): sign in with your account to see your decisions and tasks. The company’s approvals are in',
     'Registro MCP do GitHub': 'GitHub MCP Registry',
     'chave ou token no cabeçalho': 'key or token in a header',
     'endereço da sua conta': 'your account\'s address',
@@ -2722,7 +2730,17 @@
     .sort((a, b) => b[0].length - a[0].length)
     .map(([k, v]) => [k, new RegExp((W.test(k[0]) ? '(^|[^\\wÀ-ú])' : '()') + reEsc(k) + (W.test(k[k.length - 1]) ? '(?![\\wÀ-ú])' : ''), 'g'), v]);
   // números com unidade, montados no código ("8 erros", "2 d atrás", "3 agentes")
-  const UNITS = [[/^Critérios para o próximo nível nos últimos 30 dias \((\d+)\/(\d+)\)\. A plataforma mede e sugere; o gestor decide na aba$/,
+  const UNITS = [
+    [/\btodo dia útil às (\d\d:\d\d)/g, 'every business day at $1'], [/\btodo dia às (\d\d:\d\d)/g, 'every day at $1'],
+    [/\bde segunda a sexta às (\d\d:\d\d)/g, 'Monday to Friday at $1'],
+    [/\bsábados e domingos às (\d\d:\d\d)/g, 'Saturdays and Sundays at $1'],
+    [/\btodo dia (\d+) do mês às (\d\d:\d\d)/g, 'on day $1 of every month at $2'],
+    [/\btoda segunda às/g, 'every Monday at'], [/\btoda terça às/g, 'every Tuesday at'],
+    [/\btoda quarta às/g, 'every Wednesday at'], [/\btoda quinta às/g, 'every Thursday at'],
+    [/\btoda sexta às/g, 'every Friday at'], [/^sábado às/, 'Saturday at'], [/^domingo às/, 'Sunday at'],
+    [/^As chaves ficam ([A-Z0-9]+)-1, ([A-Z0-9]+)-2… \(mudar o prefixo muda como todas aparecem\)\.$/,
+      'Keys look like $1-1, $2-2… (changing the prefix changes how they all show).'],
+    [/^automático pelo papel \((.+)\)$/, 'automatic by role ($1)'],[/^Critérios para o próximo nível nos últimos 30 dias \((\d+)\/(\d+)\)\. A plataforma mede e sugere; o gestor decide na aba$/,
       'Criteria for the next level in the last 30 days ($1/$2). The platform measures and suggests; the manager decides in the'],
     [/^(\d+(?:\.\d+)?)% das tarefas falharam em 30 dias/, '$1% of tasks failed in 30 days'], [/(\d+) ações recusadas em 14 dias/, '$1 actions rejected in 14 days'],
     [/o gestor discordou de (\d+(?:\.\d+)?)% das ações no modo sombra/, 'the manager disagreed with $1% of the actions in shadow mode'],
@@ -2767,8 +2785,9 @@
     if (c) { const h = exact.get(c[1]) || (exact.get(c[1] + ' (') || '').replace(/ \($/, ''); if (h) return text.replace(raw, `${h} (${c[2]})`); }
     if (!PTISH.test(t)) return text;
     let out = t;
-    for (const [k, re, en] of parts) if (out.includes(k)) out = out.replace(re, (m, pre) => pre + en);
+    // as frases com números primeiro: depois das palavras soltas ("descrita" -> "described") elas não casariam mais
     for (const [re, en] of UNITS) out = out.replace(re, en);
+    for (const [k, re, en] of parts) if (out.includes(k)) out = out.replace(re, (m, pre) => pre + en);
     return out === t ? text : text.replace(raw, out);
   };
   window.tr = tr;

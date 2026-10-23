@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/e249551f-f706-4936-be19-4251564139c1
 
 </details>
 
-> **Status: alpha (v0.51).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
+> **Status: alpha (v0.52).** Funciona de ponta a ponta e tem testes, mas as APIs ainda podem mudar. Rode dentro da
 > sua rede até ler [docs/security.md](docs/security.md).
 
 ## Por que o Agent Hangar
@@ -108,7 +108,7 @@ recurso; não prova que ele não exista. Onde cada um está à frente, os modelo
 | Governança e custo | SSO, SCIM, papéis, regra de e-mail corporativo, auditoria, DLP e retenção, orçamento por empresa, time, agente ou projeto com corte, custo por agente | RBAC e controles de segurança | Auth customizada; ABAC no self-hosted | SSO/SAML, RBAC e auditoria (Enterprise) | IAM/JWT e políticas Cedar no Gateway | Entra ID e controles do Agent 365 |
 | Residência de dados e conformidade | Dados na sua infraestrutura, segredos criptografados, imagens assinadas com SBOM; sem certificações citadas | Implantação on-premise ou em nuvem; certificações não encontradas | Self-hosted para residência de dados e ambientes isolados (air-gapped) | Self-hosted mantém os dados em casa; Enterprise com SOC 2 Type II e ISO 27001 | Não verificado | Não verificado |
 | Observabilidade | Prometheus, logs JSON, OpenTelemetry, métricas por canal | Observabilidade em tempo real | Ponto forte: traces e avaliação | Observabilidade integrada | AgentCore Observability e CloudWatch | Application Insights e telemetria do Agent 365 |
-| Maturidade | Alpha (v0.51), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
+| Maturidade | Alpha (v0.52), Apache-2.0 | OSS com camada comercial | Comercial, parte Enterprise | Mais de 157 mil estrelas no GitHub | Registry em preview público | Agent 365 em disponibilidade geral; A2A 1.0 GA |
 
 ## Exemplo: do pedido no Claude ao agente funcionando
 
@@ -375,6 +375,7 @@ numa máquina limpa, e as APIs ainda podem mudar. As versões recentes:
 
 | Versão | O que trouxe |
 |---|---|
+| v0.52 | Varredura de ponta a ponta do console e do portal: a busca do portal acha seus agentes, layout no celular, textos em inglês, testes da interface no CI |
 | v0.51 | Mem0 sobre pgvector como backend de memória mais leve (experimental), ao lado do Graphiti |
 | v0.50 | O Registro MCP do GitHub como origem de conectores: centenas de servidores MCP, cada um com o jeito mais simples de conectar (OAuth, aberto, token ou pacote) |
 | v0.49 | Compactação de contexto longo nos agentes de chat, um modelo mais barato para pedidos simples e avatares dos agentes |

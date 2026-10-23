@@ -612,7 +612,13 @@ const EVENT_LABEL = { created: 'Criada', run: 'Rodada', tool: 'Ferramenta', gate
   plan: 'Plano', handoff: 'Repasse', handoff_done: 'Repasse concluído', analysis: 'Análise', extraction: 'Extração', calc: 'Cálculo',
   file: 'Arquivo', review: 'Revisão', cross_review: 'Revisor de outro fornecedor' };
 async function taskPage(id) {
-  const x = await api('/tasks/' + id);
+  let x;
+  try { x = await api('/tasks/' + id); } catch (e) {
+    if (!/não existe/.test(e.message)) throw e;  // link antigo para uma tarefa apagada: explica, em vez do cartão de erro
+    main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a><div class="card empty mt"><h2>${window.t('Tarefa removida')}</h2>
+      <div class="mute">${window.t('A tarefa')} #${esc(String(id))} ${window.t('não existe mais: foi apagada junto com o time ou o Digital employee dela.')}</div></div>`;
+    return;
+  }
   const open = (x.requests || []).filter(r => r.status === 'open');
   main.innerHTML = `<a href="javascript:history.back()" class="mute small">← voltar</a>
   <div class="row between"><div><h1 data-noi18n>#${x.id} ${esc(x.title)}</h1><div class="sub">${taskPill(x.status)}${x.finding === false ? ' <span class="pill">sem achados</span>' : x.finding === true ? ' <span class="pill warn">achado</span>' : ''} pedida por ${esc(x.requester)}${x.via ? ` <span>pelo</span> ${esc(VIA_LABEL[x.via] || x.via)}` : ''} · ${when(x.created_at)}
@@ -850,7 +856,8 @@ async function decisionsPage() {
 const NT_CHANNEL = { auto: 'Automático', slack: 'Slack', teams: 'Microsoft Teams', email: 'E-mail', off: 'Só no portal' };
 async function ntMine(box) {
   let n;
-  try { n = await api('/me/notifications'); } catch { return; }  // token de admin: sem pessoa, sem preferência
+  if (!ME.user) return;  // token de admin: sem pessoa, sem preferência (nem chama a API)
+  try { n = await api('/me/notifications'); } catch { return; }
   const via = n.route ? NT_CHANNEL[n.route] : 'Só no portal';
   box.innerHTML = `<details class="card"${n.route ? '' : ' open'}><summary><b>Receber decisões fora do portal</b> <span class="mute small">— <span>agora:</span> ${esc(via)}</span></summary>
     <div class="mute small mt">Decida na própria mensagem: no Slack com botões (aprovar, editar, recusar, responder); no Teams e no e-mail, os botões abrem

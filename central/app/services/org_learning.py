@@ -42,8 +42,11 @@ def artifact_dict(db, a: LearnedArtifact) -> dict:
     t = db.get(Team, a.team_id) if a.team_id else None
     e = db.get(Employee, a.employee_id) if a.employee_id else None
     ag = db.get(Agent, e.agent_id) if e else None
+    # a tarefa de origem pode ter sido apagada (com o time ou o Digital employee): sem link para uma página que não existe
+    alive = bool(a.task_id) and db.get(EmployeeTask, a.task_id) is not None
     return {"id": a.id, "kind": a.kind, "title": a.title, "content": a.content, "status": a.status, "team": t.slug if t else None,
-            "employee": ag.slug if ag else None, "employee_name": ag.name if ag else None, "task": a.task_id,
+            "employee": ag.slug if ag else None, "employee_name": ag.name if ag else None,
+            "task": a.task_id if alive else None, "task_removed": bool(a.task_id) and not alive,
             "request": a.request_id, "target": a.target, "uses": a.uses, "decided_by": a.decided_by,
             "created_at": iso(a.created_at), "decided_at": iso(a.decided_at) if a.decided_at else None}
 

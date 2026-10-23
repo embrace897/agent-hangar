@@ -547,7 +547,8 @@ function flowSvg(graph) {
   const edge = e => (e[1] === agent.id || (e[0] === agent.id && e[1] === out.id)) ? flow(e) : '';
   const box = n => {
     const [x, y] = pos[n.id];
-    const g = `<g class="g-node g-${n.kind}"><title>${esc(n.label)}${n.sub ? ' — ' + esc(n.sub) : ''}</title>
+    const lbl = DATA_LABEL.has(n.kind) ? n.label : window.t(n.label), sub = n.sub && !DATA_SUB.has(n.kind) ? window.t(n.sub) : n.sub;
+    const g = `<g class="g-node g-${n.kind}"><title data-noi18n>${esc(lbl)}${sub ? ' — ' + esc(sub) : ''}</title>
       <rect x="${x}" y="${y}" width="${W}" height="${H}" rx="8"/>
       <text class="g-kind" x="${x + 12}" y="${y + 17}">${esc(GKIND[n.kind] || n.kind)}</text>
       <text class="g-label" x="${x + 12}" y="${y + 35}"${DATA_LABEL.has(n.kind) ? ' data-noi18n' : ''}>${esc(trunc(n.label, 26))}</text>
@@ -909,7 +910,7 @@ async function templatesPage() {
   const HP = { 'claude-code': 'anthropic', codex: 'openai', hermes: 'openai', 'deepseek-harness': 'deepseek' };
   main.innerHTML = `<h1>Templates</h1><div class="sub">Agentes prontos para aplicar, testar e shipar. Sem conexão de LLM eles nascem em modo mock (bom para ver o fluxo).</div>
   ${myTeams.length ? `<div class="card row"><b>Aplicar no time</b><select id="tp-team" style="width:auto">${myTeams.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('')}</select></div>` : '<div class="card warn-card">Só developers e maintainers de um time aplicam templates.</div>'}<div class="mt"></div>
-  <div class="grid g2">${list.map(t => `<div class="card tpl"><div class="row between"><h2>${esc(t.title)}</h2>${t.harness ? harnessPill({ id: t.harness }) : t.agents.length > 1 ? kindPill('multi') : kindPill('single')}</div>
+  <div class="grid g2">${list.map(t => `<div class="card tpl"><div class="row between"><h2 data-noi18n>${esc(t.title)}</h2>${t.harness ? harnessPill({ id: t.harness }) : t.agents.length > 1 ? kindPill('multi') : kindPill('single')}</div>
     <div data-noi18n>${esc(t.description)}</div><div class="mt">${t.tags.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>
     <div class="mute small mt">Agentes: ${t.agents.map(esc).join(', ')}<br>Precisa de: <span data-noi18n>${esc(t.needs)}</span></div>
     <div class="grid g2 mt">${t.harness

@@ -69,7 +69,7 @@ function builtRow(a) {  // um agente comum em Meus agentes: abre a página do ag
   const st = AGENT_STATUS[a.status] || [a.status, ''];
   return `<div class="card agent-card mt"><div class="row between"><div><a href="#/agents/${esc(a.slug)}">${agentAvatar(a)} <b data-noi18n>${esc(a.name)}</b></a>
       <span class="pill ${st[1]}">${esc(window.t(st[0]))}</span> <span class="pill">${esc(window.t(BUILT_WHY[a.why] || a.why))}</span>
-      <div class="mute small one-line" data-noi18n style="max-width:620px">${esc(a.objective)}</div></div>
+      <div class="mute small one-line" data-noi18n style="max-width:min(620px,100%)">${esc(a.objective)}</div></div>
       <a href="#/agents/${esc(a.slug)}"><button class="ghost small">Abrir</button></a></div>
     <div class="row small mt"><span class="chip">v${a.version}</span>${a.team ? `<span class="chip" data-noi18n>${esc(a.team)}</span>` : ''}
       ${a.schedules ? `<span class="chip"><span>agendado</span>${a.next_run_at ? ` · <span>próxima</span> ${esc(new Date(a.next_run_at).toLocaleString(window.LOCALE))}` : ''}</span>` : ''}

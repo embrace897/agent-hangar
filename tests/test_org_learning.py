@@ -101,3 +101,18 @@ def test_no_proposal_for_poor_work_or_when_learning_is_off(client, env, rt):
         assert db.query(LearnedArtifact).filter(LearnedArtifact.task_id.in_([tid, tid2])).count() == 0
     assert task(client, env, tid)["status"] == "done"
     work()
+
+
+def test_an_article_whose_task_was_deleted_has_no_dead_link():
+    """A tarefa de origem foi apagada (com o time ou o Digital employee): o artigo diz "tarefa removida", sem link."""
+    with SessionLocal() as db:
+        a = LearnedArtifact(kind="article", title="Prazo de reembolso", content={"question": "prazo?", "text": "45 dias"},
+                            status="proposed", task_id=987654321)
+        db.add(a)
+        db.commit()
+        d = org_learning.artifact_dict(db, a)
+        assert d["task"] is None and d["task_removed"] is True
+        a.task_id = None
+        assert org_learning.artifact_dict(db, a)["task_removed"] is False  # sem tarefa nenhuma: só o traço
+        db.delete(a)
+        db.commit()

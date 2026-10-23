@@ -1033,7 +1033,7 @@ async function learnedPage() {
     <div class="card mt">${rows.length ? `<table class="small"><tr><th>O quê</th><th>Tipo</th><th>De onde veio</th><th>Situação</th><th>Reaproveitado</th></tr>
       ${rows.map(a => `<tr><td><b data-noi18n>${esc(a.title)}</b>${a.target ? `<div class="mute" data-noi18n>${esc(a.target)}</div>` : ''}</td>
         <td>${esc(window.t(LEARN_KIND[a.kind] || a.kind))}</td>
-        <td>${a.task ? `<a href="#/tasks/${a.task}">${window.t('tarefa')} #${a.task}</a>` : '—'} <span class="mute" data-noi18n>${esc(a.employee_name || '')}</span></td>
+        <td>${a.task ? `<a href="#/tasks/${a.task}">${window.t('tarefa')} #${a.task}</a>` : a.task_removed ? `<span class="mute">${window.t('tarefa removida')}</span>` : '—'} <span class="mute" data-noi18n>${esc(a.employee_name || '')}</span></td>
         <td><span class="pill ${a.status === 'approved' ? 'ok' : a.status === 'rejected' ? '' : 'warn'}">${esc(window.t({ approved: 'guardado', rejected: 'não guardado', proposed: 'aguardando decisão' }[a.status] || a.status))}</span>
           ${a.decided_by ? `<div class="mute" data-noi18n>${esc(a.decided_by)}</div>` : ''}</td>
         <td>${a.uses}×</td></tr>`).join('')}</table>` : '<div class="mute small">Nada guardado ainda.</div>'}</div>`;

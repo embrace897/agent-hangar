@@ -361,7 +361,7 @@ async function execCard(box, a, canEdit, env = 'prod') {
       ${(p.caps || []).map(c => `<span class="chip">${esc(CAP_LABEL[c] || c)}</span>`).join(' ')}</div>
     <dl class="kv mt">
       <dt>Esforço de raciocínio</dt><dd>${canEdit ? `<select id="ex-effort" style="width:auto" data-noi18n>${opts}</select> ` : ''}${sent}
-        <div class="small mute">${esc(p.effort_source)}${p.effort_level && p.effort_level !== p.effort ? ` · <span>pedido</span>: ${esc(lvl(p.effort_level))}` : ''}</div></dd>
+        <div class="small mute">${esc(String(p.effort_source || '').replace(/\(([^)]+)\)$/, (m, r) => `(${window.t(r)})`))}${p.effort_level && p.effort_level !== p.effort ? ` · <span>pedido</span>: ${esc(lvl(p.effort_level))}` : ''}</div></dd>
       <dt>Limite de saída</dt><dd>${canEdit ? `<input id="ex-out" type="number" min="256" max="128000" step="256" value="${s.max_output_tokens || ''}" placeholder="padrão do provedor" style="width:180px"> ` : (s.max_output_tokens || '<span class="mute">padrão do provedor</span>')}
         ${p.output_param ? `<span class="mute small">via <code class="inline" data-noi18n>${esc(p.output_param)}</code></span>` : ''}</dd>
       ${harness ? `<dt>Rodadas máximas</dt><dd>${canEdit ? `<input id="ex-turns" type="number" min="1" max="500" value="${s.max_turns || ''}" placeholder="padrão do harness" style="width:180px">` : (s.max_turns || '<span class="mute">padrão do harness</span>')}</dd>`

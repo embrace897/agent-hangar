@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.52.0] — 2026-10-23
+
+### Fixed
+Found by an end-to-end sweep of the console and the portal: 283 pages visited by a browser robot (desktop, phone and in English), 148 API read endpoints called as an admin and as a member, the platform MCP's read tools, and real clicks through the main actions.
+- **Portal search didn't find agents.** Searching in the portal only looked for issues, Digital employees and tasks, so a person's own agents (and projects) never showed up, although the portal opens their pages. It now searches agents, Digital employees, tasks, issues and projects.
+- **Links to deleted tasks.** *O que aprendemos* kept linking articles to their source task after it was deleted with its team or Digital employee, and the link opened an error card. It now says "task removed", and a task page that no longer exists explains that instead of showing an error.
+- **Pages wider than a phone screen.** On a 375 px screen the agent page (the Execution card), *Meus agentes* and *Minhas issues* scrolled sideways. Property lists now stack the label over the value on small screens, and long lines shrink.
+- **Half-translated text in English.** The translator replaced loose words before whole sentences, so sentences with numbers came out mixed ("a versão described agora é a v3"). Whole sentences are now translated first. Also translated: the role in the Execution card, schedule descriptions ("every day at 09:00"), the issue key hint and the guide diagram's tooltips. Issue descriptions and comments are data and are no longer partly translated.
+- **Emergency session (admin token) on personal pages.** The inbox showed an error card and the decisions page called a personal endpoint; both now explain that these pages belong to a person.
+- **First platform-tools call took 4 seconds** after each restart (it loaded a dozen modules on demand), which also delayed the first Digital employee task. They now load in the background at startup.
+
+### Added
+- **Interface tests in CI:** `tests/e2e/ui_actions.py` clicks through the console (save the spec, run tests, deploy to stage, Playground, schedule, execution profile, avatar) and the portal (create an issue from the board, comment, change status, search, switch language). `tests/e2e/i18n_crawl.py` now also fails when a page scrolls sideways on a phone, and covers the agent tabs and an issue with comments.
+
 ## [0.51.0] — 2026-10-22
 
 ### Added

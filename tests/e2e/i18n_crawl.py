@@ -1,4 +1,5 @@
-"""Percorre o portal (/app) e o console (/ui) em inglês e falha se sobrar texto em português na tela.
+"""Percorre o portal (/app) e o console (/ui) em inglês e falha se sobrar texto em português na tela, se uma página
+quebrar (erro de JavaScript ou cartão "Erro") ou se, no celular (375 px), uma página rolar para o lado.
 
     HANGAR_URL=http://localhost:8090 HANGAR_TOKEN=<admin> python tests/e2e/i18n_crawl.py [--report]
 
@@ -63,6 +64,16 @@ LEFTOVERS_JS = """() => {
   });
   return [...out];
 }"""
+
+
+OVERFLOW_JS = """() => { const W = document.documentElement.clientWidth;
+  if (document.documentElement.scrollWidth <= W + 2) return '';
+  const clipped = e => { for (let a = e.parentElement; a; a = a.parentElement) { const o = getComputedStyle(a).overflowX;
+    if (o === 'auto' || o === 'hidden' || o === 'scroll') return true; } return false };
+  const el = [...document.body.querySelectorAll('*')].filter(e => { const r = e.getBoundingClientRect();
+    return r.right > W + 2 && r.width > 0 && !clipped(e) }).pop();
+  return document.documentElement.scrollWidth + 'px: ' + (el ? el.tagName.toLowerCase() + '.' +
+    (typeof el.className === 'string' ? el.className.split(' ').slice(0, 2).join('.') : '') : '?') }"""
 
 
 def ok(r):
@@ -157,7 +168,10 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
         f"/app/#/employees/{made['employee']}/overview",
         f"/app/#/employees/{made['employee']}/settings", f"/app/#/employees/{made['employee']}/authority",
         f"/app/#/employees/{made['employee']}/routines",
-        f"/ui/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}"]
+        f"/ui/#/plugins/{made['plugin']}", f"/app/#/projects/{made['project']}", f"/app/#/issues/{made['issue']}",
+        # as abas do agente (o cartão Execução, o guia com o diagrama, agendamentos) e a issue com comentários
+        *[f"/ui/#/agents/{made['agent']}/{t}" for t in ("overview", "guide", "schedules", "versions", "access")],
+        f"/ui/#/issues/{made['issue']}"]
     with sync_playwright() as p:
         b = p.chromium.launch()
         ctx = b.new_context(viewport={"width": 1440, "height": 1000})
@@ -182,9 +196,25 @@ def crawl(username: str, pw: str, made: dict) -> dict[str, list[str]]:
                          if PT.search(t) and not ALLOW.match(t) and not is_data(t, values))
             if bad:
                 found[path] = bad
+        # celular: nenhuma página rola para o lado (o que é largo de verdade, tabela ou quadro, rola dentro de si)
+        mob = b.new_context(viewport={"width": 375, "height": 812}, is_mobile=True)
+        mob.request.post(f"{URL}/api/auth/password", data={"username": username, "password": pw})
+        mob.add_init_script("localStorage.setItem('hangar_lang', 'en')")
+        pm = mob.new_page()
+        for path in pages:
+            pm.goto(URL + path)
+            try:
+                pm.wait_for_selector("main h1", timeout=15000)
+            except Exception:  # noqa: BLE001
+                pass
+            pm.wait_for_load_state("networkidle")
+            pm.wait_for_timeout(400)
+            wide = pm.evaluate(OVERFLOW_JS)
+            if wide:
+                errors.append(f"{path}: no celular a página rola para o lado ({wide})")
         b.close()
     if errors:
-        found["(erros de JavaScript)"] = errors
+        found["(erros de JavaScript, páginas quebradas e celular)"] = errors
     return found
 
 

@@ -5,6 +5,7 @@ import logging
 import mimetypes
 import os
 import re
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -65,6 +66,9 @@ async def lifespan(app):
     await egress.start()  # plugins com código saem para a internet só por aqui (hosts de server.egress)
     shared.start_heartbeat(housekeeping=svc.jobs.housekeeping)
     observability.start_metrics_server()
+    # as ferramentas da plataforma importam ~10 módulos na primeira vez (uns 4 s): carregar já, em segundo plano, tira
+    # essa espera da primeira tarefa de um Digital employee e da primeira tela de ferramentas depois de reiniciar
+    threading.Thread(target=svc.platform_tools._load, name="platform-tools-warmup", daemon=True).start()
     try:
         async with mcp.session_manager.run():
             yield

@@ -12,6 +12,10 @@ const myTeams = (min = 'developer') => (ME.teams || []).filter(t => ME.is_admin 
 
 /* ---------- caixa de entrada ---------- */
 async function inboxPage() {
+  if (!ME.user) {  // sessão de emergência (token de admin): não há pessoa, então não há caixa de entrada
+    main.innerHTML = `<h1>Caixa de entrada</h1><div class="card empty mt"><div class="mute">${window.t('A caixa de entrada é de uma pessoa. Você está na sessão de emergência (token de admin): entre com a sua conta para ver as suas decisões e tarefas. As aprovações da empresa ficam em')} <a href="#/approvals">${window.t('Aprovações')}</a>.</div></div>`;
+    return;
+  }
   const view = qsOf().get('view') || 'all';
   const box = await api('/inbox?view=' + view);
   main.innerHTML = `<div class="row between"><div><h1>Caixa de entrada</h1>
@@ -55,13 +59,16 @@ async function refreshInboxBadge() {
 /* ---------- busca ---------- */
 async function searchPage() {
   const q = qsOf().get('q') || '';
-  main.innerHTML = `<h1>Buscar</h1><div class="sub">Agentes, Digital employees, tarefas, projetos, metas, plugins e skills — só o que você pode ver.</div>
+  main.innerHTML = `<h1>Buscar</h1><div class="sub">${USER_MODE ? 'Agentes, Digital employees, tarefas, issues e projetos — só o que você pode ver.'
+    : 'Agentes, Digital employees, tarefas, projetos, metas, plugins e skills — só o que você pode ver.'}</div>
     <div class="row mt" style="gap:8px"><input id="sq" value="${esc(q)}" placeholder="o que você procura?" style="flex:1" autofocus><button id="sq-go">Buscar</button></div><div id="sr" class="mt"></div>`;
   const go = () => { const v = $('#sq').value.trim(); if (v) location.hash = '#/search?q=' + encodeURIComponent(v); };
   $('#sq-go').onclick = go;
   $('#sq').onkeydown = e => { if (e.key === 'Enter') go(); };
   if (q.length < 2) return;
-  const r = await api('/search?q=' + encodeURIComponent(q) + (USER_MODE ? '&kinds=issue,employee,task' : ''));  // no portal, só o que é da pessoa
+  // no portal, só o que abre nele: os agentes (os dele e os do catálogo que ele vê), os Digital employees, as tarefas,
+  // as issues e os projetos; metas, plugins e skills são do console
+  const r = await api('/search?q=' + encodeURIComponent(q) + (USER_MODE ? '&kinds=agent,employee,task,issue,project' : ''));
   const groups = {};
   r.items.forEach(x => (groups[x.kind] = groups[x.kind] || []).push(x));
   $('#sr').innerHTML = r.items.length ? Object.entries(groups).map(([k, xs]) => `<div class="card mt"><h2>${esc(SEARCH_KIND[k] || k)} (${xs.length})</h2>

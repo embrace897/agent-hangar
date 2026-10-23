@@ -158,7 +158,7 @@ textarea.code{font-family:var(--f-mono);font-size:13px}
 .hbar.budget.ok i{background:var(--go)}.hbar.budget.warn i{background:var(--mark)}.hbar.budget.over i{background:var(--stop)}
 
 /* listas de propriedades */
-.kv{display:grid;grid-template-columns:140px 1fr;gap:8px 16px}.kv dt{color:var(--mute);font-size:14px}.kv dd{margin:0}
+.kv{display:grid;grid-template-columns:140px minmax(0,1fr);gap:8px 16px}.kv dt{color:var(--mute);font-size:14px}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 
 /* playground */
 .chat{display:flex;flex-direction:column;gap:8px;max-height:400px;overflow:auto;margin-bottom:12px}
@@ -365,8 +365,8 @@ details.inline summary{cursor:pointer}
 /* ---------- issues: o quadro kanban ---------- */
 .iss-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .iss-head h1{margin:0}
-.iss-tools{gap:8px;flex-wrap:wrap;align-items:center}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.iss-tools{gap:8px;flex-wrap:wrap;align-items:center;min-width:0;max-width:100%}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;max-width:100%;overflow-x:auto}
 .seg button{border:0;border-radius:0;margin:0;min-height:32px}.seg button.on{background:var(--panel-2);font-weight:600;color:var(--ink)}
 .btnlike{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r);padding:5px 10px;cursor:pointer;color:var(--ink);text-decoration:none;font-size:13px;min-height:32px;background:var(--panel)}
 .iss-pop{position:relative}.iss-pop>summary{list-style:none}.iss-pop>summary::-webkit-details-marker{display:none}
@@ -520,3 +520,7 @@ button.ag-av-btn:hover .ag-av,button.ag-av-btn:focus-visible .ag-av{box-shadow:0
 .av-grid button:hover{border-color:var(--line)}
 .av-grid button.on{border-color:var(--mark);background:var(--mark-soft)}
 .av-grid img{width:56px;height:56px;border-radius:50%;object-fit:cover;background:#f4f3f1}
+
+/* celular: rótulo em cima do valor nas listas de propriedades (Execução, conectores…); cartões que encolhem */
+@media (max-width:760px){.kv{grid-template-columns:minmax(0,1fr);gap:2px 0}.kv dt{margin-top:10px}.kv dd select,.kv dd input{max-width:100%}}
+.agent-card .row.between>div{min-width:0}
