@@ -239,6 +239,52 @@ def test_proxy_authorization_matrix(client, db, uniq, app_device, upstream):
     assert len(upstream.calls) == 2  # só as duas chamadas autorizadas chegaram ao provedor
 
 
+def test_proxy_reads_no_body_before_the_key(client, db, uniq, app_device, upstream, monkeypatch):
+    """A rota fica fora do middleware: sem chave válida o corpo nem é lido, e o limite vale mesmo com chave."""
+    c = _conn(db, uniq)
+    url = f"/api/app/llm/{c.id}/v1/messages"
+    read = []
+
+    async def spy(request):
+        read.append(1)
+        return await body(request)
+    body = proxy._body
+    monkeypatch.setattr(proxy, "_body", spy)
+    big = b"x" * 1024
+    assert client.post(url, content=big, headers={"content-type": "application/json"}).status_code == 401
+    assert client.post(f"{url}/count_tokens", content=big, headers={"x-api-key": "ahl_nao-existe"}).status_code == 401
+    assert read == []
+    monkeypatch.setattr(proxy, "MAX_BODY", 512)
+    r = client.post(url, content=big, headers={"x-api-key": app_device["key"], "content-type": "application/json"})
+    assert r.status_code == 413 and r.json()["error"]["type"] == "request_too_large"
+
+    def chunks():  # sem Content-Length: o corte é na leitura em pedaços
+        for _ in range(4):
+            yield b"x" * 200
+    r = client.post(url, content=chunks(), headers={"x-api-key": app_device["key"]})
+    assert r.status_code == 413
+    assert upstream.calls == []
+
+
+def test_proxy_never_reaches_another_orgs_connection(client, db, uniq, app_device, upstream):
+    """A chave do dispositivo fixa a empresa: o id de uma conexão de outra empresa responde como se não existisse."""
+    from app.models import LlmConnection, Organization
+    with SessionLocal() as s:
+        o = Organization(name=uniq("outra"), slug=uniq("outra"))
+        s.add(o)
+        s.flush()
+        other = LlmConnection(org_id=o.id, name=uniq("conn-outra"), base_url=UPSTREAM, model_name="claude-x",
+                              sync_desktop=True)
+        s.add(other)
+        s.commit()
+        oid = other.id
+    key = {"x-api-key": app_device["key"]}
+    r = client.post(f"/api/app/llm/{oid}/v1/messages", headers=key, json=_msg())
+    assert r.status_code == 404, r.text
+    assert client.get(f"/api/app/llm/{oid}/v1/models", headers=key).status_code == 404
+    assert upstream.calls == []
+
+
 def test_proxy_injects_vault_key_and_forwards_headers(client, db, uniq, app_device, upstream):
     c = _conn(db, uniq)
     r = client.post(f"/api/app/llm/{c.id}/v1/messages?beta=true", json=_msg(),

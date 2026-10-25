@@ -31,7 +31,9 @@ def _err(e: app_llm.ProxyError) -> JSONResponse:
 
 
 async def _authorize(request: Request, connection_id: int, model: str | None = None, budget: bool = False) -> dict:
-    """Chave do dispositivo -> empresa da requisição -> conexão e regras. Levanta ProxyError."""
+    """Chave do dispositivo -> empresa da requisição -> conexão e regras. Levanta ProxyError. Vem ANTES de ler o corpo:
+    a rota fica fora do middleware de autenticação, e ler o corpo de quem não tem chave era deixar qualquer um ocupar
+    a memória da central."""
     key = auth.token_from_headers({k.lower(): v for k, v in request.headers.items()})
 
     def device():
@@ -56,9 +58,18 @@ async def _authorize(request: Request, connection_id: int, model: str | None = N
 
 
 async def _body(request: Request) -> tuple[bytes, dict]:
-    raw = await request.body()
-    if len(raw) > MAX_BODY:
-        raise app_llm.ProxyError(413, "request_too_large", f"corpo maior que {MAX_BODY // (1024 * 1024)} MB")
+    """O corpo, lido em pedaços e cortado no limite (sem confiar só no Content-Length, que pode faltar ou mentir)."""
+    too_big = app_llm.ProxyError(413, "request_too_large", f"corpo maior que {MAX_BODY // (1024 * 1024)} MB")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_BODY:
+        raise too_big
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BODY:
+            raise too_big
+        chunks.append(chunk)
+    raw = b"".join(chunks)
     try:
         body = json.loads(raw or b"{}")
     except ValueError:
@@ -66,6 +77,11 @@ async def _body(request: Request) -> tuple[bytes, dict]:
     if not isinstance(body, dict) or not isinstance(body.get("model"), str) or not body["model"]:
         raise app_llm.ProxyError(400, "invalid_request_error", "informe o modelo (campo model)")
     return raw, body
+
+
+def _budget(t: dict):
+    with SessionLocal() as db:
+        app_llm.check_budget(db, t)
 
 
 def _record(t: dict, model: str, usage: dict, ok: bool, t0: float):
@@ -106,8 +122,9 @@ async def model(connection_id: int, model_id: str, request: Request):
 async def count_tokens(connection_id: int, request: Request):
     """Contar tokens não custa: sem orçamento nem UsageEvent, mas com as mesmas regras de conexão e modelo."""
     try:
+        t = await _authorize(request, connection_id)  # a chave primeiro: o corpo só é lido para quem tem acesso
         raw, body = await _body(request)
-        t = await _authorize(request, connection_id, body["model"])
+        app_llm.check_model(t, body["model"])
     except app_llm.ProxyError as e:
         return _err(e)
     hdr = app_llm.upstream_headers(t, {k.lower(): v for k, v in request.headers.items()})
@@ -134,8 +151,10 @@ def _json_or_text(r: httpx.Response):
 @router.post("/{connection_id}/v1/messages")
 async def messages(connection_id: int, request: Request):
     try:
+        t = await _authorize(request, connection_id)  # a chave primeiro: o corpo só é lido para quem tem acesso
         raw, body = await _body(request)
-        t = await _authorize(request, connection_id, body["model"], budget=True)
+        app_llm.check_model(t, body["model"])
+        await run_in_threadpool(_budget, t)
     except app_llm.ProxyError as e:
         return _err(e)
     model = body["model"]
