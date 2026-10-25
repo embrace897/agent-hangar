@@ -4,8 +4,8 @@ description: >
   Agent Hangar on Kubernetes: the self-hosted control plane for your company's AI agents. Agents run as Deployments
   and jobs/code evaluations as Jobs in the release namespace, with least-privilege RBAC and NetworkPolicies.
 type: application
-version: 0.52.0
-appVersion: "0.52.0"
+version: 0.53.0
+appVersion: "0.53.0"
 home: https://github.com/valteresj2/agent-hangar
 sources: [https://github.com/valteresj2/agent-hangar]
 keywords: [ai, agents, mcp, llm, platform]

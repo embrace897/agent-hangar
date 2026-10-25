@@ -44,7 +44,7 @@ export default defineConfig({
           { slug: 'docs/harnesses' }, { slug: 'docs/memory', label: 'Memory' }, { slug: 'docs/guide', label: 'Agent guide' },
         ] },
         { label: 'Connect', items: [
-          { slug: 'docs/clients' }, { slug: 'docs/connectors' }, { slug: 'docs/mcp-catalog', label: 'Docker MCP catalog' }, { slug: 'docs/remote-mcp', label: 'Remote MCPs with OAuth' }, { slug: 'docs/plugins' },
+          { slug: 'docs/clients' }, { slug: 'docs/connectors' }, { slug: 'docs/mcp-catalog', label: 'Docker MCP catalog' }, { slug: 'docs/remote-mcp', label: 'Remote MCPs with OAuth' }, { slug: 'docs/plugins' }, { slug: 'docs/desktop-app', label: 'Hangar desktop app' },
         ] },
         { label: 'Put agents to work', items: [
           { slug: 'docs/digital-employee', label: 'Digital employees' }, { slug: 'docs/work', label: 'Day-to-day work' }, { slug: 'docs/issues', label: 'Issues board' }, { slug: 'docs/analyst', label: "The analyst's day" }, { slug: 'docs/workspace', label: 'Member workspace' },

@@ -26,6 +26,7 @@ Key facts for coding agents:
 - [HTTP API and MCP tools](docs/api.md)
 - [CLI](docs/cli.md)
 - [Connecting clients](docs/clients.md)
+- [Hangar desktop app](docs/desktop-app.md)
 - [Templates](docs/templates.md)
 - [Security model](docs/security.md)
 - [Execution profile](docs/execution.md)

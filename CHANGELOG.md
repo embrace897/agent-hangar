@@ -5,8 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.53.0] — 2026-10-25
+
 ### Added
 - **Hangar AI Labs website** at https://valteresj2.github.io/agent-hangar/: an entry page with an animated 3D scene (a night runway with the brand's lights, glowing trails and the agents' avatars leaving the hangar) and five chapters that present Agent Hangar. It respects reduced motion, pauses when the tab is hidden and works on phones. The documentation moved to `/docs/`, and the old addresses redirect there.
+- **The Hangar desktop app connects to the platform** (contract: `docs/app-hangar.md`). People sign in from the app with OAuth (loopback redirect on any port, RFC 8252); grants now carry scopes: `app` tokens work on `/api/app/*`, `mcp` tokens on `/mcp`, and clients that ask for no scope keep getting `mcp`, so Claude.ai and ChatGPT are unaffected. The app registers its device and sends heartbeats; revoking the device, the grant or the person disconnects it. The console has a new **App Hangar** hub (overview, how to connect, the Windows policy, versions in use, devices with revoke), and `design-tokens.json` is now the single source of the console palette, shared with the app. Migration `0052`.
+- **Token models synced to the desktop** (`docs/app-hangar-models.md`). An admin turns on *Sync token models with Hangar desktop* on an Anthropic-protocol LLM connection and picks which models people see; in the app each person chooses, per session, between their Claude subscription and those models. Calls go through an LLM proxy on the central (`/api/app/llm/{id}/v1/messages`, streamed) with a device-bound `ahl_` key: the provider key never leaves the vault, hidden models, unsynced connections, the code policy and team budgets are enforced, and each call is recorded in usage with its tokens (cache included) and cost, without logging any content. Migration `0053`.
+- **The member's workspace in the desktop** (`docs/app-hangar-workspace.md`). The app's token is accepted on an explicit allowlist of member routes (workspace, decisions, the person's org chart, inbox), always with the person's own access and never on admin, settings, keys or OAuth routes. `GET /api/app/events` streams live events (inbox, decisions, agent status, model list) over SSE, with `Last-Event-ID` resume, keepalive and per-person filtering, backed by a short-lived table so it works across replicas. Migration `0054`. Reverse proxies need buffering off and a read timeout of at least 60 s on that route.
+
+### Security
+- **The LLM proxy checked the device key only after reading the request body.** Its routes sit outside the auth middleware, so anyone could make the central hold up to 32 MB per request. The key is now checked first, and the body is read in chunks and cut at the limit, with or without `Content-Length`.
+
+### Changed
+- Dependency floors raised: FastAPI 0.160 and uvicorn 0.54 in the runtime; uvicorn 0.54, SQLAlchemy 2.1.1, kubernetes 36, prometheus-client 0.26 and the OTLP exporter 1.45 in the central. CI and release actions moved to `docker/build-push-action@v7`, `docker/login-action@v4`, `actions/upload-artifact@v7`, `actions/download-artifact@v8` and `hashicorp/setup-terraform@v4`. The `mcp` 2.x bump of the runtime stays on hold (FastMCP API changes).
 
 ## [0.52.0] — 2026-10-23
 

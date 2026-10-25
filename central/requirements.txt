@@ -1,18 +1,18 @@
 fastapi>=0.115,<1
-uvicorn>=0.30
-sqlalchemy>=2.0,<3
+uvicorn>=0.54.0
+sqlalchemy>=2.1.1,<3
 alembic>=1.13
 psycopg[binary]>=3.3.6
 docker>=7.2.0
-kubernetes>=31.0.0   # RUNTIME_BACKEND=kubernetes (GKE, AKS, EKS…)
+kubernetes>=36.0.3   # RUNTIME_BACKEND=kubernetes (GKE, AKS, EKS…)
 httpx>=0.28.1
 mcp>=1.10,<2
 cryptography>=50.0.1
 pyyaml>=6.0.3
 tzdata>=2025.2
-prometheus-client>=0.21
+prometheus-client>=0.26.0
 # traces (opcionais, ligados por OTEL_EXPORTER_OTLP_ENDPOINT)
 opentelemetry-sdk>=1.30
-opentelemetry-exporter-otlp-proto-http>=1.30
+opentelemetry-exporter-otlp-proto-http>=1.45.0
 opentelemetry-instrumentation-fastapi>=0.51b0
 opentelemetry-instrumentation-httpx>=0.51b0
