@@ -98,6 +98,7 @@ def _grant_end(db: Session, g: OAuthGrant | None) -> str:
 
 def _revoke(d: AppDevice, by: str):
     d.status, d.revoked_at, d.revoked_by = "revoked", now(), by[:254]
+    d.llm_key_hash = None  # a chave do proxy de LLM (ahl_…) não volta com um login novo: o app gera outra
 
 
 def _sync(db: Session, devices) -> None:
@@ -149,6 +150,18 @@ def register_device(db: Session, p: auth.Principal, body: dict) -> dict:
     return {"device": device_dict(d)}
 
 
+def attach(db: Session, p: auth.Principal, device_id: str) -> AppDevice:
+    """O dispositivo da pessoa que chama (pelo app). Um login novo neste computador (outra autorização) o assume de
+    novo, a não ser que o admin o tenha revogado."""
+    p = _app_caller(p)
+    d = db.scalar(select(AppDevice).where(AppDevice.user_id == p.user_id, AppDevice.device_id == device_id))
+    if d is None:
+        raise NotFound("dispositivo não registrado — registre em POST /api/app/devices")
+    if d.grant_id != p.grant_id and (d.status == "active" or d.revoked_by.startswith(SYSTEM)):
+        d.grant_id, d.status, d.revoked_at, d.revoked_by = p.grant_id, "active", None, ""  # novo login neste computador
+    return d
+
+
 def heartbeat(db: Session, p: auth.Principal | None, token: str, device_id: str, app_version: str = "") -> dict:
     """Sinal de vida do app. Com token válido: atualiza o dispositivo e diz se ele segue ativo. Com o token de uma
     autorização já encerrada (p None): `revoked`, para o app sair; token desconhecido ou só expirado: 401 (o app faz
@@ -165,12 +178,7 @@ def heartbeat(db: Session, p: auth.Principal | None, token: str, device_id: str,
             _revoke(d, SYSTEM + why)
             db.commit()
         return {"status": "revoked"}
-    p = _app_caller(p)
-    d = db.scalar(select(AppDevice).where(AppDevice.user_id == p.user_id, AppDevice.device_id == device_id))
-    if d is None:
-        raise NotFound("dispositivo não registrado — registre em POST /api/app/devices")
-    if d.grant_id != p.grant_id and (d.status == "active" or d.revoked_by.startswith(SYSTEM)):
-        d.grant_id, d.status, d.revoked_at, d.revoked_by = p.grant_id, "active", None, ""  # novo login neste computador
+    d = attach(db, p, device_id)
     if d.status == "revoked":
         return {"status": "revoked"}
     d.last_seen_at = now()
@@ -196,6 +204,7 @@ def admin_devices(db: Session) -> list[dict]:
 
 
 def admin_overview(db: Session) -> dict:
+    from . import app_llm
     rows = list(db.scalars(select(AppDevice)))
     _sync(db, rows)
     active = [d for d in rows if d.status == "active"]
@@ -203,7 +212,8 @@ def admin_overview(db: Session) -> dict:
     versions = Counter(d.app_version or "?" for d in active)
     return {"devices_active": len(active), "members_connected": len({d.user_id for d in active}),
             "versions": [{"version": v, "count": n} for v, n in sorted(versions.items(), key=lambda x: (-x[1], x[0]))],
-            "last_seen_at": iso(max(seen)) if seen else None, "platform_url": config.PUBLIC_BASE_URL}
+            "last_seen_at": iso(max(seen)) if seen else None, "platform_url": config.PUBLIC_BASE_URL,
+            "models_synced": app_llm.admin_summary(db)}
 
 
 def admin_revoke(db: Session, actor: str, device_pk: int) -> dict:

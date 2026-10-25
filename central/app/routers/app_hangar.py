@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from .. import auth
 from ..services import app_hangar as ah
+from ..services import app_llm
 from .deps import actor, db_dep, guard, principal, require_admin
 
 router = APIRouter(prefix="/api/app")
@@ -51,6 +52,18 @@ def heartbeat(device_id: str, request: Request, body: HeartbeatBody | None = Non
         return _guard(lambda: ah.heartbeat(db, p, token, device_id, body.app_version if body else ""))
     except ah.Unauthorized as e:
         raise HTTPException(401, str(e)) from None
+
+
+@router.post("/devices/{device_id}/llm-key")
+def llm_key(device_id: str, request: Request, db=Depends(db_dep)):
+    """Gera ou troca a chave do proxy de LLM do dispositivo (ahl_…, aparece só aqui): a anterior deixa de valer."""
+    return _guard(lambda: app_llm.rotate_key(db, principal(request), device_id))
+
+
+@router.get("/models")
+def models(request: Request, db=Depends(db_dep)):
+    """Os modelos de token sincronizados com o Hangar desktop (docs/app-hangar-models.md)."""
+    return guard(lambda: app_llm.models_for_app(db, principal(request)))
 
 
 @router.get("/design-tokens")

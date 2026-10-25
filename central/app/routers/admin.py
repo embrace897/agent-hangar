@@ -605,6 +605,19 @@ def llm_connection_code(name: str, b: CodeApproval, request: Request, db=Depends
     return guard(lambda: svc.llm_connection_dict(svc.set_code_approval(db, name, b.allow_code, actor(request))))
 
 
+class DesktopSync(BaseModel):
+    sync: bool | None = None
+    model_id: str | None = None
+    hidden: bool | None = None
+
+
+@router.patch("/catalog/llm/{name}/desktop", dependencies=[Depends(require_admin)])
+def llm_connection_desktop(name: str, b: DesktopSync, request: Request, db=Depends(db_dep)):
+    """Sincroniza (ou não) os modelos de token da conexão com o Hangar desktop e esconde/mostra um modelo no app.
+    Recusa com o motivo quando o protocolo não é anthropic ou a política de código exige a aprovação."""
+    return guard(lambda: svc.app_llm.set_desktop(db, actor(request), name, b.sync, b.model_id, b.hidden))
+
+
 @router.delete("/catalog/llm/{name}", dependencies=[Depends(require_admin)])
 def del_llm_connection(name: str, request: Request, db=Depends(db_dep)):
     guard(lambda: svc.delete_llm_connection(db, name, actor(request)))

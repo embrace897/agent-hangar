@@ -181,6 +181,7 @@ def revoke_user_sessions(db: Session, user_id: int):
     for d in db.scalars(select(AppDevice).where(AppDevice.user_id == user_id, AppDevice.status == "active")
                         .execution_options(all_orgs=True)):
         d.status, d.revoked_at, d.revoked_by = "revoked", now(), "sistema:acesso encerrado"
+        d.llm_key_hash = None  # a chave do proxy de LLM (ahl_…) cai junto
     db.commit()
     clear_cache()
 

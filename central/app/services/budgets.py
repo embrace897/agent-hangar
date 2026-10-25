@@ -14,7 +14,7 @@ O custo registrado não é a fatura do provedor: uso sem preço conhecido conta 
 import time
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -55,8 +55,9 @@ def spent(db: Session, p: BudgetPolicy) -> float:
             EmployeeTask.project_id == p.scope_id, EmployeeTask.created_at >= since)
         return float(db.scalar(q) or 0)
     q = select(func.coalesce(func.sum(UsageEvent.cost_usd), 0.0)).where(UsageEvent.created_at >= since)
-    if p.scope_type == "team":
-        q = q.where(UsageEvent.agent_id.in_(select(Agent.id).where(Agent.team_id == p.scope_id)))
+    if p.scope_type == "team":  # os agentes do time e o uso direto das pessoas dele (app Hangar)
+        q = q.where(or_(UsageEvent.agent_id.in_(select(Agent.id).where(Agent.team_id == p.scope_id)),
+                        UsageEvent.team_id == p.scope_id))
     elif p.scope_type == "agent":
         q = q.where(UsageEvent.agent_id == p.scope_id)
     return float(db.scalar(q) or 0)
@@ -322,12 +323,13 @@ def resolve(db: Session, acc: Access, incident_id: int, note: str = "") -> dict:
 
 
 # ------------------------------------------------------------------ onde a parada vale
-def _policies_for(db: Session, agent: Agent | None, project_id: int | None) -> list[BudgetPolicy]:
+def _policies_for(db: Session, agent: Agent | None, project_id: int | None, team_id: int | None = None) -> list[BudgetPolicy]:
     conds = [("org", None)]
     if agent is not None:
         conds.append(("agent", agent.id))
-        if agent.team_id:
-            conds.append(("team", agent.team_id))
+        team_id = agent.team_id
+    if team_id:
+        conds.append(("team", team_id))
     if project_id:
         conds.append(("project", project_id))
     out = []
@@ -339,9 +341,10 @@ def _policies_for(db: Session, agent: Agent | None, project_id: int | None) -> l
     return out
 
 
-def stopped(db: Session, agent: Agent | None, project_id: int | None = None) -> dict | None:
-    """A parada que vale agora para o agente (e o projeto), ou None. Com cache curto: o gateway chama a cada request."""
-    key = (agent.id if agent else None, project_id)
+def stopped(db: Session, agent: Agent | None, project_id: int | None = None, team_id: int | None = None) -> dict | None:
+    """A parada que vale agora para o agente (e o projeto), ou None. Com cache curto: o gateway chama a cada request.
+    Sem agente, `team_id` é o time de quem usa um modelo direto (o proxy de LLM do app Hangar)."""
+    key = (agent.id if agent else None, project_id, None if agent else team_id)
     hit = _cache.get(key)
     if hit and time.monotonic() - hit[0] < CACHE_S:
         return hit[1]
@@ -352,7 +355,7 @@ def stopped(db: Session, agent: Agent | None, project_id: int | None = None) -> 
         if out is not None:
             _cache[key] = (time.monotonic(), out)
             return out
-    for p in _policies_for(db, agent, project_id):
+    for p in _policies_for(db, agent, project_id, team_id):
         k = window_key(p.window)
         stop = db.scalar(select(BudgetIncident).where(BudgetIncident.policy_id == p.id, BudgetIncident.window_key == k,
                                                       BudgetIncident.kind == "hard_stop"))

@@ -134,15 +134,16 @@ def llm_connection_dict(c: LlmConnection) -> dict:
     """Nunca devolve a chave — só os 4 últimos caracteres, para o admin reconhecer qual é."""
     from sqlalchemy.orm import object_session
 
-    from . import llm_models
+    from . import app_llm, llm_models
     db = object_session(c)
     kinds = llm_models.kinds_summary(db, c) if db is not None and c.id else {}
-    return {"name": c.name, "base_url": c.base_url, "model_name": c.model_name, "description": c.description,
+    return {"id": c.id, "name": c.name, "base_url": c.base_url, "model_name": c.model_name, "description": c.description,
             "protocol": c.protocol, "api_key": mask_key(c.api_key), "has_key": bool(c.api_key),
             "price_in_per_mtok": c.price_in_per_mtok, "price_out_per_mtok": c.price_out_per_mtok,
             "allow_code": bool(c.allow_code), "created_at": iso(c.created_at), "provider": c.provider or "custom",
             "models": kinds, "models_total": sum(kinds.values()), "models_synced_at": iso(c.models_synced_at),
-            "models_error": c.models_error or ""}
+            "models_error": c.models_error or "",
+            "desktop": app_llm.desktop_state(db, c) if db is not None and c.id else None}
 
 
 def test_connection(db: Session, name: str) -> dict:

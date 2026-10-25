@@ -113,12 +113,38 @@ Bearer OAuth token with scope `app` (contract and flow: [app-hangar.md](app-hang
 | POST | `/api/app/devices` | `{device_id, name, os, os_version, app_version, channel}` → `{device}`; idempotent per user + `device_id`, bound to the token's authorization. A device revoked by an admin answers 403 |
 | POST | `/api/app/devices/{device_id}/heartbeat` | `{app_version}` → `{status: "active"|"revoked"}`; also answers `revoked` for the token of an authorization that has ended |
 | GET | `/api/app/design-tokens` | The console tokens (`static/design-tokens.json`): `{version, light, dark, fonts, radius}` |
-| GET | `/api/app/admin/overview` | Admin (console session or admin key): `{devices_active, members_connected, versions, last_seen_at, platform_url}` |
+| GET | `/api/app/models` | Token models synced with the desktop app: `{version, connections:[{id, name, provider, base_path, models:[{model_id, name, context_length, caps, price_in_per_mtok, price_out_per_mtok}]}]}` |
+| POST | `/api/app/devices/{device_id}/llm-key` | Creates or rotates the device's LLM proxy key: `{key:"ahl_…", prefix, created_at}` (shown once; the previous key stops working) |
+| GET | `/api/app/admin/overview` | Admin (console session or admin key): `{devices_active, members_connected, versions, last_seen_at, platform_url, models_synced:{connections, models}}` |
 | GET | `/api/app/admin/devices` | Admin: every device with its owner, status and last signal |
 | POST | `/api/app/admin/devices/{id}/revoke` | Admin: revokes the device and its OAuth authorization (audit `app.device.revoke`) |
 
 A device becomes `revoked` when an admin revokes it, or when its authorization ends (sign-out from the app, revocation in
 "My keys", app blocked, person deactivated). Only the admin case keeps the same `device_id` from registering again.
+
+### Synced token models and the LLM proxy (`/api/app/llm`)
+
+Contract: [app-hangar-models.md](app-hangar-models.md). An admin turns on **Sync token models with Hangar desktop** per
+LLM connection (`PATCH /api/catalog/llm/{name}/desktop` with `{sync}` or `{model_id, hidden}`, audited as
+`llm_connection.desktop`). Only `protocol = "anthropic"` connections qualify and, with `code_policy = "approved"`, only
+connections approved for code; otherwise the call answers 400 with the reason. `GET /api/catalog` shows each
+connection's `desktop: {sync, reason, active, models, models_total, hidden}`.
+
+The app talks to the proxy with the device key (`Authorization: Bearer ahl_…` or `x-api-key: ahl_…`, never the OAuth
+token). The connection's key is taken from the vault and never leaves the platform. Errors use the Anthropic format
+(`{"type":"error","error":{"type","message"}}`, plus `detail`).
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/app/llm/{connection_id}/v1/messages` | Forwarded to `<base_url>/v1/messages` (JSON or SSE, streamed without buffering) with `anthropic-version`/`anthropic-beta` |
+| POST | `/api/app/llm/{connection_id}/v1/messages/count_tokens` | Forwarded; no usage recorded, no budget check |
+| GET | `/api/app/llm/{connection_id}/v1/models[/{id}]` | The connection's visible models (answered by the platform) |
+
+Refusals: invalid, rotated or revoked key, deactivated person or ended authorization → 401; connection not synced or
+code policy → 403; model hidden or not a text model → 400 (with the allowed list); team budget (`budget_enforce`) or a
+hard-stop budget policy → 429. Each call records a `UsageEvent` without an agent (`client = "hangar-desktop"`, person,
+team, device, connection, model, input/output/cache tokens and cost) that counts toward the team budget. Only metadata
+is stored: never the body or the response.
 
 ## Reuse before you build (`/api/compose`)
 

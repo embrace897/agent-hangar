@@ -753,6 +753,27 @@
     'Nenhum app conectado ainda. Veja o passo a passo em': 'No app connected yet. See the steps in',
     'Revogar este dispositivo? O app sai na hora e este computador não volta a se registrar para esta pessoa.':
       'Revoke this device? The app signs out right away and this computer cannot register again for this person.',
+    // ---- modelos de token sincronizados com o Hangar desktop (Provedores de LLM e visão geral do App Hangar)
+    'sincronizada': 'synced', 'não sincronizada': 'not synced', 'sincronizada, mas indisponível': 'synced, but unavailable',
+    'Sincronizar modelos de token com o Hangar desktop': 'Sync token models with Hangar desktop',
+    'Parar de sincronizar com o Hangar desktop': 'Stop syncing with Hangar desktop',
+    'As pessoas escolhem estes modelos no app, por sessão. A chave da conexão não sai da plataforma: o app fala com o proxy, que aplica as regras e registra uso e custo no time.':
+      'People pick these models in the app, per session. The connection key never leaves the platform: the app talks to the proxy, which applies the rules and records usage and cost to the team.',
+    'Modelos de token sincronizados com o Hangar desktop': 'Token models synced with Hangar desktop',
+    'No app': 'In the app', 'no app': 'in the app', 'escondido': 'hidden', 'esconder do app': 'hide from the app',
+    'mostrar no app': 'show in the app', 'Nenhum modelo de texto disponível nesta conexão.': 'No text model available on this connection.',
+    'Modelos sincronizados com o Hangar desktop': 'Models synced with Hangar desktop',
+    'Sincronização com o Hangar desktop desligada': 'Sync with Hangar desktop turned off',
+    'Modelo escondido do app': 'Model hidden from the app', 'Modelo de volta no app': 'Model back in the app',
+    'Modelos sincronizados:': 'Synced models:', 'conexões': 'connections', 'modelo': 'model', 'modelos': 'models',
+    'Os modelos de token que as pessoas escolhem no app, além da assinatura. Ligue por conexão em Provedores de LLM (só conexões no formato da Anthropic).':
+      'The token models people pick in the app, besides the subscription. Turn it on per connection in LLM providers (only connections in the Anthropic format).',
+    "só conexões com protocolo anthropic (API de Mensagens, /v1/messages) vão para o Hangar desktop: é o formato que o Claude Code fala, e esta é 'openai'":
+      "only connections with the anthropic protocol (Messages API, /v1/messages) go to Hangar desktop: it is the format Claude Code speaks, and this one is 'openai'",
+    "só conexões com protocolo anthropic (API de Mensagens, /v1/messages) vão para o Hangar desktop: é o formato que o Claude Code fala, e esta é 'deepseek'":
+      "only connections with the anthropic protocol (Messages API, /v1/messages) go to Hangar desktop: it is the format Claude Code speaks, and this one is 'deepseek'",
+    'a empresa só manda código para conexões aprovadas, e o Hangar envia arquivos e saídas de terminal: aprove esta conexão para código antes de sincronizar':
+      'the company only sends code to approved connections, and Hangar sends files and terminal output: approve this connection for code before syncing',
     'Dispositivo revogado': 'Device revoked', 'autorização encerrada': 'authorization ended', 'autorização expirada': 'authorization expired',
     'app bloqueado': 'app blocked', 'acesso encerrado': 'access ended', 'O app poderá:': 'The app will be able to:',
     'Usar o MCP da plataforma com os seus times e papéis: listar, criar, testar e publicar os agentes que você pode mexer.':
@@ -2808,7 +2829,9 @@
     [/ — Como ferramenta \(MCP\)$/, ' — As a tool (MCP)'], [/ — Como modelo$/, ' — As a model'], [/ — No seu app \(AG-UI\)$/, ' — In your app (AG-UI)'],
     [/^Já existe um guia escrito para a v(\d+); ele aparece aqui quando essa versão for publicada\.$/,
       'A guide is already written for v$1; it shows here when that version is published.'],
-    [/\(empresa\)$/, '(company)'], [/\(privado\)$/, '(private)'], [/\(aberto\)$/, '(open)']];
+    [/\(empresa\)$/, '(company)'], [/\(privado\)$/, '(private)'], [/\(aberto\)$/, '(open)'],
+    [/^(\d+) de (\d+) modelo\(s\) de texto vão para o app$/, '$1 of $2 text model(s) go to the app'],
+    [/^Modelos no app \((\d+) de (\d+)\)$/, 'Models in the app ($1 of $2)']];
   const PTISH = /[ãõçáéíóúâêôàÁÉÍÓÚÇ]|\b(de|do|da|para|com|sem|seu|sua|agente|agentes|chave|nenhum|em|por|que|erros|membros|dias|chamadas|bom|boa|mantenedor|membro|como|ativa|aprovados)\b/i;
   const tr = text => {
     const raw = text.trim();

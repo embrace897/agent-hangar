@@ -21,8 +21,10 @@ function pvLogo(p, size = 36) {
 function pvStatus(conns) {
   if (!conns.length) return '<span class="pv-st">Sem conexão</span>';
   const models = conns.reduce((n, x) => n + (x.models_total || 0), 0), bad = conns.some(x => x.models_error);
+  const desk = conns.filter(x => x.desktop && x.desktop.active).length;
   return `<span class="pv-st ${bad ? 'bad' : 'on'}"><i></i>${conns.length} ${conns.length > 1 ? 'conectadas' : 'conectada'}</span>`
-    + (models ? `<span class="pv-st">${fmt(models)} ${models > 1 ? 'modelos' : 'modelo'}</span>` : '');
+    + (models ? `<span class="pv-st">${fmt(models)} ${models > 1 ? 'modelos' : 'modelo'}</span>` : '')
+    + (desk ? `<span class="pv-st" title="Modelos de token sincronizados com o Hangar desktop">${icon('monitor')} Hangar desktop</span>` : '');
 }
 const AREA_LABEL = { reasoning: 'Raciocínio', coding: 'Código', speed: 'Velocidade', cost: 'Custo' };
 const SCORE_SRC = { artificial_analysis: 'medida (Artificial Analysis)', research: 'estimativa da pesquisa', admin: 'corrigida por um admin', price: 'pelo preço' };
@@ -129,6 +131,7 @@ function connCard(x) {
     <div class="row mt" style="gap:10px;align-items:flex-end"><label style="min-width:260px">Modelo padrão
       <select class="cc-default" data-n="${n}" ${ME.is_admin ? '' : 'disabled'}><option>${esc(x.model_name)}</option></select></label>
       <span class="mute small">usado pelos agentes que não escolhem um modelo</span></div>
+    <div class="cc-desk mt">${deskHtml(x, null)}</div>
     <div class="cc-models mt" data-n="${n}"><div class="mute small">carregando os modelos…</div></div></div>`;
 }
 
@@ -159,6 +162,7 @@ async function connWire(x, p) {
     sel.onchange = () => act(sel, () => api(`/catalog/llm/${encodeURIComponent(x.name)}/models/${encodeURIComponent(sel.value)}`,
       { method: 'PATCH', body: { default: true } }), 'Modelo padrão trocado');
   }
+  deskWire(x, text, q('.cc-desk'));
   const kinds = [...new Set(models.map(m => m.kind))];
   const state = { kind: '', q: '', open: '' };
   const draw = () => {
@@ -221,6 +225,44 @@ async function connWire(x, p) {
     model_id: q('.cm-id').value.trim(), kind: q('.cm-kind').value, price_in_per_mtok: num(q('.cm-pin').value),
     price_out_per_mtok: num(q('.cm-pout').value) } }).then(() => providerDetail(p.id)), 'Modelo incluído');
   draw();
+}
+
+/* "Sincronizar modelos de token com o Hangar desktop": o app usa os modelos de texto desta conexão pelo proxy da
+   plataforma (a chave não sai daqui). Só protocolo anthropic e, com a política de código, conexão aprovada. */
+function deskHtml(x, text) {
+  const d = x.desktop || { sync: false, reason: '', active: false, models: 0, models_total: 0, hidden: [] };
+  const hidden = new Set(d.hidden || []);
+  const state = d.active ? `<span class="pill ok">sincronizada</span> <span class="mute small">${d.models} de ${d.models_total} modelo(s) de texto vão para o app</span>`
+    : d.sync ? '<span class="pill warn">sincronizada, mas indisponível</span>' : '<span class="pill">não sincronizada</span>';
+  const btn = !ME.is_admin ? '' : d.sync
+    ? '<button class="ghost cd-sync" data-v="0">Parar de sincronizar com o Hangar desktop</button>'
+    : `<button class="ghost cd-sync" data-v="1" ${d.reason ? 'disabled' : ''}>${icon('monitor')} Sincronizar modelos de token com o Hangar desktop</button>`;
+  const price = m => m.price_in_per_mtok == null && m.price_out_per_mtok == null ? '<span class="mute">—</span>'
+    : `${m.price_in_per_mtok ?? 0} · ${m.price_out_per_mtok ?? 0}`;
+  const rows = (text || []).map(m => `<tr class="${hidden.has(m.id) ? 'mute' : ''}"><td><code class="inline" data-noi18n>${esc(m.id)}</code></td>
+      <td class="mute">${m.context_length ? fmt(m.context_length) : '—'}</td><td>${price(m)}</td>
+      <td>${hidden.has(m.id) ? '<span class="pill">escondido</span>' : '<span class="pill ok">no app</span>'}</td>
+      <td>${ME.is_admin ? `<a href="#" class="small cd-hide" data-m="${esc(m.id)}" data-v="${hidden.has(m.id) ? 0 : 1}">${hidden.has(m.id) ? 'mostrar no app' : 'esconder do app'}</a>` : ''}</td></tr>`).join('');
+  return `<div style="border-top:1px solid var(--line);padding-top:10px"><div class="row between" style="flex-wrap:wrap;gap:8px;align-items:flex-start">
+    <div><b>Hangar desktop</b> ${state}
+      <div class="mute small">${d.reason ? `<span class="bad-text">${esc(d.reason)}</span>`
+        : 'As pessoas escolhem estes modelos no app, por sessão. A chave da conexão não sai da plataforma: o app fala com o proxy, que aplica as regras e registra uso e custo no time.'}</div></div>
+    ${btn}</div>
+    ${d.sync && text ? `<details class="mt" ${d.active ? 'open' : ''}><summary class="small">Modelos no app (${d.models} de ${d.models_total})</summary>
+      <div class="scroll mt"><table><tr><th>Modelo</th><th>Contexto</th><th>US$/1M (entrada · saída)</th><th>No app</th><th></th></tr>
+      ${rows || '<tr><td colspan="5" class="empty">Nenhum modelo de texto disponível nesta conexão.</td></tr>'}</table></div></details>` : ''}</div>`;
+}
+
+function deskWire(x, text, box) {
+  box.innerHTML = deskHtml(x, text);
+  const set = (el, body, msg) => act(el, async () => {
+    x.desktop = await api(`/catalog/llm/${encodeURIComponent(x.name)}/desktop`, { method: 'PATCH', body });
+    deskWire(x, text, box);
+  }, msg);
+  box.querySelectorAll('.cd-sync').forEach(b => b.onclick = e => set(e.target, { sync: b.dataset.v === '1' },
+    b.dataset.v === '1' ? 'Modelos sincronizados com o Hangar desktop' : 'Sincronização com o Hangar desktop desligada'));
+  box.querySelectorAll('.cd-hide').forEach(a => a.onclick = e => { e.preventDefault();
+    set(a, { model_id: a.dataset.m, hidden: a.dataset.v === '1' }, a.dataset.v === '1' ? 'Modelo escondido do app' : 'Modelo de volta no app'); });
 }
 
 /* o modelo de um agente novo: a lista de modelos de texto da conexão escolhida */

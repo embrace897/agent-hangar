@@ -21,6 +21,7 @@ from .routers import (
     admin,
     analyst,
     app_hangar,
+    app_llm,
     connectors,
     employees,
     gateway,
@@ -94,6 +95,8 @@ CORS_HEADERS = [(b"access-control-allow-origin", b"*"), (b"access-control-allow-
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 # app Hangar: o heartbeat também atende o token de uma autorização encerrada (responde "revoked"; ver services/app_hangar)
 _APP_HEARTBEAT = re.compile(r"^/api/app/devices/[^/]+/heartbeat$")
+# proxy de LLM do app Hangar: autenticado pela chave do dispositivo (ahl_…) na própria rota (routers/app_llm.py)
+APP_LLM_PREFIX = "/api/app/llm/"
 
 
 def _deny(path: str, msg: str, status: int, headers: dict | None = None) -> JSONResponse:
@@ -161,7 +164,7 @@ class AuthMiddleware:
                                                                 svc.cors.headers(origin, True)})(scope, receive, send)
             if allowed:  # inclusive nos erros: a página consegue ler o 401, o 429…
                 send = _adding_headers(send, svc.cors.headers(origin, False))
-        if path == "/" or path.startswith(OPEN_PREFIXES):
+        if path == "/" or path.startswith(OPEN_PREFIXES) or path.startswith(APP_LLM_PREFIX):
             return await self.app(scope, receive, send)
         headers = {k.decode().lower(): v.decode() for k, v in scope["headers"]}
         token = auth.token_from_headers(headers)
@@ -296,6 +299,7 @@ app.include_router(remote_mcp.router)
 app.include_router(connectors.router)  # conectores (MCP): catálogo, cadastro e a ponte dos agentes
 app.include_router(oauth.router)
 app.include_router(app_hangar.router)  # o app Hangar (desktop): perfil, dispositivos, design tokens e o admin
+app.include_router(app_llm.router)  # o proxy de LLM do app Hangar (chave do dispositivo, credencial do cofre)
 app.include_router(memory.router)
 app.include_router(internal.router)
 app.include_router(gateway.router)

@@ -101,7 +101,8 @@ class Deployment(OrgScoped, Base):
 class UsageEvent(OrgScoped, Base):
     __tablename__ = "usage_events"
     id: Mapped[int] = mapped_column(primary_key=True)
-    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    # sem agente: uso direto de um modelo da plataforma (o app Hangar pelo proxy /api/app/llm, ver services/app_llm.py)
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     env: Mapped[str] = mapped_column(String(20), default="prod")
     channel: Mapped[str] = mapped_column(String(50), default="api")
     protocol: Mapped[str] = mapped_column(String(20), default="openai")
@@ -115,6 +116,13 @@ class UsageEvent(OrgScoped, Base):
     version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str] = mapped_column(String(200), default="")
     effort: Mapped[str] = mapped_column(String(12), default="")  # nível de esforço enviado ("" = nenhum)
+    # uso sem agente (app Hangar): o time que paga, o dispositivo, a conexão e os tokens de cache (Anthropic)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # app_devices.id
+    connection_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # llm_connections.id
+    client: Mapped[str] = mapped_column(String(40), default="")  # hangar-desktop
+    tokens_cache_read: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_cache_write: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
@@ -236,6 +244,10 @@ class LlmConnection(OrgScoped, Base):
     provider: Mapped[str] = mapped_column(String(40), default="custom")
     models_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     models_error: Mapped[str] = mapped_column(Text, default="")
+    # modelos de token sincronizados com o app Hangar (desktop): só protocolo anthropic; o app fala com o proxy
+    # /api/app/llm/<id> e a chave nunca sai da plataforma (services/app_llm.py)
+    sync_desktop: Mapped[bool] = mapped_column(Boolean, default=False)
+    desktop_hidden_models: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)  # escondidos do app pelo admin
 
 
 class ModelProfile(OrgScoped, Base):
@@ -625,6 +637,10 @@ class AppDevice(OrgScoped, Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by: Mapped[str] = mapped_column(String(254), default="")  # quem revogou, ou "sistema:<motivo>"
+    # chave do proxy de LLM (ahl_…): só o hash; o valor aparece uma vez. Revogar o dispositivo apaga a chave.
+    llm_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    llm_key_prefix: Mapped[str] = mapped_column(String(16), default="")
+    llm_key_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ------------------------------------------------------------------ montagem a partir do catálogo

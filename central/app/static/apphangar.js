@@ -13,6 +13,11 @@ async function appHangarPage(sub) {
       ${kpi(fmt(o.versions.length), 'Versões em uso')}
       ${kpi(o.last_seen_at ? ago(o.last_seen_at) : '—', 'Último sinal de um app')}
     </div>
+    <div class="card mt"><div class="row between" style="flex-wrap:wrap;gap:8px"><div><b>Modelos sincronizados:</b>
+      <span data-noi18n>${fmt(o.models_synced.connections)}</span> <span>${o.models_synced.connections === 1 ? 'conexão' : 'conexões'}</span>,
+      <span data-noi18n>${fmt(o.models_synced.models)}</span> <span>${o.models_synced.models === 1 ? 'modelo' : 'modelos'}</span>
+      <div class="mute small">Os modelos de token que as pessoas escolhem no app, além da assinatura. Ligue por conexão em Provedores de LLM (só conexões no formato da Anthropic).</div></div>
+      <a class="btn ghost" href="#/providers">Provedores de LLM</a></div></div>
     <div class="grid g2 mt">
       <div class="card hero"><h2>Conectar o app</h2>
         <div class="mute small">URL da plataforma (cole no app):</div>

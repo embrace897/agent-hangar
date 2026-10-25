@@ -3,7 +3,7 @@ import re
 import time
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import auth, config
@@ -75,9 +75,11 @@ def update_org(db: Session, acc: Access, name: str | None, default_visibility: s
 
 # ------------------------------------------------------------------ orçamento
 def month_spend(db: Session, team_id: int) -> float:
+    """Os agentes do time e o uso direto das pessoas dele (o proxy de LLM do app Hangar)."""
     ids = select(Agent.id).where(Agent.team_id == team_id)
     return float(db.scalar(select(func.coalesce(func.sum(UsageEvent.cost_usd), 0.0))
-                           .where(UsageEvent.agent_id.in_(ids), UsageEvent.created_at >= _month_start())) or 0)
+                           .where(or_(UsageEvent.agent_id.in_(ids), UsageEvent.team_id == team_id),
+                                  UsageEvent.created_at >= _month_start())) or 0)
 
 
 def budget_state(spent: float, budget: float | None) -> str:
