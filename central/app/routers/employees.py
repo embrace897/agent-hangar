@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .. import services as svc
-from .deps import acc, db_dep, guard
+from .deps import acc, db_dep, guard, member_route
 
 router = APIRouter(prefix="/api")
 hooks = APIRouter(prefix="/hooks")
@@ -347,7 +347,7 @@ def cancel(task_id: int, request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employees.cancel_task(db, acc(request, db), task_id))
 
 
-@router.get("/decisions")
+@router.get("/decisions", dependencies=[member_route(allow_app=True)])
 def decisions(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.employee_tasks.pending_for(db, acc(request, db)))
 

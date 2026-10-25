@@ -99,8 +99,8 @@ Discovery and token endpoints are open (CORS enabled); the consent and managemen
 | GET / DELETE | `/api/me/oauth[/{id}]` | Connected apps of the caller (admins: everyone's) / revoke one |
 | GET / DELETE | `/api/oauth/clients[/{client_id}]` | Admin: registered apps / block an app and all its authorizations |
 
-Scopes: a token with `mcp` works on `/mcp`; a token with `app` works on `/api/app/*` (never on `/api/app/admin/*`).
-Authorizations created before scopes existed are `mcp`.
+Scopes: a token with `mcp` works on `/mcp`; a token with `app` works on `/api/app/*` (never on `/api/app/admin/*`) and
+on the member routes listed for the app (below). Authorizations created before scopes existed are `mcp`.
 
 ## Hangar desktop app (`/api/app`)
 
@@ -115,12 +115,53 @@ Bearer OAuth token with scope `app` (contract and flow: [app-hangar.md](app-hang
 | GET | `/api/app/design-tokens` | The console tokens (`static/design-tokens.json`): `{version, light, dark, fonts, radius}` |
 | GET | `/api/app/models` | Token models synced with the desktop app: `{version, connections:[{id, name, provider, base_path, models:[{model_id, name, context_length, caps, price_in_per_mtok, price_out_per_mtok}]}]}` |
 | POST | `/api/app/devices/{device_id}/llm-key` | Creates or rotates the device's LLM proxy key: `{key:"ahl_…", prefix, created_at}` (shown once; the previous key stops working) |
+| GET | `/api/app/events` | Server-sent events for the person (see below) |
 | GET | `/api/app/admin/overview` | Admin (console session or admin key): `{devices_active, members_connected, versions, last_seen_at, platform_url, models_synced:{connections, models}}` |
 | GET | `/api/app/admin/devices` | Admin: every device with its owner, status and last signal |
 | POST | `/api/app/admin/devices/{id}/revoke` | Admin: revokes the device and its OAuth authorization (audit `app.device.revoke`) |
 
 A device becomes `revoked` when an admin revokes it, or when its authorization ends (sign-out from the app, revocation in
 "My keys", app blocked, person deactivated). Only the admin case keeps the same `device_id` from registering again.
+
+### Member routes with the app token
+
+Contract: [app-hangar-workspace.md](app-hangar-workspace.md) (section 4 has the response of each route). A short,
+explicit list of member routes also accepts the `app` token, always with the person's own access (teams and roles).
+Each one is marked in code with `member_route(allow_app=True)` (`routers/deps.py`); the middleware lets an OAuth token
+reach an `/api` route only when it carries that mark, and the dependency checks the scope again.
+
+| Method | Path | With the app token |
+|---|---|---|
+| GET | `/api/me/workspace` | The member's home: decisions to take, their agents, tasks, month cost |
+| GET | `/api/decisions` | Open decisions the person can take |
+| GET | `/api/org-chart?mine=1` | Only with `mine=1` (without it: 403) |
+| GET | `/api/inbox[?view=]` | Inbox items and counts |
+
+Everything else refuses the app token with 403: admin, auditor, settings, keys, secrets, OAuth/SSO, and member routes
+outside the list (writes such as `/api/inbox/mark` and `/api/decisions/{id}` come with M2). Refusals by the middleware
+are `{"error": …}`; the `mine=1` refusal comes from the route and is `{"detail": …}`.
+
+### Events (`GET /api/app/events`)
+
+Server-sent events for the person (`text/event-stream`), with the app token (or any credential of a person; the admin
+token has no person and gets 403). Each message is `id: <n>`, `event: <type>`, `data: <json>`; a `: keepalive` comment
+goes out after 25 s of silence; the stream starts with `retry: 5000` and closes after 30 minutes (reconnect with
+`Last-Event-ID`). Without `Last-Event-ID` the first message is `inbox.changed` with the current count, whose `id` is the
+cursor; with it, the stream resumes after that id (no snapshot).
+
+| Event | Data | When |
+|---|---|---|
+| `inbox.changed` | `{unread}` | A decision the person can take opens, is decided or escalated; a task they requested or manage changes status; they mark items read/archived |
+| `decision.created` | `{id, title, agent}` | A decision opens that the person can take (`agent` is the slug) |
+| `decision.decided` | `{id}` | It was decided (or expired/cancelled) |
+| `agent.status` | `{slug, status}` | An agent or Digital employee of "My agents" is created or changes status (Digital employees report the employee status) |
+| `models.changed` | `{version}` | The list of `GET /api/app/models` changed (`version` is the same value) |
+
+How it works with several replicas: changes are written to the `app_events` table in the same transaction as the change
+(an `after_flush` hook in `services/app_events.py`); every stream reads that table from its cursor every 2 s and decides
+**at delivery** whether the person may see each event, with their current access. Rows older than 24 h are deleted.
+A row committed late by a longer transaction is still delivered, without `id:`, so the client's cursor never goes back.
+Events are hints: the app refetches the list it shows.
 
 ### Synced token models and the LLM proxy (`/api/app/llm`)
 

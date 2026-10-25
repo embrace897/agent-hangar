@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from .. import auth, config, sso
 from .. import services as svc
 from ..services import org
-from .deps import acc, actor, db_dep, guard, principal, require_admin
+from .deps import acc, actor, db_dep, guard, member_route, principal, require_admin
 
 router = APIRouter(prefix="/api")
 
@@ -515,7 +515,7 @@ def my_activation_code(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.workspace.issue_code(db, acc(request, db)))
 
 
-@router.get("/me/workspace")
+@router.get("/me/workspace", dependencies=[member_route(allow_app=True)])
 def my_workspace(request: Request, db=Depends(db_dep)):
     return guard(lambda: svc.workspace.home(db, acc(request, db)))
 

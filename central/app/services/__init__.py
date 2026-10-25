@@ -3,6 +3,7 @@ from ..models import Agent  # noqa: F401  (svc.Agent é usado pelo MCP)
 from . import (  # noqa: F401  (svc.access.Access, svc.connect.snippet, svc.org.ship…)
                       access,
                       analysis,
+                      app_events,
                       app_hangar,
                       app_llm,
                       avatars,

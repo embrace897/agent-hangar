@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from .. import services as svc
 from ..db import SessionLocal
-from .deps import acc, db_dep, guard
+from .deps import acc, db_dep, guard, member_route, query_flag
 
 router = APIRouter(prefix="/api")
 
@@ -201,7 +201,8 @@ def message_discard(task_id: int, message_id: int, request: Request, db=Depends(
 
 
 # ------------------------------------------------------------------ organograma
-@router.get("/org-chart")
+@router.get("/org-chart", dependencies=[member_route(
+    allow_app=True, when=query_flag("mine"), why="forbidden: pelo app Hangar, só o organograma da pessoa (mine=1)")])
 def org_chart(request: Request, team: str | None = None, mine: bool = False, db=Depends(db_dep)):
     return guard(lambda: svc.org_chart.chart(db, acc(request, db), team, mine))
 
@@ -443,7 +444,7 @@ def secret_decide(proposal_id: int, body: DecideBody, request: Request, db=Depen
 
 
 # ------------------------------------------------------------------ caixa de entrada e busca
-@router.get("/inbox")
+@router.get("/inbox", dependencies=[member_route(allow_app=True)])
 def inbox(request: Request, view: str = "all", db=Depends(db_dep)):
     return guard(lambda: svc.inbox.items(db, acc(request, db), view))
 

@@ -643,6 +643,18 @@ class AppDevice(OrgScoped, Base):
     llm_key_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AppEvent(OrgScoped, Base):
+    """Fila curta dos eventos do app Hangar (GET /api/app/events, SSE). Gravada na mesma transação da mudança; cada
+    réplica lê a partir do último id entregue e decide na entrega quem pode ver (services/app_events.py)."""
+    __tablename__ = "app_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(30))  # inbox.changed | decision.created | decision.decided | agent.status | models.changed
+    ref: Mapped[str] = mapped_column(String(60), default="")  # decision:5 | task:12 | agent:3 | employee:2
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # só para esta pessoa
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 # ------------------------------------------------------------------ montagem a partir do catálogo
 class AgentLineage(OrgScoped, Base):
     """De onde um agente montado veio: o plano, a base copiada e os especialistas que ele chama, com as versões em

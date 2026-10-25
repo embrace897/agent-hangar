@@ -1,11 +1,12 @@
 """API do app Hangar (desktop): /api/app com o token OAuth de escopo `app`, e /api/app/admin para o console
 (contrato em docs/app-hangar.md; regras em services/app_hangar.py)."""
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .. import auth
+from ..services import app_events, app_llm
 from ..services import app_hangar as ah
-from ..services import app_llm
 from .deps import actor, db_dep, guard, principal, require_admin
 
 router = APIRouter(prefix="/api/app")
@@ -64,6 +65,20 @@ def llm_key(device_id: str, request: Request, db=Depends(db_dep)):
 def models(request: Request, db=Depends(db_dep)):
     """Os modelos de token sincronizados com o Hangar desktop (docs/app-hangar-models.md)."""
     return guard(lambda: app_llm.models_for_app(db, principal(request)))
+
+
+@router.get("/events")
+async def events(request: Request):
+    """Eventos da pessoa em SSE (docs/app-hangar-workspace.md, seção 2): retoma com Last-Event-ID, keepalive a cada
+    25 s, fecha depois de 30 min (o cliente reconecta)."""
+    p = principal(request)
+    if not p.user_id:
+        raise HTTPException(403, "os eventos são de uma pessoa (entre com a sua conta)")
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    token = auth.token_from_headers(headers) or auth.cookie(headers, auth.SESSION_COOKIE)
+    last = request.headers.get("last-event-id") or request.query_params.get("last_event_id")
+    return StreamingResponse(app_events.stream(request, p, token, last), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/design-tokens")

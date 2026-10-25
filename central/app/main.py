@@ -11,7 +11,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Match
 
 from . import auth, config, crypto, db, egress, observability, shared, tenancy
 from . import services as svc
@@ -23,6 +25,7 @@ from .routers import (
     app_hangar,
     app_llm,
     connectors,
+    deps,
     employees,
     gateway,
     internal,
@@ -104,13 +107,31 @@ def _deny(path: str, msg: str, status: int, headers: dict | None = None) -> JSON
     return JSONResponse({"detail" if path.startswith("/api/app/") else "error": msg}, status, headers=headers)
 
 
-def _oauth_allowed(principal, path: str) -> str:
+def _oauth_allowed(principal, path: str, scope=None) -> str:
     """Onde um token OAuth vale, pelos escopos da autorização ("" = pode; senão, o motivo da recusa)."""
     if path.startswith("/mcp"):
         return "" if "mcp" in principal.oauth_scopes else "forbidden: este token OAuth não tem o escopo mcp"
     if path.startswith("/api/app/") and not path.startswith("/api/app/admin"):
         return "" if "app" in principal.oauth_scopes else "forbidden: este token OAuth não tem o escopo app"
-    return "forbidden: token OAuth só vale em /mcp (escopo mcp) e /api/app (escopo app)"
+    if "app" in principal.oauth_scopes and scope is not None and _app_route(scope):
+        return ""  # rota do membro liberada para o app (deps.member_route confere o resto)
+    return "forbidden: token OAuth só vale em /mcp (escopo mcp), /api/app e nas rotas do membro liberadas para o app (escopo app)"
+
+
+_API_ROUTES: list[APIRoute] = []
+
+
+def _app_route(scope) -> bool:
+    """A rota que vai atender tem a marca member_route(allow_app=True)? Só rotas /api, nunca /api/app/admin; na
+    dúvida (rota desconhecida, incluída com outro prefixo), não."""
+    if not scope["path"].startswith("/api/") or scope["path"].startswith("/api/app/admin"):
+        return False
+    if not _API_ROUTES:
+        _API_ROUTES.extend(deps.api_routes(app.router.routes))
+    for route in _API_ROUTES:
+        if route.matches(scope)[0] == Match.FULL:  # a primeira que casa é a que atende
+            return deps.app_allowed(route)
+    return False
 
 
 def _adding_headers(send, extra: list[tuple[bytes, bytes]]):
@@ -186,7 +207,7 @@ class AuthMiddleware:
                 headers["WWW-Authenticate"] = f'Bearer resource_metadata="{svc.mcp_oauth.resource_metadata_url()}"'
             return await _deny(path, "unauthorized", 401, headers)(scope, receive, send)
         if principal.via == "oauth":
-            why = _oauth_allowed(principal, path)
+            why = _oauth_allowed(principal, path, scope)
             if why:
                 return await _deny(path, why, 403)(scope, receive, send)
         if via_cookie and scope["method"] not in SAFE_METHODS:
