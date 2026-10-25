@@ -91,13 +91,34 @@ Discovery and token endpoints are open (CORS enabled); the consent and managemen
 |---|---|---|
 | GET | `/.well-known/oauth-protected-resource[/mcp]` | RFC 9728 metadata. `/mcp` without a token answers 401 with `WWW-Authenticate: Bearer resource_metadata="…"` |
 | GET | `/.well-known/oauth-authorization-server` | RFC 8414 metadata (also at `/.well-known/openid-configuration`) |
-| POST | `/oauth/register` | Dynamic client registration (RFC 7591): public clients only (`token_endpoint_auth_method=none`); redirect hosts limited by `OAUTH_REDIRECT_HOSTS`; 30 registrations/hour per IP |
-| GET | `/oauth/authorize` | Validates the request (PKCE S256 required) and sends the browser to the portal consent page `/app/#/oauth` |
+| POST | `/oauth/register` | Dynamic client registration (RFC 7591): public clients only (`token_endpoint_auth_method=none`); redirect hosts limited by `OAUTH_REDIRECT_HOSTS`; 30 registrations/hour per IP. Optional `scope` (`app`, `mcp`; default `mcp`) and `software_id`/`software_version`, kept on the client |
+| GET | `/oauth/authorize` | Validates the request (PKCE S256 required) and sends the browser to the portal consent page `/app/#/oauth`. Loopback redirects (`127.0.0.1`, `[::1]`, `localhost`) match on any port (RFC 8252 §7.3). `scope` must be among the client's registered scopes; without it, `mcp` |
 | POST | `/oauth/token` | `authorization_code` (+ `code_verifier`) or `refresh_token` (rotating; reusing an old one revokes the authorization) |
 | POST | `/oauth/revoke` | RFC 7009: revokes the authorization owning the token |
 | GET / POST | `/api/oauth/consent` | Portal: request details / `{params, approve}` → `{redirect}` back to the app with `code` and `state` |
 | GET / DELETE | `/api/me/oauth[/{id}]` | Connected apps of the caller (admins: everyone's) / revoke one |
 | GET / DELETE | `/api/oauth/clients[/{client_id}]` | Admin: registered apps / block an app and all its authorizations |
+
+Scopes: a token with `mcp` works on `/mcp`; a token with `app` works on `/api/app/*` (never on `/api/app/admin/*`).
+Authorizations created before scopes existed are `mcp`.
+
+## Hangar desktop app (`/api/app`)
+
+Bearer OAuth token with scope `app` (contract and flow: [app-hangar.md](app-hangar.md)). Errors are `{"detail": …}`:
+401 means refresh and retry once; 403 means a revoked device or no access.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/app/me` | `{user:{id,email,name,avatar_url,org_role,teams}, org:{id,name,slug,brand}, platform:{version,features}, design_tokens:{version}}` |
+| POST | `/api/app/devices` | `{device_id, name, os, os_version, app_version, channel}` → `{device}`; idempotent per user + `device_id`, bound to the token's authorization. A device revoked by an admin answers 403 |
+| POST | `/api/app/devices/{device_id}/heartbeat` | `{app_version}` → `{status: "active"|"revoked"}`; also answers `revoked` for the token of an authorization that has ended |
+| GET | `/api/app/design-tokens` | The console tokens (`static/design-tokens.json`): `{version, light, dark, fonts, radius}` |
+| GET | `/api/app/admin/overview` | Admin (console session or admin key): `{devices_active, members_connected, versions, last_seen_at, platform_url}` |
+| GET | `/api/app/admin/devices` | Admin: every device with its owner, status and last signal |
+| POST | `/api/app/admin/devices/{id}/revoke` | Admin: revokes the device and its OAuth authorization (audit `app.device.revoke`) |
+
+A device becomes `revoked` when an admin revokes it, or when its authorization ends (sign-out from the app, revocation in
+"My keys", app blocked, person deactivated). Only the admin case keeps the same `device_id` from registering again.
 
 ## Reuse before you build (`/api/compose`)
 

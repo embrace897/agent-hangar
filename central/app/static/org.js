@@ -569,9 +569,11 @@ async function oauthConsentPage() {
   try { info = await api('/oauth/consent?' + new URLSearchParams(params)); }
   catch (e) { return box(`<div class="bad-text">${esc(e.message)}</div><p class="small">Comece de novo pelo app.</p>`); }
   if (!info.user) return box('<div class="bad-text">Esta sessão não tem um usuário (sessão de emergência). Entre com a sua conta para conectar o app.</div>');
-  box(`<p><b>${esc(info.client_name)}</b> quer usar o Agent Hangar como <b>${esc(info.user.name || info.user.email)}</b>.</p>
-    <ul class="small"><li>O app poderá usar o MCP da plataforma com os seus times e papéis: listar, criar, testar e publicar agentes que você pode mexer.</li>
-      <li>Depois de autorizar, você volta para <b>${esc(info.redirect_host)}</b>. Se não reconhece este endereço, <b>não autorize</b>.</li>
+  // os escopos pedidos (mcp: o MCP da plataforma; app: o app Hangar do computador), com o que cada um permite
+  const scopes = (info.scopes || []).map(x => `<li><code class="inline">${esc(x.scope)}</code> <span>${esc(x.description)}</span></li>`).join('');
+  box(`<p><b>${esc(info.client_name)}</b>${info.software_id ? ` <span class="mute small" data-noi18n>(${esc([info.software_id, info.software_version].filter(Boolean).join(' '))})</span>` : ''} quer usar o Agent Hangar como <b>${esc(info.user.name || info.user.email)}</b>.</p>
+    <div class="small">O app poderá:</div><ul class="small">${scopes}</ul>
+    <ul class="small"><li>Depois de autorizar, você volta para <b>${esc(info.redirect_host)}</b>. Se não reconhece este endereço, <b>não autorize</b>.</li>
       <li>O acesso aparece em <a href="#/keys">Minhas chaves → Apps conectados</a>; revogue quando quiser.</li></ul>
     <div class="row mt"><button id="oa-ok">Autorizar</button><button class="ghost" id="oa-no">Recusar</button></div><div id="oa-done" class="mt"></div>`);
   const go = approve => async () => {

@@ -22,11 +22,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import config
-from .models import ApiKey, OAuthClient, OAuthGrant, User, UserSession, now
+from .models import ApiKey, AppDevice, OAuthClient, OAuthGrant, User, UserSession, now
 
 KEY_PREFIX = "ah_"
 SESSION_PREFIX = "ahs_"
-OAUTH_PREFIX = "aho_"  # token de acesso OAuth do MCP (Claude.ai, ChatGPT…): só vale no /mcp
+OAUTH_PREFIX = "aho_"  # token de acesso OAuth (Claude.ai, ChatGPT, app Hangar): /mcp e /api/app, conforme os escopos
 SCOPES = ("admin", "invoke", "user", "scim")
 SESSION_COOKIE = "hangar_session"
 CSRF_COOKIE = "hangar_csrf"
@@ -42,6 +42,8 @@ class Principal:
     org_role: str | None = None  # admin | auditor | member — só quando age como usuário
     via: str = "key"  # key | session | admin-token | oauth
     org_id: int | None = None  # a empresa de quem chama (None = o token admin, que escolhe pelo X-Hangar-Org)
+    grant_id: int | None = None  # via oauth: a autorização (o app Hangar amarra o dispositivo a ela)
+    oauth_scopes: frozenset = frozenset()  # via oauth: mcp (o /mcp) e/ou app (/api/app)
 
     @property
     def is_admin(self) -> bool:
@@ -175,7 +177,10 @@ def revoke_user_sessions(db: Session, user_id: int):
     for s in db.scalars(select(UserSession).where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))):
         s.revoked_at = now()
     for g in db.scalars(select(OAuthGrant).where(OAuthGrant.user_id == user_id, OAuthGrant.revoked_at.is_(None))):
-        g.revoked_at = now()  # apps conectados por OAuth (Claude.ai, ChatGPT…) caem junto
+        g.revoked_at = now()  # apps conectados por OAuth (Claude.ai, ChatGPT, app Hangar…) caem junto
+    for d in db.scalars(select(AppDevice).where(AppDevice.user_id == user_id, AppDevice.status == "active")
+                        .execution_options(all_orgs=True)):
+        d.status, d.revoked_at, d.revoked_by = "revoked", now(), "sistema:acesso encerrado"
     db.commit()
     clear_cache()
 
@@ -219,6 +224,7 @@ def authenticate(db: Session, token: str) -> Principal | None:
             u = db.get(User, g.user_id)
             principal = _user_principal(u, "oauth", f"{u.email} (app:{c.name})") if u else None
             if principal is not None:
+                principal.grant_id, principal.oauth_scopes = g.id, frozenset((g.scope or "mcp").split())
                 g.last_used_at = now()
                 db.commit()
     elif token.startswith(SESSION_PREFIX):

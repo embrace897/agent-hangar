@@ -8,9 +8,12 @@ Segue a especificação de autorização do MCP:
 4. O app troca código + verifier por um token de acesso curto (1 h) e um refresh token rotativo (30 dias,
    com detecção de reuso: um refresh antigo reapresentado derruba a autorização inteira).
 
-O token age como a pessoa (times e papéis dela) e só vale no /mcp. A pessoa vê e revoga os apps em "Minhas chaves";
-o admin vê e bloqueia apps na página de SSO. Redirects só para hosts permitidos (OAUTH_REDIRECT_HOSTS), além de
-localhost — um app registrado por terceiros não consegue mandar o código para outro lugar.
+O token age como a pessoa (times e papéis dela) e vale onde os escopos da autorização deixam: `mcp` no /mcp e `app`
+nas rotas do app Hangar (/api/app, menos /api/app/admin). Pedido sem escopo vira `mcp` (Claude.ai, ChatGPT); um app só
+recebe, do que pediu, os escopos que declarou no registro. A pessoa vê e revoga os apps em "Minhas chaves"; o admin vê e bloqueia apps
+na página de SSO. Redirects só para hosts permitidos (OAUTH_REDIRECT_HOSTS), além de localhost — um app registrado por
+terceiros não consegue mandar o código para outro lugar. Em loopback (127.0.0.1, [::1], localhost) a porta é livre
+(RFC 8252 §7.3): o app nativo sobe o servidor de retorno numa porta qualquer.
 """
 import base64
 import hashlib
@@ -30,7 +33,12 @@ from .common import PlatformError, audit, iso
 
 ACCESS_PREFIX, REFRESH_PREFIX = "aho_", "ahr_"
 CODE_TTL_S = 300
-SCOPE = "mcp"
+SCOPE = "mcp"  # o padrão: pedido sem escopo (Claude.ai, ChatGPT…)
+SCOPES = ("app", "mcp")
+SCOPE_INFO = {"mcp": "Usar o MCP da plataforma com os seus times e papéis: listar, criar, testar e publicar os agentes "
+                     "que você pode mexer.",
+              "app": "Conectar o app Hangar deste computador: ver o seu perfil, a empresa e os times, registrar o "
+                     "dispositivo e receber o visual da plataforma."}
 LOOPBACK = {"localhost", "127.0.0.1", "[::1]", "::1"}
 MAX_REGISTRATIONS_PER_HOUR = 30
 
@@ -58,7 +66,7 @@ def resource_metadata_url() -> str:
     return f"{base()}/.well-known/oauth-protected-resource/mcp"
 
 
-def protected_resource_metadata() -> dict:
+def protected_resource_metadata() -> dict:  # o recurso /mcp: só o escopo dele
     return {"resource": resource(), "authorization_servers": [base()], "scopes_supported": [SCOPE],
             "bearer_methods_supported": ["header"], "resource_name": "Agent Hangar"}
 
@@ -68,9 +76,20 @@ def server_metadata() -> dict:
     return {"issuer": b, "authorization_endpoint": f"{b}/oauth/authorize", "token_endpoint": f"{b}/oauth/token",
             "registration_endpoint": f"{b}/oauth/register", "revocation_endpoint": f"{b}/oauth/revoke",
             "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"],
-            "code_challenge_methods_supported": ["S256"], "scopes_supported": [SCOPE],
+            "code_challenge_methods_supported": ["S256"], "scopes_supported": list(SCOPES),
             "token_endpoint_auth_methods_supported": ["none"], "revocation_endpoint_auth_methods_supported": ["none"],
             "service_documentation": "https://github.com/valteresj2/agent-hangar/blob/main/docs/clients.md"}
+
+
+def parse_scope(raw, default: str = SCOPE) -> str:
+    """Os escopos conhecidos de um pedido, em ordem fixa ("app mcp"). Valores desconhecidos são ignorados (clientes que
+    mandam os seus próprios); sem nenhum conhecido, o padrão."""
+    asked = set(str(raw or "").split())
+    return " ".join(s for s in SCOPES if s in asked) or default
+
+
+def scopes_of(scope: str | None) -> set[str]:
+    return set((scope or SCOPE).split())
 
 
 # ------------------------------------------------------------------ registro dinâmico (RFC 7591)
@@ -88,6 +107,27 @@ def redirect_allowed(uri: str) -> bool:
         return False
     hosts = config.OAUTH_REDIRECT_HOSTS
     return "*" in hosts or any(host == h or host.endswith("." + h) for h in hosts)
+
+
+def redirect_matches(asked: str, registered: str) -> bool:
+    """O redirect do pedido é o registrado. Em loopback a porta não conta (RFC 8252 §7.3): esquema, host, caminho e
+    query continuam exatos."""
+    if asked == registered:
+        return True
+    try:
+        a, r = urllib.parse.urlsplit(asked), urllib.parse.urlsplit(registered)
+        if a.port is not None and not 0 < a.port < 65536:
+            return False
+    except ValueError:  # porta que não é número
+        return False
+    host = (r.hostname or "").lower()
+    if host not in LOOPBACK or (a.hostname or "").lower() != host or a.username or a.password or a.fragment:
+        return False
+    return a.scheme == r.scheme and a.path == r.path and a.query == r.query
+
+
+def redirect_registered(c: OAuthClient, asked: str) -> bool:
+    return any(redirect_matches(asked, r) for r in c.redirect_uris or [])
 
 
 def register(db: Session, body: dict, ip: str = "") -> dict:
@@ -108,15 +148,25 @@ def register(db: Session, body: dict, ip: str = "") -> dict:
     for g in body.get("grant_types") or ["authorization_code"]:
         if g not in ("authorization_code", "refresh_token"):
             raise OAuthError("invalid_client_metadata", f"grant_type não suportado: {g}")
-    name = re.sub(r"[\x00-\x1f<>]", "", str(body.get("client_name") or "") or "")[:120].strip() or \
-        (urllib.parse.urlsplit(uris[0]).hostname or "app")
-    c = OAuthClient(id="mcp_" + secrets.token_urlsafe(18), name=name, redirect_uris=uris)
+    name = _clean(body.get("client_name"), 120) or (urllib.parse.urlsplit(uris[0]).hostname or "app")
+    scope = parse_scope(body.get("scope"))
+    software_id, software_version = _clean(body.get("software_id"), 120), _clean(body.get("software_version"), 60)
+    c = OAuthClient(id="mcp_" + secrets.token_urlsafe(18), name=name, redirect_uris=uris, scope=scope,
+                    software_id=software_id, software_version=software_version)
     db.add(c)
     db.commit()
-    audit(db, f"oauth:{name}", "oauth.register", c.id, ", ".join(uris)[:500])
-    return {"client_id": c.id, "client_id_issued_at": int(time.time()), "client_name": name, "redirect_uris": uris,
-            "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
-            "token_endpoint_auth_method": "none", "scope": SCOPE}
+    soft = f" · {software_id} {software_version}".rstrip() if software_id else ""
+    audit(db, f"oauth:{name}", "oauth.register", c.id, f"{', '.join(uris)} · {scope}{soft}"[:500])
+    out = {"client_id": c.id, "client_id_issued_at": int(time.time()), "client_name": name, "redirect_uris": uris,
+           "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
+           "token_endpoint_auth_method": "none", "scope": scope}
+    if software_id:
+        out.update(software_id=software_id, software_version=software_version)
+    return out
+
+
+def _clean(value, size: int) -> str:
+    return re.sub(r"[\x00-\x1f<>]", "", str(value or ""))[:size].strip()
 
 
 # ------------------------------------------------------------------ autorização (tela de consentimento no portal)
@@ -133,16 +183,23 @@ def check_request(db: Session, q: dict) -> tuple[OAuthClient, dict]:
         raise OAuthError("access_denied", "OAuth do MCP desligado nesta instalação", 403)
     c = _client(db, q.get("client_id", ""))
     redirect = q.get("redirect_uri") or (c.redirect_uris[0] if len(c.redirect_uris) == 1 else "")
-    if redirect not in c.redirect_uris:
+    if not redirect_registered(c, redirect):
         raise OAuthError("invalid_request", "redirect_uri não registrado para este app")
     clean = {"client_id": c.id, "redirect_uri": redirect, "state": (q.get("state") or "")[:500],
-             "code_challenge": q.get("code_challenge") or "", "resource": q.get("resource") or resource()}
+             "code_challenge": q.get("code_challenge") or "", "resource": q.get("resource") or resource(),
+             "scope": parse_scope(q.get("scope"))}
     if q.get("response_type") != "code":
         raise OAuthError("unsupported_response_type", "só response_type=code")
     if q.get("code_challenge_method") != "S256" or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", clean["code_challenge"]):
         raise OAuthError("invalid_request", "PKCE obrigatório (code_challenge com S256)")
     if clean["resource"].rstrip("/") not in (resource(), base()):
         raise OAuthError("invalid_target", f"resource inválido: use {resource()}")
+    # só os escopos que o app declarou no registro (RFC 6749 §3.3: o servidor pode conceder menos que o pedido) —
+    # um cliente MCP que pede tudo o que os metadados anunciam continua conectando, com `mcp`
+    granted = scopes_of(clean["scope"]) & scopes_of(c.scope)
+    if not granted:
+        raise OAuthError("invalid_scope", f"escopo não registrado para este app: {clean['scope']}")
+    clean["scope"] = " ".join(s for s in SCOPES if s in granted)
     return c, clean
 
 
@@ -155,7 +212,9 @@ def consent_info(db: Session, acc: Access, q: dict) -> dict:
     c, clean = check_request(db, q)
     who = db.get(User, acc.p.user_id) if acc.p.user_id else None
     return {"client_name": c.name, "client_id": c.id, "redirect_host": urllib.parse.urlsplit(clean["redirect_uri"]).hostname,
-            "user": {"name": who.name, "email": who.email} if who else None, "resource": clean["resource"]}
+            "user": {"name": who.name, "email": who.email} if who else None, "resource": clean["resource"],
+            "software_id": c.software_id or None, "software_version": c.software_version or None,
+            "scopes": [{"scope": s, "description": SCOPE_INFO[s]} for s in SCOPES if s in scopes_of(clean["scope"])]}
 
 
 def authorize(db: Session, acc: Access, q: dict, approve: bool) -> dict:
@@ -166,17 +225,18 @@ def authorize(db: Session, acc: Access, q: dict, approve: bool) -> dict:
     if not acc.p.is_user or not acc.p.user_id or acc.p.via != "session":
         raise Forbidden("entre com a sua conta (SSO ou usuário e senha) para autorizar o app")
     code = sso.sign_state({"k": "mcp-oauth", "u": acc.p.user_id, "cl": c.id, "r": clean["redirect_uri"],
-                           "c": clean["code_challenge"], "j": secrets.token_urlsafe(12), "t": int(time.time())})
-    audit(db, acc.p.name, "oauth.authorize", c.name, c.id)
+                           "c": clean["code_challenge"], "s": clean["scope"], "j": secrets.token_urlsafe(12),
+                           "t": int(time.time())})
+    audit(db, acc.p.name, "oauth.authorize", c.name, f"{c.id} · {clean['scope']}")
     return {"redirect": redirect_with(clean["redirect_uri"], {"code": code, "state": clean["state"], "iss": base()})}
 
 
 # ------------------------------------------------------------------ tokens
-def _issue(db: Session, grant: OAuthGrant | None, client: OAuthClient, user_id: int) -> dict:
+def _issue(db: Session, grant: OAuthGrant | None, client: OAuthClient, user_id: int, scope: str = SCOPE) -> dict:
     access, refresh = ACCESS_PREFIX + secrets.token_urlsafe(32), REFRESH_PREFIX + secrets.token_urlsafe(40)
     t = now()
     if grant is None:
-        grant = OAuthGrant(client_id=client.id, user_id=user_id, previous_refresh_hash="")
+        grant = OAuthGrant(client_id=client.id, user_id=user_id, previous_refresh_hash="", scope=scope)
         db.add(grant)
     else:
         grant.previous_refresh_hash = grant.refresh_hash
@@ -185,7 +245,7 @@ def _issue(db: Session, grant: OAuthGrant | None, client: OAuthClient, user_id: 
     grant.refresh_expires_at = t + timedelta(days=config.OAUTH_REFRESH_TTL_DAYS)
     db.commit()
     return {"access_token": access, "token_type": "Bearer", "expires_in": config.OAUTH_ACCESS_TTL_S,
-            "refresh_token": refresh, "scope": SCOPE}
+            "refresh_token": refresh, "scope": grant.scope or SCOPE}
 
 
 def _active_user(db: Session, user_id: int) -> User:
@@ -211,7 +271,7 @@ def token(db: Session, form: dict) -> dict:
         if data.get("k") != "mcp-oauth":
             raise OAuthError("invalid_grant", "código inválido")
         c = _client(db, form.get("client_id") or data["cl"])
-        if c.id != data["cl"] or (form.get("redirect_uri") or data["r"]) != data["r"]:
+        if c.id != data["cl"] or (form.get("redirect_uri") or data["r"]) != data["r"]:  # o do pedido, com a porta
             raise OAuthError("invalid_grant", "o código não é deste app ou deste redirect_uri")
         verifier = form.get("code_verifier") or ""
         expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -220,8 +280,11 @@ def token(db: Session, form: dict) -> dict:
         if not shared.take_once(f"oauth-code:{data['j']}", CODE_TTL_S + 60):
             raise OAuthError("invalid_grant", "este código já foi usado")
         u = _active_user(db, data["u"])
-        out = _issue(db, None, c, u.id)
-        audit(db, u.email, "oauth.token", c.name, c.id)
+        scope = data.get("s") or SCOPE  # códigos assinados antes dos escopos: mcp
+        out = _issue(db, None, c, u.id, scope)
+        audit(db, u.email, "oauth.token", c.name, f"{c.id} · {scope}")
+        if "app" in scopes_of(scope):
+            audit(db, u.email, "app.login", c.name, " ".join(x for x in (c.software_id, c.software_version) if x) or c.id)
         return out
     if grant_type == "refresh_token":
         h = auth.hash_key(form.get("refresh_token") or "")
@@ -260,7 +323,7 @@ def revoke_token(db: Session, raw: str):
 def _grant_dict(db: Session, g: OAuthGrant) -> dict:
     c = db.get(OAuthClient, g.client_id)
     u = db.get(User, g.user_id)
-    return {"id": g.id, "client_id": g.client_id, "client_name": c.name if c else g.client_id,
+    return {"id": g.id, "client_id": g.client_id, "client_name": c.name if c else g.client_id, "scope": g.scope or SCOPE,
             "user": u.email if u else str(g.user_id), "created_at": iso(g.created_at), "last_used_at": iso(g.last_used_at),
             "expires_at": iso(g.refresh_expires_at), "revoked": g.revoked_at is not None or _aware(g.refresh_expires_at) < now()}
 
@@ -292,7 +355,8 @@ def clients(db: Session, acc: Access) -> list[dict]:
     for c in db.scalars(select(OAuthClient).order_by(OAuthClient.created_at.desc()).limit(200)):
         active = db.scalars(select(OAuthGrant).where(OAuthGrant.client_id == c.id, OAuthGrant.revoked_at.is_(None))).all()
         out.append({"id": c.id, "name": c.name, "redirect_uris": c.redirect_uris, "created_at": iso(c.created_at),
-                    "blocked": c.revoked_at is not None,
+                    "blocked": c.revoked_at is not None, "scope": c.scope or SCOPE,
+                    "software_id": c.software_id or None, "software_version": c.software_version or None,
                     "active_grants": sum(1 for g in active if _aware(g.refresh_expires_at) > now())})
     return out
 

@@ -20,6 +20,7 @@ from .routers import (
     access,
     admin,
     analyst,
+    app_hangar,
     connectors,
     employees,
     gateway,
@@ -91,6 +92,22 @@ CORS_HEADERS = [(b"access-control-allow-origin", b"*"), (b"access-control-allow-
                 (b"access-control-allow-headers", b"authorization, content-type, mcp-protocol-version"),
                 (b"access-control-max-age", b"86400")]
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+# app Hangar: o heartbeat também atende o token de uma autorização encerrada (responde "revoked"; ver services/app_hangar)
+_APP_HEARTBEAT = re.compile(r"^/api/app/devices/[^/]+/heartbeat$")
+
+
+def _deny(path: str, msg: str, status: int, headers: dict | None = None) -> JSONResponse:
+    """Recusa do middleware. A API do app Hangar responde no formato do FastAPI ({"detail": …}), como o contrato pede."""
+    return JSONResponse({"detail" if path.startswith("/api/app/") else "error": msg}, status, headers=headers)
+
+
+def _oauth_allowed(principal, path: str) -> str:
+    """Onde um token OAuth vale, pelos escopos da autorização ("" = pode; senão, o motivo da recusa)."""
+    if path.startswith("/mcp"):
+        return "" if "mcp" in principal.oauth_scopes else "forbidden: este token OAuth não tem o escopo mcp"
+    if path.startswith("/api/app/") and not path.startswith("/api/app/admin"):
+        return "" if "app" in principal.oauth_scopes else "forbidden: este token OAuth não tem o escopo app"
+    return "forbidden: token OAuth só vale em /mcp (escopo mcp) e /api/app (escopo app)"
 
 
 def _adding_headers(send, extra: list[tuple[bytes, bytes]]):
@@ -159,12 +176,16 @@ class AuthMiddleware:
 
         principal = await run_in_threadpool(_auth) if token else None
         if principal is None:
+            if token.startswith(auth.OAUTH_PREFIX) and _APP_HEARTBEAT.match(path):
+                return await self.app(scope, receive, send)  # a rota confere o token e responde revoked ou 401
             headers = {}
             if path.startswith("/mcp") and config.OAUTH_ENABLED:  # descoberta OAuth do MCP (RFC 9728)
                 headers["WWW-Authenticate"] = f'Bearer resource_metadata="{svc.mcp_oauth.resource_metadata_url()}"'
-            return await JSONResponse({"error": "unauthorized"}, 401, headers=headers)(scope, receive, send)
-        if principal.via == "oauth" and not path.startswith("/mcp"):
-            return await JSONResponse({"error": "forbidden: token OAuth do MCP só vale em /mcp"}, 403)(scope, receive, send)
+            return await _deny(path, "unauthorized", 401, headers)(scope, receive, send)
+        if principal.via == "oauth":
+            why = _oauth_allowed(principal, path)
+            if why:
+                return await _deny(path, why, 403)(scope, receive, send)
         if via_cookie and scope["method"] not in SAFE_METHODS:
             csrf = auth.cookie(headers, auth.CSRF_COOKIE)
             if not csrf or not hmac.compare_digest(csrf, headers.get("x-csrf-token", "")):
@@ -179,8 +200,7 @@ class AuthMiddleware:
         else:
             allowed = principal.can_use_api
         if not allowed:
-            return await JSONResponse({"error": "forbidden: a credencial não tem permissão para este recurso"},
-                                      403)(scope, receive, send)
+            return await _deny(path, "forbidden: a credencial não tem permissão para este recurso", 403)(scope, receive, send)
         scope.setdefault("state", {})["principal"] = principal
         org = await run_in_threadpool(_org_of, principal, headers.get("x-hangar-org", ""))
         if not headers.get("x-hangar-org") and auth.cookie(headers, "hangar_org"):  # o seletor de empresa do portal
@@ -275,6 +295,7 @@ app.include_router(schedules.router)
 app.include_router(remote_mcp.router)
 app.include_router(connectors.router)  # conectores (MCP): catálogo, cadastro e a ponte dos agentes
 app.include_router(oauth.router)
+app.include_router(app_hangar.router)  # o app Hangar (desktop): perfil, dispositivos, design tokens e o admin
 app.include_router(memory.router)
 app.include_router(internal.router)
 app.include_router(gateway.router)

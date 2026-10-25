@@ -470,6 +470,7 @@ const HUBS_CONSOLE = [
   { id: 'valor', tabs: [['value', 'Valor e oportunidades'], ['usage', 'Uso e custo'], ['budgets', 'Orçamentos']] },
   { id: 'auditoria', tabs: [['audit', 'Auditoria', 'auditor'], ['governance', 'Governança de dados', 'auditor']] },
   { id: 'pessoas', tabs: [['members', 'Membros', 'admin'], ['teams', 'Times'], ['packages', 'Pacotes de time'], ['sso', 'SSO e SCIM', 'admin']] },
+  { id: 'app', tabs: [['app', 'Visão geral', 'admin'], ['app/devices', 'Dispositivos', 'admin']] },  // App Hangar (desktop)
   { id: 'config', tabs: [['company', 'Empresa', 'admin'], ['providers', 'Provedores de LLM', 'admin'], ['secrets', 'Segredos'], ['keys', 'Chaves de API'], ['announcements', 'Avisos', 'admin'],
     ['orgs', 'Empresas', 'instance'], ['connect', 'Integrações']] },
 ];
@@ -478,7 +479,8 @@ const HUBS = () => (USER_MODE ? HUBS_PORTAL : HUBS_CONSOLE);
 const hubOk = need => !need || (need === 'admin' && ME.is_admin) || (need === 'auditor' && ME.is_auditor)
   || (need === 'builder' && (ME.can_create_agents || ME.is_admin)) || (need === 'instance' && ME.instance_admin);
 const hubTabs = h => h.tabs.filter(t => hubOk(t[2]));
-const hubKey = (r, a) => (r === 'issues' && a === 'settings' ? 'issues/settings' : r === 'connectors' && a === 'custom' ? 'connectors/custom' : r);
+const hubKey = (r, a) => (r === 'issues' && a === 'settings' ? 'issues/settings' : r === 'connectors' && a === 'custom' ? 'connectors/custom'
+  : r === 'app' && a === 'devices' ? 'app/devices' : r);
 function hubOf(r, a) { const k = hubKey(r, a); return HUBS().find(h => h.tabs.some(t => t[0] === k)); }
 
 function hubGo(id) {  // #/hub/<id>: a última aba usada (ou a primeira)
@@ -500,7 +502,7 @@ function hubNav(r, a) {  // o item do menu do assunto fica aceso em qualquer pá
 function hubBar(r, a) {  // as abas do assunto em cima da página (só nas páginas de lista, não nos detalhes)
   const h = hubOf(r, a);
   const k = hubKey(r, a);
-  if (!h || (a && k !== 'issues/settings' && !(h.sub || []).includes(r))) return;
+  if (!h || (a && !['issues/settings', 'app/devices'].includes(k) && !(h.sub || []).includes(r))) return;
   const tabs = hubTabs(h);
   if (tabs.length < 2) return;
   try { localStorage.setItem('hub_' + h.id, k); } catch (e) { /* ok */ }

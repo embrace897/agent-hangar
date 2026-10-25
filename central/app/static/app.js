@@ -884,7 +884,8 @@ async function keysPage() {
       <td>${g.revoked ? '<span class="pill bad">revogado</span>' : `<button class="ghost o-rev" data-id="${g.id}" data-n="${esc(g.client_name)}">Revogar</button>`}</td></tr>`).join('') || `<tr><td colspan="${ME.is_admin ? 5 : 4}" class="empty">Nenhum app conectado. Veja <a href="#/connect">Conectar ferramentas</a>.</td></tr>`}</table></div>
   ${ME.is_admin ? `<div class="card mt scroll"><h2>Apps registrados</h2><div class="mute small">Apps que se registraram para pedir acesso (registro dinâmico). Bloquear derruba todas as autorizações do app e impede novas. Redirects permitidos: variável <code>OAUTH_REDIRECT_HOSTS</code>.</div>
     <table><tr><th>App</th><th>Redirect</th><th>Autorizações ativas</th><th>Registrado</th><th></th></tr>
-    ${clients.map(c => `<tr class="${c.blocked ? 'mute' : ''}"><td><b>${esc(c.name)}</b><div class="small mute"><code class="inline">${esc(c.id)}</code></div></td><td class="small">${c.redirect_uris.map(esc).join('<br>')}</td><td>${c.active_grants}</td><td class="mute">${ago(c.created_at)}</td>
+    ${clients.map(c => `<tr class="${c.blocked ? 'mute' : ''}"><td><b>${esc(c.name)}</b><div class="small mute"><code class="inline">${esc(c.id)}</code></div>
+      <div class="small mute" data-noi18n>${esc([c.software_id, c.software_version].filter(Boolean).join(' '))}${c.software_id ? ' · ' : ''}${esc(c.scope || 'mcp')}</div></td><td class="small">${c.redirect_uris.map(esc).join('<br>')}</td><td>${c.active_grants}</td><td class="mute">${ago(c.created_at)}</td>
       <td>${c.blocked ? '<span class="pill bad">bloqueado</span>' : `<button class="ghost o-block" data-id="${esc(c.id)}" data-n="${esc(c.name)}">Bloquear</button>`}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nenhum app registrado</td></tr>'}</table></div>` : ''}`;
   document.querySelectorAll('.o-rev').forEach(b => b.onclick = e => confirm(`Desconectar "${b.dataset.n}"?`) &&
     act(e.target, () => api('/me/oauth/' + b.dataset.id, { method: 'DELETE' }).then(keysPage), 'App desconectado'));
@@ -1036,6 +1037,7 @@ async function renderRoute(seq) {
     else if (r === 'connectors' && a === 'item' && b) await connectorItemPage(decodeURIComponent(b));
     else if (r === 'connectors' && a) await connectorDetail(decodeURIComponent(a));
     else if (r === 'connectors') await connectorsPage();
+    else if (r === 'app') await appHangarPage(a);  // App Hangar (desktop): visão geral e dispositivos
     else await ({ '': USER_MODE ? memberHome : dashboard, agents: agentsPage, templates: templatesPage, keys: keysPage, deployments: deploymentsPage, tests: testsPage, usage: usagePage,
       // skills.js e llm.js só carregam no console (/ui): no portal, citar as funções direto quebra todas as rotas
       catalog: () => skillsHome(), providers: () => providersPage(), connect: connectPage, audit: auditPage,

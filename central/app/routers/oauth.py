@@ -68,7 +68,7 @@ def authorize_start(request: Request, db=Depends(db_dep)):
             return _error_page(e.description, e.status)
         c = db.get(oa.OAuthClient, q.get("client_id", ""))
         redirect = q.get("redirect_uri", "")
-        if c and redirect in c.redirect_uris:  # app e redirect válidos: o erro volta para o app (RFC 6749 4.1.2.1)
+        if c and oa.redirect_registered(c, redirect):  # app e redirect válidos: o erro volta para o app (RFC 6749 4.1.2.1)
             return RedirectResponse(oa.redirect_with(redirect, {"error": e.error, "error_description": e.description,
                                                                 "state": q.get("state", "")}), 302)
         return _error_page(e.description, e.status)

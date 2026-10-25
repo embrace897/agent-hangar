@@ -584,6 +584,9 @@ class OAuthClient(Base):
     redirect_uris: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scope: Mapped[str] = mapped_column(String(100), default="mcp")  # escopos que o app pode pedir ("app mcp")
+    software_id: Mapped[str] = mapped_column(String(120), default="")  # RFC 7591: ex. hangar-desktop
+    software_version: Mapped[str] = mapped_column(String(60), default="")
 
 
 class OAuthGrant(OrgScoped, Base):
@@ -600,6 +603,28 @@ class OAuthGrant(OrgScoped, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scope: Mapped[str] = mapped_column(String(100), default="mcp")  # escopos concedidos: mcp (o /mcp), app (/api/app)
+
+
+class AppDevice(OrgScoped, Base):
+    """Um computador com o app Hangar (desktop) conectado à plataforma. O device_id é gerado e guardado pelo app;
+    revogar o dispositivo derruba a autorização OAuth dele, e o fim da autorização (saída, desligamento) o revoga."""
+    __tablename__ = "app_devices"
+    __table_args__ = (UniqueConstraint("user_id", "device_id", name="uq_app_device_user"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    device_id: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(120), default="")
+    os: Mapped[str] = mapped_column(String(40), default="")
+    os_version: Mapped[str] = mapped_column(String(60), default="")
+    app_version: Mapped[str] = mapped_column(String(40), default="")
+    channel: Mapped[str] = mapped_column(String(20), default="")  # stable | beta | dev…
+    grant_id: Mapped[int | None] = mapped_column(ForeignKey("oauth_grants.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(10), default="active")  # active | revoked
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(254), default="")  # quem revogou, ou "sistema:<motivo>"
 
 
 # ------------------------------------------------------------------ montagem a partir do catálogo

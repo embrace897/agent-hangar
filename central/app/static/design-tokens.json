@@ -1,0 +1,63 @@
+{
+  "light": {
+    "tarmac": "#1C2530",
+    "tarmac-2": "#26313E",
+    "tarmac-ink": "#C9D1DB",
+    "tarmac-mute": "#8793A1",
+    "bg": "#ECEEF1",
+    "panel": "#FFFFFF",
+    "panel-2": "#F6F7F9",
+    "ink": "#17212C",
+    "mute": "#56616E",
+    "line": "#D5DAE0",
+    "line-2": "#E6E9ED",
+    "mark": "#F4B400",
+    "mark-ink": "#17212C",
+    "mark-soft": "#FDF1CC",
+    "go": "#1E7F46",
+    "go-bg": "#E1F2E8",
+    "hold": "#9A5B00",
+    "hold-bg": "#FCEFD6",
+    "stop": "#BD3326",
+    "stop-bg": "#FBE4E1",
+    "info": "#2B5BA8",
+    "info-bg": "#E3ECF8",
+    "code": "#1C2530",
+    "code-ink": "#DDE3EA"
+  },
+  "dark": {
+    "tarmac": "#0B1016",
+    "tarmac-2": "#18202A",
+    "tarmac-ink": "#C9D1DB",
+    "tarmac-mute": "#8793A1",
+    "bg": "#10151C",
+    "panel": "#18202A",
+    "panel-2": "#1E2733",
+    "ink": "#E6EAF0",
+    "mute": "#9AA6B3",
+    "line": "#2C3643",
+    "line-2": "#242D38",
+    "mark": "#F4B400",
+    "mark-ink": "#17212C",
+    "mark-soft": "#3A2F0B",
+    "go": "#4CC784",
+    "go-bg": "#11301F",
+    "hold": "#F0B454",
+    "hold-bg": "#33260C",
+    "stop": "#F07A6D",
+    "stop-bg": "#3A1714",
+    "info": "#79A6EA",
+    "info-bg": "#15253D",
+    "code": "#0B1016",
+    "code-ink": "#CBD5E1"
+  },
+  "fonts": {
+    "ui": "\"IBM Plex Sans\",system-ui,-apple-system,\"Segoe UI\",sans-serif",
+    "sign": "\"Barlow Semi Condensed\",\"Arial Narrow\",\"IBM Plex Sans\",system-ui,-apple-system,\"Segoe UI\",sans-serif",
+    "mono": "\"IBM Plex Mono\",ui-monospace,Consolas,monospace"
+  },
+  "radius": {
+    "r": "6px",
+    "r_lg": "10px"
+  }
+}

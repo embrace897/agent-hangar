@@ -10,6 +10,7 @@ const ICONS = {
   flask: '<path d="M9 3h6M10 3v6L4.6 18.9A1.5 1.5 0 0 0 5.9 21h12.2a1.5 1.5 0 0 0 1.3-2.1L14 9V3" /><path d="M7.5 15h9" />',
   chart: '<path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 6-6" />',
   book: '<path d="M4 19.5V5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z" /><path d="M8.5 7.5h7M8.5 11h5" />',
+  monitor: '<rect x="2.5" y="4" width="19" height="13" rx="2" /><path d="M8 21h8M12 17v4" />',
   chip: '<rect x="6" y="6" width="12" height="12" rx="2" /><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5" />',
   key: '<circle cx="7.5" cy="15.5" r="4.5" /><path d="M10.7 12.3L21 2M16 7l3 3M18.5 4.5l2 2" />',
   puzzle: '<path d="M10 3.5a2 2 0 0 1 4 0V6h4a1 1 0 0 1 1 1v4h-2.5a2 2 0 0 0 0 4H19v4a1 1 0 0 1-1 1h-4v-2.5a2 2 0 0 0-4 0V20H6a1 1 0 0 1-1-1v-4h2.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h4z" />',

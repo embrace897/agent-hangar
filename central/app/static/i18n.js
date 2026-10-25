@@ -725,6 +725,40 @@
     'Esta sessão não tem um usuário (sessão de emergência). Entre com a sua conta para conectar o VS Code.':
       'This session has no user (emergency session). Sign in with your account to connect VS Code.',
     'Se o VS Code não abriu,': 'If VS Code did not open,', 'Conectar clientes': 'Connect clients',
+    // ---- App Hangar (desktop): visão geral, dispositivos e os escopos do consentimento
+    'Dispositivos': 'Devices', 'Dispositivos ativos': 'Active devices', 'Membros conectados': 'Connected members',
+    'Versões em uso': 'Versions in use', 'Último sinal de um app': 'Last signal from an app', 'Último sinal': 'Last signal',
+    'O app de desktop conectado a esta plataforma: quem está usando, em que versão e como conectar um computador novo.':
+      'The desktop app connected to this platform: who is using it, on which version, and how to connect a new computer.',
+    'Conectar o app': 'Connect the app', 'URL da plataforma (cole no app):': 'Platform URL (paste it in the app):',
+    'Instale o Hangar no computador.': 'Install Hangar on the computer.', 'No app, abra': 'In the app, open',
+    'Configurações → Plataforma': 'Settings → Platform', '(ou o passo': '(or the', 'Conectar à plataforma': 'Connect to the platform',
+    'do primeiro uso) e cole a URL acima.': 'step on first use) and paste the URL above.', 'Clique em': 'Click',
+    ': o navegador abre esta plataforma. Entre com a sua conta (SSO ou usuário e senha) e autorize o app.':
+      ': the browser opens this platform. Sign in with your account (SSO or username and password) and authorize the app.',
+    'O navegador devolve a conexão ao app, que registra o computador. Ele aparece em':
+      'The browser hands the connection back to the app, which registers the computer. It shows up in',
+    'Para padronizar na empresa, distribua pela política do Windows (chave':
+      'To standardize it across the company, deploy it through Windows policy (key',
+    '— a URL acima': '— the URL above', ', o app só cria sessões conectado à plataforma.':
+      ', the app only creates sessions while connected to the platform.',
+    'Nenhum app conectado ainda.': 'No app connected yet.',
+    'Revogar um dispositivo, desligar a pessoa ou revogar a autorização do app em':
+      'Revoking a device, deactivating the person or revoking the app’s authorization in',
+    'Chaves de API → Apps conectados': 'API keys → Connected apps', 'desconecta o app na hora.': 'disconnects the app right away.',
+    'Os computadores com o app Hangar conectado. Revogar desconecta o app na hora (a autorização dele cai junto) e impede que este computador volte a se registrar para a mesma pessoa.':
+      'The computers with the Hangar app connected. Revoking disconnects the app right away (its authorization goes with it) and keeps this computer from registering again for the same person.',
+    'Filtrar por pessoa, computador, sistema ou versão': 'Filter by person, computer, system or version',
+    'Mostrar revogados': 'Show revoked', 'Computador': 'Computer', 'Nenhum dispositivo com esse filtro.': 'No device matches this filter.',
+    'Nenhum app conectado ainda. Veja o passo a passo em': 'No app connected yet. See the steps in',
+    'Revogar este dispositivo? O app sai na hora e este computador não volta a se registrar para esta pessoa.':
+      'Revoke this device? The app signs out right away and this computer cannot register again for this person.',
+    'Dispositivo revogado': 'Device revoked', 'autorização encerrada': 'authorization ended', 'autorização expirada': 'authorization expired',
+    'app bloqueado': 'app blocked', 'acesso encerrado': 'access ended', 'O app poderá:': 'The app will be able to:',
+    'Usar o MCP da plataforma com os seus times e papéis: listar, criar, testar e publicar os agentes que você pode mexer.':
+      'Use the platform MCP with your teams and roles: list, create, test and publish the agents you can work on.',
+    'Conectar o app Hangar deste computador: ver o seu perfil, a empresa e os times, registrar o dispositivo e receber o visual da plataforma.':
+      'Connect the Hangar app on this computer: see your profile, the company and the teams, register the device and get the platform look.',
     // ---- OAuth / apps conectados
     'Conectar um app': 'Connect an app', 'Comece de novo pelo app.': 'Start again from the app.',
     'Esta sessão não tem um usuário (sessão de emergência). Entre com a sua conta para conectar o app.':
