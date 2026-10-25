@@ -9,7 +9,7 @@ reúne todos num só lugar, roda cada um no seu container e deixa que sejam usad
 **OpenAI-compatible, MCP, A2A e ACP**, e dentro do seu próprio app via **AG-UI**. Todos podem encontrar os agentes,
 conversar com eles e combiná-los em agentes novos.
 
-[Site](https://valteresj2.github.io/agent-hangar/) · [Demo interativa (inglês)](https://valteresj2.github.io/agent-hangar/demo/) · [English](README.md) · [Documentação (inglês)](https://valteresj2.github.io/agent-hangar/docs/) · [Roadmap](ROADMAP.md)
+[Site](https://valteresj2.github.io/agent-hangar/) · [Demo interativa (inglês)](https://valteresj2.github.io/agent-hangar/demo/) · [App desktop](#o-app-hangar-desktop) · [English](README.md) · [Documentação (inglês)](https://valteresj2.github.io/agent-hangar/docs/) · [Roadmap](ROADMAP.md)
 
 </div>
 
@@ -23,6 +23,12 @@ agente, o Playground, a memória do time, o resumo diário agendado, as conexõe
 https://github.com/user-attachments/assets/62836990-f66c-4c94-950b-4632cf9fc160
 
 <sub>2 min 45 s, em inglês e com legendas: o que é o Agent Hangar, como instalar, criar, testar e publicar agentes, usá-los em todos os protocolos (inclusive dentro do seu app), pôr Digital employees para trabalhar e manter custo e governança sob controle. [Versão MP4](docs/assets/agent-hangar-end-to-end.mp4)</sub>
+
+### Novo na v0.53: o app Hangar desktop
+
+https://github.com/user-attachments/assets/7643a837-c450-41e7-98a4-665d93907db8
+
+<sub>1 min 39 s, em inglês e com legendas: o que o app Hangar desktop traz, como instalar e conectar, o espaço do membro, uma sessão num modelo de token da empresa e a visão do admin. Gravado numa instância de desenvolvimento; pessoas e empresas são fictícias. [Versão MP4](docs/assets/hangar-desktop.mp4) · [Saiba mais](#o-app-hangar-desktop)</sub>
 
 <details><summary><b>Tutorial passo a passo: do zero a um agente trabalhando, em 9 passos</b> (8 min 41 s, com legendas)</summary>
 
@@ -80,6 +86,9 @@ outro lugar, e ninguém sabe quanto custam ou quem aprovou. O Agent Hangar resol
   - Uso, custo e orçamento são registrados por agente e por time, com auditoria e SSO.
 - **Agentes que lembram e trabalham sozinhos.** Memória de longo prazo por agente e por time, agendamentos para
   tarefas recorrentes, e agentes de código que editam projetos no VS Code.
+- **Também no desktop de cada pessoa.** O [app Hangar desktop](#o-app-hangar-desktop), inspirado no Claude Desktop,
+  roda sessões do Claude Code no computador da pessoa e entra no hangar com a conta da empresa: modelos pagos pela
+  empresa sem chave no notebook, e os agentes, decisões e caixa de entrada de cada um, ao vivo.
 
 Em resumo: **seus agentes deixam de pertencer a uma ferramenta e passam a pertencer à sua empresa.**
 
@@ -148,6 +157,65 @@ reproduzem a demo estão em [scripts/demo/portal-tour](scripts/demo/portal-tour/
   (rodapé do menu e tela de login) troca, e a escolha fica guardada naquele navegador. O que pessoas e agentes
   escreveram (nomes, descrições, conversas, saídas de teste, auditoria) aparece como foi escrito. Mensagens geradas
   pelo servidor (erros da API, instruções do MCP, recomendação do composer) continuam em português.
+
+## O app Hangar desktop
+
+O [Hangar](https://github.com/valteresj2/hangar) é um app de desktop para rodar e comandar sessões do Claude Code,
+inspirado no Claude Desktop:
+
+- chat com streaming e cartões de ferramenta;
+- sessões e projetos;
+- terminal, alterações do git, arquivos, navegador e artifacts lado a lado.
+
+O Claude Code vem dentro do app. Sozinho, ele usa a assinatura do Claude da pessoa. Conectado ao Agent Hangar, vira
+o cliente de desktop da empresa.
+
+<p align="center"><img src="docs/assets/desktop/inicio.png" width="49%" alt="Hangar desktop, Início: decisões,
+tarefas, agentes e o custo do mês vindos do Agent Hangar, ao vivo"> <img src="docs/assets/desktop/answer.png"
+width="49%" alt="Uma sessão do Claude Code no Hangar num modelo de token da empresa (Claude Sonnet 4.5 pelo proxy de
+LLM do hangar), com tokens e custo da rodada"></p>
+
+**O que a conexão traz**
+
+- **Login da empresa, sem chave no notebook.** A pessoa entra com a conta da empresa (OAuth, com o SSO que o hangar
+  já usa). O app registra o computador, e o admin vê cada dispositivo e pode revogá-lo com um clique.
+- **Modelos da empresa ou a sua assinatura, por sessão.** O admin sincroniza os modelos de token de uma conexão de
+  LLM, e a pessoa escolhe no composer, ao lado da assinatura do Claude. As chamadas passam pelo proxy de LLM do
+  hangar:
+  - a chave do provedor nunca sai do cofre;
+  - o orçamento e a política de código valem;
+  - uso e custo caem no time da pessoa, sem registrar conteúdo.
+- **O espaço do membro no desktop.** Início, Meus agentes, Decisões e a caixa de entrada usam os mesmos dados do
+  portal, com atualização ao vivo.
+- **Distribuição padronizada.** Uma política do Windows (`PlatformUrl`, `Mode`) aponta todos os computadores para o
+  hangar da empresa. Com `Mode=required`, o app não roda sessões até o computador estar conectado.
+
+**Instalação**
+
+1. Baixe o app nas [releases do Hangar](https://github.com/valteresj2/hangar/releases):
+   - Windows: instalador ou `.exe` portátil;
+   - macOS: `.dmg`;
+   - Linux: AppImage ou `.deb`.
+2. Os builds ainda não têm assinatura de código:
+   - no Windows, o SmartScreen avisa sobre o app: escolha **Mais informações → Executar assim mesmo**;
+   - no macOS, clique com o botão direito no app em Aplicativos e escolha **Abrir**.
+
+**Conectar ao hangar**
+
+1. **Admin:** divulgue o endereço do hangar, que aparece em **Console → App Hangar**. Para oferecer modelos da
+   empresa, abra uma conexão no formato da Anthropic em **Provedores de LLM** e escolha **Sincronizar modelos de token
+   com o Hangar desktop**.
+2. **Cada pessoa:** no app, abra **Configurações → Plataforma**, cole o endereço e escolha **Conectar à plataforma**. O
+   navegador abre o hangar: entre e autorize o app.
+3. **Pronto.** A barra lateral mostra **Agent Hangar** (Início, Meus agentes, Decisões, Caixa de entrada), e o seletor
+   de modelo lista os modelos de token da empresa.
+
+<p align="center"><img src="docs/assets/desktop/synced.png" width="49%" alt="Console, Provedores de LLM: uma conexão
+sincronizada com o Hangar desktop, com os modelos que vão para o app"> <img src="docs/assets/desktop/consent.png"
+width="49%" alt="A tela de consentimento do hangar quando uma pessoa conecta o app Hangar desktop"></p>
+
+Guia completo (em inglês): [docs/desktop-app.md](docs/desktop-app.md). Um proxy reverso na frente do hangar precisa
+de buffering desligado em `/api/app/events`.
 
 ## Instalação (passo a passo)
 

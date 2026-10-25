@@ -1,12 +1,31 @@
 # Hangar desktop app
 
-The Hangar desktop app runs Claude Code sessions on a person's machine. Connected to an Agent Hangar platform, it signs
-in with the person's company account, can use the token models the admins sync, and shows the member's workspace
-(home, their agents, decisions and inbox) with live updates.
+[Hangar](https://github.com/valteresj2/hangar) is a desktop app for running and steering Claude Code sessions on a
+person's computer, inspired by Claude Desktop. Claude Code ships inside the app. Connected to an Agent Hangar
+platform, it:
+
+- signs in with the person's company account;
+- can use the token models the admins sync;
+- shows the member's workspace (home, their agents, decisions and inbox) with live updates.
 
 The platform side of the contract is in [app-hangar.md](app-hangar.md) (sign-in and devices),
 [app-hangar-models.md](app-hangar-models.md) (synced token models) and
 [app-hangar-workspace.md](app-hangar-workspace.md) (workspace and events).
+
+## Installing
+
+Download the app from the [Hangar releases](https://github.com/valteresj2/hangar/releases):
+
+- Windows: installer or portable `.exe`;
+- macOS: `.dmg`;
+- Linux: AppImage or `.deb`.
+
+The builds are not code-signed yet:
+
+- **Windows:** SmartScreen warns about the app; choose **More info → Run anyway**.
+- **macOS:** right-click the app in Applications and choose **Open**.
+
+The app's interface is in Portuguese for now.
 
 ## Connecting the app
 
@@ -40,7 +59,7 @@ People can run a session either on their own Claude subscription or on a token m
 a model in the app:
 
 1. In **LLM Providers**, open an LLM connection that speaks the Anthropic protocol (the only format Claude Code uses).
-2. Turn on **Sync token models with Hangar desktop** and hide any models people shouldn't pick. With the code
+2. Choose **Sync token models with Hangar desktop**, then hide any models people shouldn't pick. With the code
    policy set to *approved connections only*, the connection must allow code.
 
 The app calls the models through the central's LLM proxy (`/api/app/llm/{connection}/v1/messages`) with a key bound
