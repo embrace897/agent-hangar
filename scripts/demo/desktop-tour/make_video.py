@@ -13,7 +13,8 @@ OUT.mkdir(exist_ok=True)
 W, H, BAR = 1280, 800, 60
 NAVY, NAVY2, AMBER, WHITE, MUTE = (28, 37, 48), (38, 50, 64), (244, 180, 0), (255, 255, 255), (170, 182, 196)
 F = "/usr/share/fonts/truetype/liberation/LiberationSans-"
-font = lambda s, b=True: ImageFont.truetype(F + ("Bold" if b else "Regular") + ".ttf", s)
+def font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(F + ("Bold" if bold else "Regular") + ".ttf", size)
 
 
 def card(kicker: str, title: str, lines: list[str], foot: str = "") -> Image.Image:
