@@ -95,6 +95,17 @@ def test_apply_template_multi_agent(db):
     assert orch.kind == "multi" and len([o for o in out if o["kind"] == "agent"]) == 4
 
 
+def test_meeting_notes_template_applies_in_mock_mode(db):
+    assert "meeting-notes" in {item["id"] for item in svc.list_templates()}
+    svc.apply_template(db, "meeting-notes")
+    agent = svc.get_agent(db, "meeting-notes")
+    config = svc.spec_of(agent)
+    assert not config["llm"].get("connection")
+    assert len(config["tests"]) >= 2
+    assert all(case.get("judge") for case in config["tests"])
+    assert "action_items" in agent.final_output
+
+
 def test_data_studio_template_in_sync():
     """templates/data-studio.yaml é gerado de examples/data-studio/*.md — rode make_template.py ao editá-los."""
     import pathlib
