@@ -26,6 +26,8 @@ jobs:
       - run: pip install -r central/requirements.txt pytest ruff ag-ui-protocol -e ./cli
       - run: ruff check .
       - run: pytest
+      - name: Test coding-agent connection translations
+        run: node --test tests/js/connect-translations.test.mjs
       - name: Check JS syntax
         run: |
           for f in central/app/static/*.js; do node --check "$f"; done

@@ -484,6 +484,11 @@
     'Latência média': 'Average latency', 'erros': 'errors', 'requisições': 'requests', 'Requisições': 'Requests', 'Sessão': 'Session',
     'sessão de emergência': 'emergency session', 'Detalhe': 'Detail', 'Quem': 'Who', 'Alvo': 'Target',
     // ---- clientes da aba Conectar (textos vindos do servidor, services/connect.py)
+    'o agente chama a ferramenta do cliente': 'the agent calls the client tool',
+    'o agente usa o resultado e responde': 'the agent uses the result and responds',
+    'tipo': 'type',
+    'política de código': 'code policy',
+    'configuração': 'configuration',
     'CLI da Anthropic. O agente vira uma ferramenta que o Claude chama.': 'Anthropic\'s CLI. The agent becomes a tool that Claude calls.',
     'App desktop, via mcp-remote (precisa de Node.js).': 'Desktop app, via mcp-remote (needs Node.js).',
     'CLI da OpenAI (~/.codex/config.toml).': 'OpenAI\'s CLI (~/.codex/config.toml).',
